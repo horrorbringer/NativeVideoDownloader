@@ -2,24 +2,34 @@ import { Button, LineEdit, ProgressIndicator, ScrollView, TextEdit } from "std-w
 
 component NavButton inherits Rectangle {
     in property <string> text;
+    in property <image> icon;
     in property <bool> active: false;
     callback clicked();
 
-    background: active ? #2d3250 : touch.has-hover ? #25283b : transparent;
+    background: active ? #2b314c : touch.has-hover ? #202436 : transparent;
     animate background { duration: 120ms; }
     border-radius: 8px;
     height: 42px;
 
     HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 12px;
         alignment: start;
+
+        Image {
+            source: root.icon;
+            width: 17px;
+            height: 17px;
+            colorize: root.active ? #7082ff : (touch.has-hover ? #ffffff : #8c93a8);
+            vertical-alignment: center;
+        }
 
         Text {
             text: root.text;
-            color: root.active ? #ffffff : #a0a5b5;
-            font-size: 14px;
-            font-weight: root.active ? 600 : 400;
+            color: root.active ? #ffffff : (touch.has-hover ? #e2e8f0 : #8c93a8);
+            font-size: 13px;
+            font-weight: root.active ? 600 : 500;
             vertical-alignment: center;
         }
     }
@@ -29,30 +39,98 @@ component NavButton inherits Rectangle {
     }
 }
 
-component QualityChip inherits Rectangle {
+component IconChip inherits Rectangle {
     in property <string> text;
+    in property <image> icon;
+    in property <bool> has_icon: false;
     in property <bool> selected: false;
     callback clicked();
 
-    background: selected ? #4f58c7 : touch.has-hover ? #2d3348 : #232738;
+    background: selected ? #4f58c7 : touch.has-hover ? #2a2f44 : #1c202d;
     animate background { duration: 120ms; }
     border-radius: 6px;
+    border-width: 1px;
+    border-color: selected ? #7082ff : (touch.has-hover ? #3c4460 : #2b3044);
     height: 32px;
 
     HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
         alignment: center;
+
+        if root.has_icon: Image {
+            source: root.icon;
+            width: 13px;
+            height: 13px;
+            colorize: root.selected ? #ffffff : (touch.has-hover ? #e2e8f0 : #949db2);
+            vertical-alignment: center;
+        }
+
         Text {
             text: root.text;
-            color: root.selected ? #ffffff : #a0a7ba;
+            color: root.selected ? #ffffff : (touch.has-hover ? #e2e8f0 : #949db2);
             font-size: 12px;
-            font-weight: root.selected ? 600 : 400;
+            font-weight: root.selected ? 600 : 500;
             vertical-alignment: center;
         }
     }
 
     touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has_icon: false;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    background: !root.enabled ? #161822 :
+                root.primary ? (touch.has-hover ? #5e68db : #4f58c7) :
+                root.danger ? (touch.has-hover ? #dc2626 : #b91c1c) :
+                (touch.has-hover ? #2b3044 : #1e2230);
+    animate background { duration: 120ms; }
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: !root.enabled ? #232736 :
+                  root.primary ? #7082ff :
+                  root.danger ? #ef4444 : #2b3044;
+    height: 34px;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        alignment: center;
+
+        if root.has_icon: Image {
+            source: root.icon;
+            width: 14px;
+            height: 14px;
+            colorize: !root.enabled ? #52596e :
+                      (root.primary || root.danger) ? #ffffff :
+                      (touch.has-hover ? #ffffff : #cbd5e1);
+            vertical-alignment: center;
+        }
+
+        if root.text != "": Text {
+            text: root.text;
+            color: !root.enabled ? #52596e :
+                   (root.primary || root.danger) ? #ffffff :
+                   (touch.has-hover ? #ffffff : #cbd5e1);
+            font-size: 12px;
+            font-weight: (root.primary || root.danger) ? 600 : 500;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
         clicked => { root.clicked(); }
     }
 }
@@ -195,48 +273,79 @@ export component AppWindow inherits Window {
                 padding: 16px;
                 spacing: 10px;
 
-                // App Title
+                // App Title & Brand
                 HorizontalLayout {
                     alignment: start;
-                    spacing: 8px;
-                    padding-bottom: 8px;
+                    spacing: 10px;
+                    padding-bottom: 12px;
+                    padding-left: 4px;
 
-                    Text {
-                        text: "⚡ Video Downloader";
-                        color: #7082ff;
-                        font-size: 15px;
-                        font-weight: 700;
-                        vertical-alignment: center;
+                    Rectangle {
+                        width: 30px;
+                        height: 30px;
+                        border-radius: 8px;
+                        background: #252b45;
+
+                        Image {
+                            source: @image-url("icons/bolt.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: #7082ff;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 1px;
+                        Text {
+                            text: "Media Stream";
+                            color: #ffffff;
+                            font-size: 14px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Native Downloader";
+                            color: #7082ff;
+                            font-size: 11px;
+                            font-weight: 600;
+                        }
                     }
                 }
 
-                // Nav Items
+                // Nav Items with crisp vector icons
                 NavButton {
-                    text: "🏠  Home";
+                    text: "Home";
+                    icon: @image-url("icons/home.svg");
                     active: root.active_tab == 0;
                     clicked => { root.active_tab = 0; }
                 }
 
                 NavButton {
-                    text: "📥  Downloads";
+                    text: "Downloads";
+                    icon: @image-url("icons/download.svg");
                     active: root.active_tab == 1;
                     clicked => { root.active_tab = 1; }
                 }
 
                 NavButton {
-                    text: "📜  History";
+                    text: "History";
+                    icon: @image-url("icons/history.svg");
                     active: root.active_tab == 2;
                     clicked => { root.active_tab = 2; }
                 }
 
                 NavButton {
-                    text: "📋  Logs";
+                    text: "Logs";
+                    icon: @image-url("icons/logs.svg");
                     active: root.active_tab == 3;
                     clicked => { root.active_tab = 3; }
                 }
 
                 NavButton {
-                    text: "⚙️  Settings";
+                    text: "Settings";
+                    icon: @image-url("icons/settings.svg");
                     active: root.active_tab == 4;
                     clicked => { root.active_tab = 4; }
                 }
@@ -294,13 +403,16 @@ export component AppWindow inherits Window {
 
                         HorizontalLayout {
                             horizontal-stretch: 1;
-                            spacing: 10px;
+                            spacing: 12px;
 
-                            Text {
-                                text: "⚠️";
-                                font-size: 16px;
+                            Image {
+                                source: @image-url("icons/alert.svg");
+                                width: 20px;
+                                height: 20px;
+                                colorize: #ef4444;
                                 vertical-alignment: center;
                             }
+
                             VerticalLayout {
                                 horizontal-stretch: 1;
                                 spacing: 2px;
@@ -325,14 +437,18 @@ export component AppWindow inherits Window {
                             spacing: 8px;
                             alignment: end;
 
-                            Button {
+                            ActionButton {
                                 text: "Logs";
+                                icon: @image-url("icons/logs.svg");
+                                has_icon: true;
                                 height: 28px;
                                 clicked => { root.active_tab = 3; }
                             }
 
-                            Button {
-                                text: "✕ Dismiss";
+                            ActionButton {
+                                text: "Dismiss";
+                                icon: @image-url("icons/x.svg");
+                                has_icon: true;
                                 height: 28px;
                                 clicked => { root.dismiss_error(); }
                             }
@@ -345,14 +461,18 @@ export component AppWindow inherits Window {
                     spacing: 8px;
                     alignment: start;
 
-                    QualityChip {
-                        text: "🔗 Single URL";
+                    IconChip {
+                        text: "Single URL";
+                        icon: @image-url("icons/link.svg");
+                        has_icon: true;
                         selected: !root.batch_mode;
                         clicked => { root.batch_mode = false; }
                     }
 
-                    QualityChip {
-                        text: "📋 Batch URLs (Bulk)";
+                    IconChip {
+                        text: "Batch URLs (Bulk)";
+                        icon: @image-url("icons/layers.svg");
+                        has_icon: true;
                         selected: root.batch_mode;
                         clicked => { root.batch_mode = true; }
                     }
@@ -373,11 +493,23 @@ export component AppWindow inherits Window {
                             padding: 18px;
                             spacing: 12px;
 
-                            Text {
-                                text: "Source Media URL";
-                                color: #c7cbd9;
-                                font-size: 13px;
-                                font-weight: 600;
+                            HorizontalLayout {
+                                alignment: space-between;
+
+                                Text {
+                                    text: "Source Media URL";
+                                    color: #c7cbd9;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+
+                                Text {
+                                    text: "YouTube • Bilibili • Dailymotion • Vimeo • Direct HLS";
+                                    color: #64748b;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                }
                             }
 
                             HorizontalLayout {
@@ -386,7 +518,7 @@ export component AppWindow inherits Window {
                                 url_input := LineEdit {
                                     horizontal-stretch: 1;
                                     text <=> root.input_url_text;
-                                    placeholder_text: "Paste video or audio URL here...";
+                                    placeholder_text: "Paste video or audio stream URL here...";
                                     font_size: 13px;
                                     height: 38px;
                                     accepted => {
@@ -394,16 +526,21 @@ export component AppWindow inherits Window {
                                     }
                                 }
 
-                                Button {
-                                    text: "📋 Paste";
+                                ActionButton {
+                                    text: "Paste";
+                                    icon: @image-url("icons/clipboard.svg");
+                                    has_icon: true;
                                     height: 38px;
                                     clicked => {
                                         root.paste_from_clipboard();
                                     }
                                 }
 
-                                Button {
+                                ActionButton {
                                     text: root.is_analyzing ? "Analyzing..." : "Analyze";
+                                    icon: @image-url("icons/search.svg");
+                                    has_icon: true;
+                                    primary: true;
                                     enabled: !root.is_analyzing && root.input_url_text != "";
                                     height: 38px;
                                     clicked => {
@@ -432,11 +569,48 @@ export component AppWindow inherits Window {
                             padding: 20px;
                             spacing: 14px;
 
-                            Text {
-                                text: "Media Information";
-                                color: #7082ff;
-                                font-size: 14px;
-                                font-weight: 700;
+                            HorizontalLayout {
+                                alignment: space-between;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+
+                                    Image {
+                                        source: @image-url("icons/check.svg");
+                                        width: 16px;
+                                        height: 16px;
+                                        colorize: #4ade80;
+                                        vertical-alignment: center;
+                                    }
+
+                                    Text {
+                                        text: "Media Stream Detected";
+                                        color: #7082ff;
+                                        font-size: 14px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                Rectangle {
+                                    background: #163625;
+                                    border-radius: 4px;
+                                    height: 22px;
+
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        alignment: center;
+                                        Text {
+                                            text: "Ready to Download";
+                                            color: #4ade80;
+                                            font-size: 11px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
                             }
 
                             HorizontalLayout {
@@ -444,37 +618,130 @@ export component AppWindow inherits Window {
 
                                 // Video preview icon/box
                                 Rectangle {
-                                    width: 140px;
-                                    height: 90px;
-                                    background: #262c3e;
+                                    width: 130px;
+                                    height: 85px;
+                                    background: #23283b;
                                     border-radius: 8px;
+                                    border-width: 1px;
+                                    border-color: #2c3349;
 
-                                    Text {
-                                        text: root.is_playlist ? "📺 Series" :
-                                              root.selected_format_index == 4 ? "🎵 Audio" : "🎬 Video";
-                                        color: #a4adc7;
-                                        font-size: 14px;
-                                        vertical-alignment: center;
-                                        horizontal-alignment: center;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 6px;
+
+                                        Image {
+                                            source: root.is_playlist ? @image-url("icons/tv.svg") :
+                                                    root.selected_format_index == 4 ? @image-url("icons/music.svg") : @image-url("icons/video.svg");
+                                            width: 26px;
+                                            height: 26px;
+                                            colorize: #7082ff;
+                                            horizontal-alignment: center;
+                                        }
+
+                                        Text {
+                                            text: root.is_playlist ? "Series" :
+                                                  root.selected_format_index == 4 ? "Audio" : "Video";
+                                            color: #8c93a8;
+                                            font-size: 11px;
+                                            font-weight: 600;
+                                            horizontal-alignment: center;
+                                        }
                                     }
                                 }
 
                                 VerticalLayout {
-                                    spacing: 6px;
+                                    spacing: 8px;
                                     alignment: center;
+                                    horizontal-stretch: 1;
 
                                     Text {
                                         text: root.video_title != "" ? root.video_title : "Title unknown";
                                         color: #ffffff;
                                         font-size: 16px;
                                         font-weight: 600;
+                                        overflow: elide;
                                     }
 
-                                    Text {
-                                        text: root.is_playlist ? ("Series • " + root.playlist_count + " Episodes Available") :
-                                              ("Resolution: " + root.video_resolution + "  •  Duration: " + root.video_duration);
-                                        color: #949db2;
-                                        font-size: 13px;
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+
+                                        if root.is_playlist: Rectangle {
+                                            background: #252a3d;
+                                            border-radius: 4px;
+                                            height: 22px;
+
+                                            HorizontalLayout {
+                                                padding-left: 8px;
+                                                padding-right: 8px;
+                                                alignment: center;
+                                                Text {
+                                                    text: "Series • " + root.playlist_count + " Episodes Available";
+                                                    color: #cbd5e1;
+                                                    font-size: 11px;
+                                                    font-weight: 600;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        if !root.is_playlist && root.video_resolution != "": Rectangle {
+                                            background: #252a3d;
+                                            border-radius: 4px;
+                                            height: 22px;
+
+                                            HorizontalLayout {
+                                                padding-left: 8px;
+                                                padding-right: 8px;
+                                                spacing: 4px;
+                                                alignment: center;
+
+                                                Image {
+                                                    source: @image-url("icons/monitor.svg");
+                                                    width: 12px;
+                                                    height: 12px;
+                                                    colorize: #949db2;
+                                                    vertical-alignment: center;
+                                                }
+
+                                                Text {
+                                                    text: root.video_resolution;
+                                                    color: #cbd5e1;
+                                                    font-size: 11px;
+                                                    font-weight: 600;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        if !root.is_playlist && root.video_duration != "": Rectangle {
+                                            background: #252a3d;
+                                            border-radius: 4px;
+                                            height: 22px;
+
+                                            HorizontalLayout {
+                                                padding-left: 8px;
+                                                padding-right: 8px;
+                                                spacing: 4px;
+                                                alignment: center;
+
+                                                Image {
+                                                    source: @image-url("icons/history.svg");
+                                                    width: 12px;
+                                                    height: 12px;
+                                                    colorize: #949db2;
+                                                    vertical-alignment: center;
+                                                }
+
+                                                Text {
+                                                    text: root.video_duration;
+                                                    color: #cbd5e1;
+                                                    font-size: 11px;
+                                                    font-weight: 600;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -490,28 +757,38 @@ export component AppWindow inherits Window {
                             HorizontalLayout {
                                 spacing: 8px;
 
-                                QualityChip {
-                                    text: "📹 Best Quality";
+                                IconChip {
+                                    text: "Best Quality";
+                                    icon: @image-url("icons/video.svg");
+                                    has_icon: true;
                                     selected: root.selected_format_index == 0;
                                     clicked => { root.selected_format_index = 0; }
                                 }
-                                QualityChip {
-                                    text: "📹 1080p FHD";
+                                IconChip {
+                                    text: "1080p FHD";
+                                    icon: @image-url("icons/video.svg");
+                                    has_icon: true;
                                     selected: root.selected_format_index == 1;
                                     clicked => { root.selected_format_index = 1; }
                                 }
-                                QualityChip {
-                                    text: "📹 720p HD";
+                                IconChip {
+                                    text: "720p HD";
+                                    icon: @image-url("icons/video.svg");
+                                    has_icon: true;
                                     selected: root.selected_format_index == 2;
                                     clicked => { root.selected_format_index = 2; }
                                 }
-                                QualityChip {
-                                    text: "📹 480p SD";
+                                IconChip {
+                                    text: "480p SD";
+                                    icon: @image-url("icons/video.svg");
+                                    has_icon: true;
                                     selected: root.selected_format_index == 3;
                                     clicked => { root.selected_format_index = 3; }
                                 }
-                                QualityChip {
-                                    text: "🎵 Audio (MP3)";
+                                IconChip {
+                                    text: "Audio (MP3)";
+                                    icon: @image-url("icons/music.svg");
+                                    has_icon: true;
                                     selected: root.selected_format_index == 4;
                                     clicked => { root.selected_format_index = 4; }
                                 }
@@ -535,8 +812,16 @@ export component AppWindow inherits Window {
                                         spacing: 6px;
                                         alignment: center;
 
+                                        Image {
+                                            source: @image-url("icons/subtitles.svg");
+                                            width: 14px;
+                                            height: 14px;
+                                            colorize: root.download_subtitles ? #38bdf8 : #8c93a8;
+                                            vertical-alignment: center;
+                                        }
+
                                         Text {
-                                            text: root.download_subtitles ? "💬 Subtitles: Enabled (.srt/embed)" : "💬 Subtitles: Disabled";
+                                            text: root.download_subtitles ? "Subtitles: Enabled (.srt/embed)" : "Subtitles: Disabled";
                                             color: root.download_subtitles ? #38bdf8 : #8c93a8;
                                             font-size: 12px;
                                             font-weight: 600;
@@ -564,9 +849,12 @@ export component AppWindow inherits Window {
                                 alignment: end;
                                 spacing: 10px;
 
-                                Button {
-                                    text: root.is_playlist ? ("📥 Download All " + root.playlist_count + " Episodes") : "Start Download";
-                                    height: 36px;
+                                ActionButton {
+                                    text: root.is_playlist ? ("Download All " + root.playlist_count + " Episodes") : "Start Download";
+                                    icon: @image-url("icons/download.svg");
+                                    has_icon: true;
+                                    primary: true;
+                                    height: 38px;
                                     clicked => {
                                         root.start_download(root.selected_format_index, root.download_subtitles);
                                     }
@@ -577,28 +865,111 @@ export component AppWindow inherits Window {
 
                     // Empty / Placeholder state when no video analyzed
                     if !root.has_metadata && !root.is_analyzing: Rectangle {
-                        background: #181a24;
+                        background: #171a26;
                         border-radius: 12px;
                         border-width: 1px;
-                        border-color: #232736;
-                        height: 160px;
+                        border-color: #24293a;
+                        height: 200px;
 
                         VerticalLayout {
                             alignment: center;
-                            spacing: 8px;
+                            spacing: 12px;
 
-                            Text {
-                                text: "🚀 Ready to analyze media";
-                                color: #5c647a;
-                                font-size: 15px;
-                                font-weight: 600;
-                                horizontal-alignment: center;
+                            HorizontalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 48px;
+                                    height: 48px;
+                                    border-radius: 24px;
+                                    background: #22273a;
+                                    border-width: 1px;
+                                    border-color: #2e354e;
+
+                                    Image {
+                                        source: @image-url("icons/sparkles.svg");
+                                        width: 24px;
+                                        height: 24px;
+                                        colorize: #7082ff;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
                             }
-                            Text {
-                                text: "Paste a video link above and click Analyze to choose quality or audio-only extraction";
-                                color: #4b5266;
-                                font-size: 13px;
-                                horizontal-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                Text {
+                                    text: "Ready to Download Media";
+                                    color: #ffffff;
+                                    font-size: 15px;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                }
+                                Text {
+                                    text: "Paste any video, playlist, or streaming audio link above to inspect available qualities";
+                                    color: #8c93a8;
+                                    font-size: 13px;
+                                    horizontal-alignment: center;
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: center;
+
+                                Rectangle {
+                                    background: #1c2130;
+                                    border-radius: 4px;
+                                    height: 22px;
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        alignment: center;
+                                        Text {
+                                            text: "Up to 4K Lossless";
+                                            color: #64748b;
+                                            font-size: 11px;
+                                            font-weight: 500;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    background: #1c2130;
+                                    border-radius: 4px;
+                                    height: 22px;
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        alignment: center;
+                                        Text {
+                                            text: "Fast Resumption";
+                                            color: #64748b;
+                                            font-size: 11px;
+                                            font-weight: 500;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    background: #1c2130;
+                                    border-radius: 4px;
+                                    height: 22px;
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        alignment: center;
+                                        Text {
+                                            text: "Subtitles & Audio MP3";
+                                            color: #64748b;
+                                            font-size: 11px;
+                                            font-weight: 500;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -627,8 +998,10 @@ export component AppWindow inherits Window {
                                     font-weight: 600;
                                     vertical-alignment: center;
                                 }
-                                Button {
-                                    text: "📋 Paste Clipboard";
+                                ActionButton {
+                                    text: "Paste Clipboard";
+                                    icon: @image-url("icons/clipboard.svg");
+                                    has_icon: true;
                                     height: 30px;
                                     clicked => {
                                         root.paste_batch_from_clipboard();
@@ -652,18 +1025,24 @@ export component AppWindow inherits Window {
                             HorizontalLayout {
                                 spacing: 8px;
 
-                                QualityChip {
-                                    text: "📹 Best Quality";
+                                IconChip {
+                                    text: "Best Quality";
+                                    icon: @image-url("icons/video.svg");
+                                    has_icon: true;
                                     selected: root.selected_format_index == 0;
                                     clicked => { root.selected_format_index = 0; }
                                 }
-                                QualityChip {
-                                    text: "📹 720p HD";
+                                IconChip {
+                                    text: "720p HD";
+                                    icon: @image-url("icons/video.svg");
+                                    has_icon: true;
                                     selected: root.selected_format_index == 2;
                                     clicked => { root.selected_format_index = 2; }
                                 }
-                                QualityChip {
-                                    text: "🎵 Audio (MP3)";
+                                IconChip {
+                                    text: "Audio (MP3)";
+                                    icon: @image-url("icons/music.svg");
+                                    has_icon: true;
                                     selected: root.selected_format_index == 4;
                                     clicked => { root.selected_format_index = 4; }
                                 }
@@ -673,8 +1052,11 @@ export component AppWindow inherits Window {
                                 alignment: end;
                                 spacing: 10px;
 
-                                Button {
-                                    text: "📥 Queue All in Batch";
+                                ActionButton {
+                                    text: "Queue All in Batch";
+                                    icon: @image-url("icons/download.svg");
+                                    has_icon: true;
+                                    primary: true;
                                     height: 38px;
                                     clicked => {
                                         root.start_batch_download(root.batch_urls_text, root.selected_format_index);
@@ -708,20 +1090,26 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         spacing: 8px;
 
-                        Button {
-                            text: "⏸ Pause All";
+                        ActionButton {
+                            text: "Pause All";
+                            icon: @image-url("icons/pause.svg");
+                            has_icon: true;
                             height: 32px;
                             clicked => { root.pause_all(); }
                         }
 
-                        Button {
-                            text: "▶ Resume All";
+                        ActionButton {
+                            text: "Resume All";
+                            icon: @image-url("icons/play.svg");
+                            has_icon: true;
                             height: 32px;
                             clicked => { root.resume_all(); }
                         }
 
-                        Button {
-                            text: "🧹 Clear Finished";
+                        ActionButton {
+                            text: "Clear Finished";
+                            icon: @image-url("icons/broom.svg");
+                            has_icon: true;
                             height: 32px;
                             clicked => { root.clear_completed(); }
                         }
@@ -733,7 +1121,7 @@ export component AppWindow inherits Window {
                     spacing: 12px;
 
                     queue_search := LineEdit {
-                        placeholder_text: "🔍 Search active or queued downloads by title or URL...";
+                        placeholder_text: "Search active or queued downloads by title or URL...";
                         font_size: 13px;
                         height: 36px;
                         horizontal-stretch: 1;
@@ -748,7 +1136,7 @@ export component AppWindow inherits Window {
                     spacing: 8px;
                     alignment: start;
 
-                    QualityChip {
+                    IconChip {
                         text: "All";
                         selected: root.queue_filter_index == 0;
                         clicked => {
@@ -756,40 +1144,50 @@ export component AppWindow inherits Window {
                             root.set_queue_filter(0);
                         }
                     }
-                    QualityChip {
-                        text: "⬇️ Downloading";
+                    IconChip {
+                        text: "Downloading";
+                        icon: @image-url("icons/download.svg");
+                        has_icon: true;
                         selected: root.queue_filter_index == 1;
                         clicked => {
                             root.queue_filter_index = 1;
                             root.set_queue_filter(1);
                         }
                     }
-                    QualityChip {
-                        text: "⏳ Queued";
+                    IconChip {
+                        text: "Queued";
+                        icon: @image-url("icons/history.svg");
+                        has_icon: true;
                         selected: root.queue_filter_index == 2;
                         clicked => {
                             root.queue_filter_index = 2;
                             root.set_queue_filter(2);
                         }
                     }
-                    QualityChip {
-                        text: "⏸ Paused";
+                    IconChip {
+                        text: "Paused";
+                        icon: @image-url("icons/pause.svg");
+                        has_icon: true;
                         selected: root.queue_filter_index == 3;
                         clicked => {
                             root.queue_filter_index = 3;
                             root.set_queue_filter(3);
                         }
                     }
-                    QualityChip {
-                        text: "✅ Completed";
+                    IconChip {
+                        text: "Completed";
+                        icon: @image-url("icons/check.svg");
+                        has_icon: true;
                         selected: root.queue_filter_index == 4;
                         clicked => {
                             root.queue_filter_index = 4;
                             root.set_queue_filter(4);
                         }
                     }
-                    QualityChip {
-                        text: "❌ Failed";
+                    IconChip {
+                        text: "Failed";
+                        icon: @image-url("icons/x.svg");
+                        has_icon: true;
                         selected: root.queue_filter_index == 5;
                         clicked => {
                             root.queue_filter_index = 5;
@@ -808,20 +1206,42 @@ export component AppWindow inherits Window {
 
                     VerticalLayout {
                         alignment: center;
-                        spacing: 8px;
+                        spacing: 12px;
 
-                        Text {
-                            text: (root.queue_filter_index != 0 || root.queue_search_query != "") ? "🔍 No matching downloads found" : "📥 No active downloads";
-                            color: #5c647a;
-                            font-size: 15px;
-                            font-weight: 600;
-                            horizontal-alignment: center;
+                        HorizontalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 44px;
+                                height: 44px;
+                                border-radius: 22px;
+                                background: #23283c;
+
+                                Image {
+                                    source: (root.queue_filter_index != 0 || root.queue_search_query != "") ? @image-url("icons/search.svg") : @image-url("icons/download.svg");
+                                    width: 22px;
+                                    height: 22px;
+                                    colorize: #7082ff;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
                         }
-                        Text {
-                            text: (root.queue_filter_index != 0 || root.queue_search_query != "") ? "Try selecting 'All' or clearing your search query above." : "Downloads in progress, paused, or queued will appear here.";
-                            color: #4b5266;
-                            font-size: 13px;
-                            horizontal-alignment: center;
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: (root.queue_filter_index != 0 || root.queue_search_query != "") ? "No matching downloads found" : "No active downloads";
+                                color: #ffffff;
+                                font-size: 15px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+                            Text {
+                                text: (root.queue_filter_index != 0 || root.queue_search_query != "") ? "Try selecting 'All' or clearing your search query above." : "Downloads in progress, paused, or queued will appear here.";
+                                color: #8c93a8;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                            }
                         }
                     }
                 }
@@ -867,32 +1287,43 @@ export component AppWindow inherits Window {
                                         spacing: 6px;
                                         alignment: end;
 
-                                        if item.is_completed: Button {
-                                            text: "▶ Play";
+                                        if item.is_completed: ActionButton {
+                                            text: "Play";
+                                            icon: @image-url("icons/play.svg");
+                                            has_icon: true;
                                             height: 30px;
                                             clicked => { root.open_download_file(item.output_path); }
                                         }
 
-                                        if item.is_completed: Button {
-                                            text: "📂 Finder";
+                                        if item.is_completed: ActionButton {
+                                            text: "Finder";
+                                            icon: @image-url("icons/folder.svg");
+                                            has_icon: true;
                                             height: 30px;
                                             clicked => { root.open_download_folder(item.output_path); }
                                         }
 
-                                        if item.can_pause: Button {
+                                        if item.can_pause: ActionButton {
                                             text: "Pause";
+                                            icon: @image-url("icons/pause.svg");
+                                            has_icon: true;
                                             height: 30px;
                                             clicked => { root.pause_download(item.id); }
                                         }
 
-                                        if item.can_resume: Button {
+                                        if item.can_resume: ActionButton {
                                             text: "Resume";
+                                            icon: @image-url("icons/play.svg");
+                                            has_icon: true;
                                             height: 30px;
                                             clicked => { root.resume_download(item.id); }
                                         }
 
-                                        if item.can_cancel: Button {
+                                        if item.can_cancel: ActionButton {
                                             text: "Cancel";
+                                            icon: @image-url("icons/x.svg");
+                                            has_icon: true;
+                                            danger: true;
                                             height: 30px;
                                             clicked => { root.cancel_download(item.id); }
                                         }
@@ -938,7 +1369,7 @@ export component AppWindow inherits Window {
 
                     search_box := LineEdit {
                         horizontal-stretch: 1;
-                        placeholder_text: "🔍 Search history by title or file path...";
+                        placeholder_text: "Search history by title or file path...";
                         font_size: 13px;
                         height: 36px;
                         text <=> root.history_search_query;
@@ -966,8 +1397,11 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    Button {
-                        text: "🗑️ Clear All";
+                    ActionButton {
+                        text: "Clear All";
+                        icon: @image-url("icons/trash.svg");
+                        has_icon: true;
+                        danger: true;
                         height: 36px;
                         enabled: root.history_items.length > 0;
                         clicked => { root.clear_all_history(); }
@@ -984,20 +1418,42 @@ export component AppWindow inherits Window {
 
                     VerticalLayout {
                         alignment: center;
-                        spacing: 8px;
+                        spacing: 12px;
 
-                        Text {
-                            text: root.history_search_query != "" ? "🔍 No history records match your search" : "📜 No download history yet";
-                            color: #5c647a;
-                            font-size: 15px;
-                            font-weight: 600;
-                            horizontal-alignment: center;
+                        HorizontalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 44px;
+                                height: 44px;
+                                border-radius: 22px;
+                                background: #23283c;
+
+                                Image {
+                                    source: root.history_search_query != "" ? @image-url("icons/search.svg") : @image-url("icons/history.svg");
+                                    width: 22px;
+                                    height: 22px;
+                                    colorize: #7082ff;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
                         }
-                        Text {
-                            text: root.history_search_query != "" ? "Try a different keyword or clear the search box above." : "Finished and saved media downloads will be persisted here.";
-                            color: #4b5266;
-                            font-size: 13px;
-                            horizontal-alignment: center;
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: root.history_search_query != "" ? "No history records match your search" : "No download history yet";
+                                color: #ffffff;
+                                font-size: 15px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+                            Text {
+                                text: root.history_search_query != "" ? "Try a different keyword or clear the search box above." : "Finished and saved media downloads will be persisted here.";
+                                color: #8c93a8;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                            }
                         }
                     }
                 }
@@ -1046,16 +1502,26 @@ export component AppWindow inherits Window {
 
                                             // Status pill
                                             Rectangle {
-                                                height: 20px;
+                                                height: 22px;
                                                 border-radius: 4px;
                                                 background: item.status == "Completed" ? #14532d : (item.status == "Failed" ? #7f1d1d : #334155);
 
                                                 HorizontalLayout {
                                                     padding-left: 8px;
                                                     padding-right: 8px;
+                                                    spacing: 4px;
                                                     alignment: center;
+
+                                                    Image {
+                                                        source: item.status == "Completed" ? @image-url("icons/check.svg") : @image-url("icons/x.svg");
+                                                        width: 12px;
+                                                        height: 12px;
+                                                        colorize: item.status == "Completed" ? #4ade80 : #fca5a5;
+                                                        vertical-alignment: center;
+                                                    }
+
                                                     Text {
-                                                        text: item.status == "Completed" ? "✓ Completed" : item.status;
+                                                        text: item.status == "Completed" ? "Completed" : item.status;
                                                         color: item.status == "Completed" ? #4ade80 : (item.status == "Failed" ? #fca5a5 : #cbd5e1);
                                                         font-size: 11px;
                                                         font-weight: 700;
@@ -1065,19 +1531,45 @@ export component AppWindow inherits Window {
                                             }
 
                                             // File size
-                                            Text {
-                                                text: "📦 " + item.size_text;
-                                                color: #949db2;
-                                                font-size: 12px;
-                                                vertical-alignment: center;
+                                            HorizontalLayout {
+                                                spacing: 4px;
+                                                alignment: start;
+
+                                                Image {
+                                                    source: @image-url("icons/package.svg");
+                                                    width: 13px;
+                                                    height: 13px;
+                                                    colorize: #949db2;
+                                                    vertical-alignment: center;
+                                                }
+
+                                                Text {
+                                                    text: item.size_text;
+                                                    color: #949db2;
+                                                    font-size: 12px;
+                                                    vertical-alignment: center;
+                                                }
                                             }
 
                                             // Date / Timestamp
-                                            if item.date_text != "": Text {
-                                                text: "🕒 " + item.date_text;
-                                                color: #64748b;
-                                                font-size: 12px;
-                                                vertical-alignment: center;
+                                            if item.date_text != "": HorizontalLayout {
+                                                spacing: 4px;
+                                                alignment: start;
+
+                                                Image {
+                                                    source: @image-url("icons/history.svg");
+                                                    width: 13px;
+                                                    height: 13px;
+                                                    colorize: #64748b;
+                                                    vertical-alignment: center;
+                                                }
+
+                                                Text {
+                                                    text: item.date_text;
+                                                    color: #64748b;
+                                                    font-size: 12px;
+                                                    vertical-alignment: center;
+                                                }
                                             }
                                         }
                                     }
@@ -1087,26 +1579,34 @@ export component AppWindow inherits Window {
                                         spacing: 8px;
                                         alignment: end;
 
-                                        if item.status == "Completed": Button {
-                                            text: "▶ Play";
+                                        if item.status == "Completed": ActionButton {
+                                            text: "Play";
+                                            icon: @image-url("icons/play.svg");
+                                            has_icon: true;
                                             height: 32px;
                                             clicked => { root.play_history_file(item.output_path); }
                                         }
 
-                                        Button {
-                                            text: "🖥️ Finder";
+                                        ActionButton {
+                                            text: "Finder";
+                                            icon: @image-url("icons/folder.svg");
+                                            has_icon: true;
                                             height: 32px;
                                             clicked => { root.open_history_folder(item.output_path); }
                                         }
 
-                                        Button {
-                                            text: "🔄 Redownload";
+                                        ActionButton {
+                                            text: "Redownload";
+                                            icon: @image-url("icons/refresh.svg");
+                                            has_icon: true;
                                             height: 32px;
                                             clicked => { root.redownload_history(item.url); }
                                         }
 
-                                        Button {
-                                            text: "✕";
+                                        ActionButton {
+                                            icon: @image-url("icons/x.svg");
+                                            has_icon: true;
+                                            danger: true;
                                             height: 32px;
                                             clicked => { root.delete_history_item(item.id); }
                                         }
@@ -1127,11 +1627,14 @@ export component AppWindow inherits Window {
                                         alignment: start;
                                         spacing: 6px;
 
-                                        Text {
-                                            text: "📁";
-                                            font-size: 11px;
+                                        Image {
+                                            source: @image-url("icons/folder.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            colorize: #64748b;
                                             vertical-alignment: center;
                                         }
+
                                         Text {
                                             text: item.output_path;
                                             color: #64748b;
@@ -1163,7 +1666,7 @@ export component AppWindow inherits Window {
                         spacing: 8px;
                         alignment: start;
 
-                        QualityChip {
+                        IconChip {
                             text: "All (" + root.log_total_count + ")";
                             selected: root.log_filter_index == 0;
                             clicked => {
@@ -1171,24 +1674,30 @@ export component AppWindow inherits Window {
                                 root.set_log_filter(0);
                             }
                         }
-                        QualityChip {
-                            text: "ℹ️ Info (" + root.log_info_count + ")";
+                        IconChip {
+                            text: "Info (" + root.log_info_count + ")";
+                            icon: @image-url("icons/info.svg");
+                            has_icon: true;
                             selected: root.log_filter_index == 1;
                             clicked => {
                                 root.log_filter_index = 1;
                                 root.set_log_filter(1);
                             }
                         }
-                        QualityChip {
-                            text: "⚠️ Warnings (" + root.log_warn_count + ")";
+                        IconChip {
+                            text: "Warnings (" + root.log_warn_count + ")";
+                            icon: @image-url("icons/alert.svg");
+                            has_icon: true;
                             selected: root.log_filter_index == 2;
                             clicked => {
                                 root.log_filter_index = 2;
                                 root.set_log_filter(2);
                             }
                         }
-                        QualityChip {
-                            text: "❌ Errors (" + root.log_error_count + ")";
+                        IconChip {
+                            text: "Errors (" + root.log_error_count + ")";
+                            icon: @image-url("icons/x.svg");
+                            has_icon: true;
                             selected: root.log_filter_index == 3;
                             clicked => {
                                 root.log_filter_index = 3;
@@ -1205,22 +1714,26 @@ export component AppWindow inherits Window {
                         log_search := LineEdit {
                             width: 170px;
                             height: 32px;
-                            placeholder_text: "🔍 Filter logs...";
+                            placeholder_text: "Filter logs...";
                             text <=> root.log_search_query;
                             edited(query) => {
                                 root.search_logs(query);
                             }
                         }
 
-                        Button {
-                            text: "📋 Copy";
+                        ActionButton {
+                            text: "Copy";
+                            icon: @image-url("icons/clipboard.svg");
+                            has_icon: true;
                             height: 32px;
                             enabled: root.log_total_count > 0;
                             clicked => { root.copy_logs(); }
                         }
 
-                        Button {
-                            text: "🧹 Clear";
+                        ActionButton {
+                            text: "Clear";
+                            icon: @image-url("icons/trash.svg");
+                            has_icon: true;
                             height: 32px;
                             enabled: root.log_total_count > 0;
                             clicked => { root.clear_logs(); }
@@ -1238,20 +1751,42 @@ export component AppWindow inherits Window {
 
                     VerticalLayout {
                         alignment: center;
-                        spacing: 8px;
+                        spacing: 12px;
 
-                        Text {
-                            text: (root.log_filter_index != 0 || root.log_search_query != "") ? "🔍 No matching logs found" : "📋 No logs recorded yet";
-                            color: #5c647a;
-                            font-size: 15px;
-                            font-weight: 600;
-                            horizontal-alignment: center;
+                        HorizontalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 44px;
+                                height: 44px;
+                                border-radius: 22px;
+                                background: #1a1e2d;
+
+                                Image {
+                                    source: (root.log_filter_index != 0 || root.log_search_query != "") ? @image-url("icons/search.svg") : @image-url("icons/logs.svg");
+                                    width: 22px;
+                                    height: 22px;
+                                    colorize: #7082ff;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
                         }
-                        Text {
-                            text: (root.log_filter_index != 0 || root.log_search_query != "") ? "Try selecting 'All' or clearing your search filter above." : "Engine operations, inspections, stream events, and diagnostics will stream here live.";
-                            color: #4b5266;
-                            font-size: 13px;
-                            horizontal-alignment: center;
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: (root.log_filter_index != 0 || root.log_search_query != "") ? "No matching logs found" : "No logs recorded yet";
+                                color: #ffffff;
+                                font-size: 15px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+                            Text {
+                                text: (root.log_filter_index != 0 || root.log_search_query != "") ? "Try selecting 'All' or clearing your search filter above." : "Engine operations, inspections, stream events, and diagnostics will stream here live.";
+                                color: #8c93a8;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                            }
                         }
                     }
                 }
@@ -1353,13 +1888,29 @@ export component AppWindow inherits Window {
                             spacing: 14px;
 
                             VerticalLayout {
-                                spacing: 4px;
-                                Text {
-                                    text: "📁 Default Download Directory";
-                                    color: #ffffff;
-                                    font-size: 15px;
-                                    font-weight: 700;
+                                spacing: 6px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+
+                                    Image {
+                                        source: @image-url("icons/folder.svg");
+                                        width: 16px;
+                                        height: 16px;
+                                        colorize: #7082ff;
+                                        vertical-alignment: center;
+                                    }
+
+                                    Text {
+                                        text: "Default Download Directory";
+                                        color: #ffffff;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
                                 }
+
                                 Text {
                                     text: "All media, video series, and extracted audio files are saved into this folder.";
                                     color: #8c93a8;
@@ -1394,20 +1945,26 @@ export component AppWindow inherits Window {
                                     }
                                 }
 
-                                Button {
-                                    text: "📂 Change...";
+                                ActionButton {
+                                    text: "Change...";
+                                    icon: @image-url("icons/folder.svg");
+                                    has_icon: true;
                                     height: 38px;
                                     clicked => { root.browse_download_dir(); }
                                 }
 
-                                Button {
-                                    text: "🖥️ Finder";
+                                ActionButton {
+                                    text: "Finder";
+                                    icon: @image-url("icons/monitor.svg");
+                                    has_icon: true;
                                     height: 38px;
                                     clicked => { root.open_current_download_dir(); }
                                 }
 
-                                Button {
-                                    text: "↺ Reset";
+                                ActionButton {
+                                    text: "Reset";
+                                    icon: @image-url("icons/refresh.svg");
+                                    has_icon: true;
                                     height: 38px;
                                     clicked => { root.reset_download_dir(); }
                                 }
@@ -1431,13 +1988,29 @@ export component AppWindow inherits Window {
                                 spacing: 10px;
 
                                 VerticalLayout {
-                                    spacing: 4px;
-                                    Text {
-                                        text: "🚀 Bandwidth Speed Limiter";
-                                        color: #ffffff;
-                                        font-size: 15px;
-                                        font-weight: 700;
+                                    spacing: 6px;
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+
+                                        Image {
+                                            source: @image-url("icons/bolt.svg");
+                                            width: 16px;
+                                            height: 16px;
+                                            colorize: #7082ff;
+                                            vertical-alignment: center;
+                                        }
+
+                                        Text {
+                                            text: "Bandwidth Speed Limiter";
+                                            color: #ffffff;
+                                            font-size: 15px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
                                     }
+
                                     Text {
                                         text: "Throttle maximum download speed to avoid saturating your local network.";
                                         color: #8c93a8;
@@ -1449,40 +2022,42 @@ export component AppWindow inherits Window {
                                     spacing: 8px;
                                     alignment: start;
 
-                                    QualityChip {
-                                        text: "🚀 No Limit";
+                                    IconChip {
+                                        text: "No Limit";
+                                        icon: @image-url("icons/bolt.svg");
+                                        has_icon: true;
                                         selected: root.selected_speed_limit_index == 0;
                                         clicked => {
                                             root.selected_speed_limit_index = 0;
                                             root.set_speed_limit(0);
                                         }
                                     }
-                                    QualityChip {
-                                        text: "⚡ 2 MB/s";
+                                    IconChip {
+                                        text: "2 MB/s";
                                         selected: root.selected_speed_limit_index == 1;
                                         clicked => {
                                             root.selected_speed_limit_index = 1;
                                             root.set_speed_limit(1);
                                         }
                                     }
-                                    QualityChip {
-                                        text: "⚡ 5 MB/s";
+                                    IconChip {
+                                        text: "5 MB/s";
                                         selected: root.selected_speed_limit_index == 2;
                                         clicked => {
                                             root.selected_speed_limit_index = 2;
                                             root.set_speed_limit(2);
                                         }
                                     }
-                                    QualityChip {
-                                        text: "⚡ 10 MB/s";
+                                    IconChip {
+                                        text: "10 MB/s";
                                         selected: root.selected_speed_limit_index == 3;
                                         clicked => {
                                             root.selected_speed_limit_index = 3;
                                             root.set_speed_limit(3);
                                         }
                                     }
-                                    QualityChip {
-                                        text: "⚡ 20 MB/s";
+                                    IconChip {
+                                        text: "20 MB/s";
                                         selected: root.selected_speed_limit_index == 4;
                                         clicked => {
                                             root.selected_speed_limit_index = 4;
@@ -1503,13 +2078,29 @@ export component AppWindow inherits Window {
                                 spacing: 10px;
 
                                 VerticalLayout {
-                                    spacing: 4px;
-                                    Text {
-                                        text: "⚡ Concurrent Queue Workers";
-                                        color: #ffffff;
-                                        font-size: 15px;
-                                        font-weight: 700;
+                                    spacing: 6px;
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+
+                                        Image {
+                                            source: @image-url("icons/cpu.svg");
+                                            width: 16px;
+                                            height: 16px;
+                                            colorize: #7082ff;
+                                            vertical-alignment: center;
+                                        }
+
+                                        Text {
+                                            text: "Concurrent Queue Workers";
+                                            color: #ffffff;
+                                            font-size: 15px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
                                     }
+
                                     Text {
                                         text: "Number of download items actively processed at the same time.";
                                         color: #8c93a8;
@@ -1521,7 +2112,7 @@ export component AppWindow inherits Window {
                                     spacing: 8px;
                                     alignment: start;
 
-                                    QualityChip {
+                                    IconChip {
                                         text: "1 (Sequential)";
                                         selected: root.selected_concurrency == 1;
                                         clicked => {
@@ -1529,7 +2120,7 @@ export component AppWindow inherits Window {
                                             root.set_max_concurrency(1);
                                         }
                                     }
-                                    QualityChip {
+                                    IconChip {
                                         text: "2 Parallel";
                                         selected: root.selected_concurrency == 2;
                                         clicked => {
@@ -1537,7 +2128,7 @@ export component AppWindow inherits Window {
                                             root.set_max_concurrency(2);
                                         }
                                     }
-                                    QualityChip {
+                                    IconChip {
                                         text: "3 Parallel (Recommended)";
                                         selected: root.selected_concurrency == 3;
                                         clicked => {
@@ -1545,7 +2136,7 @@ export component AppWindow inherits Window {
                                             root.set_max_concurrency(3);
                                         }
                                     }
-                                    QualityChip {
+                                    IconChip {
                                         text: "5 Parallel (Fast)";
                                         selected: root.selected_concurrency == 5;
                                         clicked => {
@@ -1573,13 +2164,29 @@ export component AppWindow inherits Window {
                                 alignment: space-between;
 
                                 VerticalLayout {
-                                    spacing: 4px;
-                                    Text {
-                                        text: "🔔 System Notifications";
-                                        color: #ffffff;
-                                        font-size: 15px;
-                                        font-weight: 700;
+                                    spacing: 6px;
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+
+                                        Image {
+                                            source: @image-url("icons/bell.svg");
+                                            width: 16px;
+                                            height: 16px;
+                                            colorize: #7082ff;
+                                            vertical-alignment: center;
+                                        }
+
+                                        Text {
+                                            text: "System Notifications";
+                                            color: #ffffff;
+                                            font-size: 15px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
                                     }
+
                                     Text {
                                         text: "Sends native desktop alerts with audio chime when downloads finish.";
                                         color: #8c93a8;
@@ -1587,8 +2194,10 @@ export component AppWindow inherits Window {
                                     }
                                 }
 
-                                Button {
-                                    text: "🔔 Test Notification";
+                                ActionButton {
+                                    text: "Test Notification";
+                                    icon: @image-url("icons/bell.svg");
+                                    has_icon: true;
                                     height: 34px;
                                     clicked => { root.test_notification(); }
                                 }
@@ -1607,11 +2216,25 @@ export component AppWindow inherits Window {
                             padding: 16px;
                             spacing: 10px;
 
-                            Text {
-                                text: "Engine & System Architecture";
-                                color: #7082ff;
-                                font-size: 13px;
-                                font-weight: 700;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+
+                                Image {
+                                    source: @image-url("icons/cpu.svg");
+                                    width: 15px;
+                                    height: 15px;
+                                    colorize: #7082ff;
+                                    vertical-alignment: center;
+                                }
+
+                                Text {
+                                    text: "Engine & System Architecture";
+                                    color: #7082ff;
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
                             }
 
                             HorizontalLayout {
