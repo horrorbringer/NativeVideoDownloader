@@ -66,7 +66,7 @@ impl DownloadManager {
         *guard = Some(Arc::new(callback));
     }
 
-    async fn notify_update(&self) {
+    pub async fn notify_update(&self) {
         let guard = self.on_update.lock().await;
         if let Some(cb) = guard.as_ref() {
             cb();

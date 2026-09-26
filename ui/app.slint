@@ -111,6 +111,9 @@ export component AppWindow inherits Window {
     // Queue & Downloads properties
     in-out property <[DownloadItemData]> download_items: [];
     in-out property <int> active_downloads_count: 0;
+    in-out property <int> total_queue_count: 0;
+    in-out property <int> queue_filter_index: 0;
+    in-out property <string> queue_search_query: "";
 
     // History properties
     in-out property <[HistoryItemData]> history_items: [];
@@ -148,6 +151,8 @@ export component AppWindow inherits Window {
     callback pause_all();
     callback resume_all();
     callback clear_completed();
+    callback set_queue_filter(int);
+    callback search_queue(string);
 
     callback search_history(string);
     callback open_history_folder(string);
@@ -701,7 +706,7 @@ export component AppWindow inherits Window {
                     alignment: space-between;
 
                     Text {
-                        text: "Queue (" + root.download_items.length + " jobs)";
+                        text: "Queue (" + root.total_queue_count + " jobs)";
                         color: #a0a7ba;
                         font-size: 13px;
                         font-weight: 600;
@@ -731,27 +736,97 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // If no downloads in queue
+                // Search & Filter Toolbar
+                HorizontalLayout {
+                    spacing: 12px;
+
+                    queue_search := LineEdit {
+                        placeholder_text: "🔍 Search active or queued downloads by title or URL...";
+                        font_size: 13px;
+                        height: 36px;
+                        horizontal-stretch: 1;
+                        edited => {
+                            root.queue_search_query = self.text;
+                            root.search_queue(self.text);
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    QualityChip {
+                        text: "All";
+                        selected: root.queue_filter_index == 0;
+                        clicked => {
+                            root.queue_filter_index = 0;
+                            root.set_queue_filter(0);
+                        }
+                    }
+                    QualityChip {
+                        text: "⬇️ Downloading";
+                        selected: root.queue_filter_index == 1;
+                        clicked => {
+                            root.queue_filter_index = 1;
+                            root.set_queue_filter(1);
+                        }
+                    }
+                    QualityChip {
+                        text: "⏳ Queued";
+                        selected: root.queue_filter_index == 2;
+                        clicked => {
+                            root.queue_filter_index = 2;
+                            root.set_queue_filter(2);
+                        }
+                    }
+                    QualityChip {
+                        text: "⏸ Paused";
+                        selected: root.queue_filter_index == 3;
+                        clicked => {
+                            root.queue_filter_index = 3;
+                            root.set_queue_filter(3);
+                        }
+                    }
+                    QualityChip {
+                        text: "✅ Completed";
+                        selected: root.queue_filter_index == 4;
+                        clicked => {
+                            root.queue_filter_index = 4;
+                            root.set_queue_filter(4);
+                        }
+                    }
+                    QualityChip {
+                        text: "❌ Failed";
+                        selected: root.queue_filter_index == 5;
+                        clicked => {
+                            root.queue_filter_index = 5;
+                            root.set_queue_filter(5);
+                        }
+                    }
+                }
+
+                // If no downloads in current view
                 if root.download_items.length == 0: Rectangle {
                     background: #1c202d;
                     border-radius: 12px;
                     border-width: 1px;
                     border-color: #2b3044;
-                    height: 220px;
+                    height: 200px;
 
                     VerticalLayout {
                         alignment: center;
                         spacing: 8px;
 
                         Text {
-                            text: "📥 No active downloads";
+                            text: (root.queue_filter_index != 0 || root.queue_search_query != "") ? "🔍 No matching downloads found" : "📥 No active downloads";
                             color: #5c647a;
                             font-size: 15px;
                             font-weight: 600;
                             horizontal-alignment: center;
                         }
                         Text {
-                            text: "Downloads in progress, paused, or queued will appear here.";
+                            text: (root.queue_filter_index != 0 || root.queue_search_query != "") ? "Try selecting 'All' or clearing your search query above." : "Downloads in progress, paused, or queued will appear here.";
                             color: #4b5266;
                             font-size: 13px;
                             horizontal-alignment: center;

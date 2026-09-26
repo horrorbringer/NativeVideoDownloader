@@ -298,16 +298,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => {}
     }
 
+    // Queue filter & search state
+    let queue_filter_idx: Arc<tokio::sync::RwLock<i32>> = Arc::new(tokio::sync::RwLock::new(0));
+    let queue_search_term: Arc<tokio::sync::RwLock<String>> = Arc::new(tokio::sync::RwLock::new(String::new()));
+
     // Wire up DownloadManager status updates -> Slint UI with frame-rate decoupling
     let window_weak_sync = main_window.as_weak();
     let mgr_for_sync = download_manager.clone();
     let is_rendering = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let filter_sync = queue_filter_idx.clone();
+    let search_sync = queue_search_term.clone();
 
     download_manager
         .set_update_listener(move || {
             let weak = window_weak_sync.clone();
             let mgr = mgr_for_sync.clone();
             let rendering_flag = is_rendering.clone();
+            let filter_lock = filter_sync.clone();
+            let search_lock = search_sync.clone();
 
             // Skip queuing redundant frames if a frame render is already pending
             if rendering_flag.swap(true, std::sync::atomic::Ordering::SeqCst) {
@@ -316,12 +324,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             tokio::spawn(async move {
                 let jobs = mgr.get_jobs_snapshot().await;
+                let total_queue_count = jobs.len() as i32;
                 let active_count = jobs
                     .iter()
                     .filter(|j| j.status == DownloadStatus::Downloading)
                     .count() as i32;
 
-                let items: Vec<DownloadItemData> = jobs
+                let cur_filter = *filter_lock.read().await;
+                let cur_search = search_lock.read().await.trim().to_lowercase();
+
+                let filtered_jobs: Vec<_> = jobs
+                    .into_iter()
+                    .filter(|j| {
+                        // 1. Status Filter
+                        let matches_status = match cur_filter {
+                            1 => j.status == DownloadStatus::Downloading,
+                            2 => j.status == DownloadStatus::Queued,
+                            3 => j.status == DownloadStatus::Paused,
+                            4 => j.status == DownloadStatus::Completed,
+                            5 => matches!(j.status, DownloadStatus::Failed(_)),
+                            _ => true,
+                        };
+                        if !matches_status {
+                            return false;
+                        }
+
+                        // 2. Search Term Filter
+                        if !cur_search.is_empty() {
+                            let in_title = j.title.to_lowercase().contains(&cur_search);
+                            let in_url = j.url.to_lowercase().contains(&cur_search);
+                            in_title || in_url
+                        } else {
+                            true
+                        }
+                    })
+                    .collect();
+
+                let items: Vec<DownloadItemData> = filtered_jobs
                     .into_iter()
                     .map(|j| {
                         let is_dl = j.status == DownloadStatus::Downloading;
@@ -355,6 +394,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let model = Rc::new(VecModel::from(items));
                     window.set_download_items(ModelRc::from(model));
                     window.set_active_downloads_count(active_count);
+                    window.set_total_queue_count(total_queue_count);
                     reset_flag.store(false, std::sync::atomic::Ordering::SeqCst);
                 });
             });
@@ -652,6 +692,31 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
         let mgr = mgr_clear.clone();
         tokio::spawn(async move {
             mgr.clear_completed().await;
+        });
+    });
+
+    // Callback: Set Queue Status Filter
+    let filter_set = queue_filter_idx.clone();
+    let mgr_set_filter = download_manager.clone();
+    main_window.on_set_queue_filter(move |idx| {
+        let filter_set = filter_set.clone();
+        let mgr = mgr_set_filter.clone();
+        tokio::spawn(async move {
+            *filter_set.write().await = idx;
+            mgr.notify_update().await;
+        });
+    });
+
+    // Callback: Search Queue Items
+    let search_set = queue_search_term.clone();
+    let mgr_set_search = download_manager.clone();
+    main_window.on_search_queue(move |query| {
+        let search_set = search_set.clone();
+        let mgr = mgr_set_search.clone();
+        let q = query.to_string();
+        tokio::spawn(async move {
+            *search_set.write().await = q;
+            mgr.notify_update().await;
         });
     });
 
