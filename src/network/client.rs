@@ -90,6 +90,8 @@ impl NetworkClient {
             is_playlist: false,
             playlist_count: 0,
             playlist_entries: Vec::new(),
+            has_subtitles: false,
+            subtitles_summary: String::new(),
         })
     }
 

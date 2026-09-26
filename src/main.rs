@@ -294,6 +294,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         format!("Format: {}", res_str)
                     };
 
+                    let has_subs = metadata.has_subtitles;
+                    let subs_summary = metadata.subtitles_summary.clone();
+
                     *meta_for_async.lock().await = Some(metadata);
 
                     let _ = weak_for_async.upgrade_in_event_loop(move |window| {
@@ -303,6 +306,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         window.set_error_message("".into());
                         window.set_is_playlist(is_playlist);
                         window.set_playlist_count(playlist_count);
+                        window.set_has_subtitles(has_subs);
+                        window.set_subtitles_summary(subs_summary.into());
                         window.set_video_title(title.into());
                         window.set_video_resolution(format_display.into());
                         window.set_video_duration(details_str.into());
@@ -348,11 +353,11 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
     let mgr_clone_dl = download_manager.clone();
     let current_dir_dl = current_download_dir.clone();
 
-    main_window.on_start_download(move |format_idx| {
+    main_window.on_start_download(move |format_idx, download_subs| {
         let (is_audio_only, quality) = map_format_index(format_idx);
         info!(
-            "User triggered 'Start Download' with format_idx: {} (audio_only: {}, quality: {:?})",
-            format_idx, is_audio_only, quality
+            "User triggered 'Start Download' with format_idx: {} (audio_only: {}, quality: {:?}, subs: {})",
+            format_idx, is_audio_only, quality, download_subs
         );
 
         let weak = window_weak_dl.clone();
@@ -389,6 +394,7 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
                             true,
                             is_audio_only,
                             quality.clone(),
+                            download_subs,
                         )
                         .await
                     {
@@ -414,6 +420,7 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
                     is_extractor,
                     is_audio_only,
                     quality,
+                    download_subs,
                 )
                 .await
             {
@@ -489,6 +496,7 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
                         is_extractor,
                         is_audio_only,
                         quality.clone(),
+                        true,
                     )
                     .await
                 {
@@ -628,7 +636,7 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
 
             let is_extractor = downloader::is_streaming_platform(&url);
             match mgr
-                .add_download(url, title, &download_dir, None, is_extractor, false, None)
+                .add_download(url, title, &download_dir, None, is_extractor, false, None, true)
                 .await
             {
                 Ok(id) => {

@@ -296,6 +296,26 @@ pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
         .unwrap_or("mp4")
         .to_string();
 
+    let mut available_subs = Vec::new();
+    if let Some(subs_obj) = json_val.get("subtitles").and_then(|v| v.as_object()) {
+        for lang in subs_obj.keys() {
+            available_subs.push(lang.clone());
+        }
+    }
+    if available_subs.is_empty() {
+        if let Some(auto_obj) = json_val.get("automatic_captions").and_then(|v| v.as_object()) {
+            for lang in auto_obj.keys().take(6) {
+                available_subs.push(format!("{}(auto)", lang));
+            }
+        }
+    }
+    let has_subtitles = !available_subs.is_empty();
+    let subtitles_summary = if has_subtitles {
+        available_subs.join(", ")
+    } else {
+        "None detected".to_string()
+    };
+
     Ok(VideoMetadata {
         url: url.to_string(),
         title,
@@ -309,6 +329,8 @@ pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
         is_playlist,
         playlist_count,
         playlist_entries,
+        has_subtitles,
+        subtitles_summary,
     })
 }
 
@@ -367,6 +389,8 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
         is_playlist: false,
         playlist_count: 0,
         playlist_entries: Vec::new(),
+        has_subtitles: false,
+        subtitles_summary: String::new(),
     })
 }
 
@@ -496,6 +520,7 @@ pub async fn download_stream<F>(
     destination_path: &Path,
     is_audio_only: bool,
     quality: Option<&str>,
+    download_subtitles: bool,
     cancel_token: CancellationToken,
     mut on_progress: F,
 ) -> Result<PathBuf>
@@ -532,18 +557,27 @@ where
 
     if is_audio_only {
         cmd.arg("-x").arg("--audio-format").arg("mp3");
-    } else if let Some(q) = quality {
-        match q {
-            "1080p" => {
-                cmd.arg("-f").arg("bestvideo[height<=1080]+bestaudio/best[height<=1080]/best");
+    } else {
+        if download_subtitles {
+            cmd.arg("--write-subs")
+                .arg("--write-auto-subs")
+                .arg("--sub-langs")
+                .arg("all,-live_chat")
+                .arg("--embed-subs");
+        }
+        if let Some(q) = quality {
+            match q {
+                "1080p" => {
+                    cmd.arg("-f").arg("bestvideo[height<=1080]+bestaudio/best[height<=1080]/best");
+                }
+                "720p" => {
+                    cmd.arg("-f").arg("bestvideo[height<=720]+bestaudio/best[height<=720]/best");
+                }
+                "480p" => {
+                    cmd.arg("-f").arg("bestvideo[height<=480]+bestaudio/best[height<=480]/best");
+                }
+                _ => {}
             }
-            "720p" => {
-                cmd.arg("-f").arg("bestvideo[height<=720]+bestaudio/best[height<=720]/best");
-            }
-            "480p" => {
-                cmd.arg("-f").arg("bestvideo[height<=480]+bestaudio/best[height<=480]/best");
-            }
-            _ => {}
         }
     }
 

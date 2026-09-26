@@ -100,6 +100,7 @@ impl DownloadManager {
         is_extractor: bool,
         is_audio_only: bool,
         quality: Option<String>,
+        download_subtitles: bool,
     ) -> Result<Uuid, AppError> {
         let destination = validate_destination_path(output_dir, &title)?;
         let job = DownloadJob::new(
@@ -110,6 +111,7 @@ impl DownloadManager {
             is_extractor,
             is_audio_only,
             quality,
+            download_subtitles,
         );
         let id = job.id;
 
@@ -228,7 +230,7 @@ impl DownloadManager {
             };
 
             // Check if job is still in Queued status (it might have been cancelled while waiting)
-            let (url, destination, _total_bytes, is_extractor, is_audio_only, quality) = {
+            let (url, destination, _total_bytes, is_extractor, is_audio_only, quality, download_subtitles) = {
                 let mut queue = manager.queue.lock().await;
                 let job = match queue.get_job_mut(id) {
                     Some(j) => j,
@@ -249,6 +251,7 @@ impl DownloadManager {
                     job.is_extractor,
                     job.is_audio_only,
                     job.quality.clone(),
+                    job.download_subtitles,
                 )
             };
 
@@ -277,6 +280,7 @@ impl DownloadManager {
                         &destination,
                         is_audio_only,
                         quality.as_deref(),
+                        download_subtitles,
                         cancel_token,
                         move |progress| {
                             let mgr = mgr_progress.clone();

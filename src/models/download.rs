@@ -128,4 +128,6 @@ pub struct VideoMetadata {
     pub is_playlist: bool,
     pub playlist_count: usize,
     pub playlist_entries: Vec<PlaylistEntry>,
+    pub has_subtitles: bool,
+    pub subtitles_summary: String,
 }

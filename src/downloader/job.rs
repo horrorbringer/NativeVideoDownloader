@@ -23,6 +23,7 @@ pub struct DownloadJob {
     pub is_extractor: bool,
     pub is_audio_only: bool,
     pub quality: Option<String>,
+    pub download_subtitles: bool,
 }
 
 impl DownloadJob {
@@ -34,6 +35,7 @@ impl DownloadJob {
         is_extractor: bool,
         is_audio_only: bool,
         quality: Option<String>,
+        download_subtitles: bool,
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -52,6 +54,7 @@ impl DownloadJob {
             is_extractor,
             is_audio_only,
             quality,
+            download_subtitles,
         }
     }
 

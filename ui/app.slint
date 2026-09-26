@@ -124,11 +124,16 @@ export component AppWindow inherits Window {
     in-out property <bool> is_playlist: false;
     in-out property <int> playlist_count: 0;
 
+    // Subtitles properties
+    in-out property <bool> has_subtitles: false;
+    in-out property <string> subtitles_summary: "";
+    in-out property <bool> download_subtitles: true;
+
     // Settings properties
     in-out property <string> download_dir_path: "~/Downloads";
 
     callback analyze_url(string);
-    callback start_download(int);
+    callback start_download(int, bool);
     callback start_batch_download(string, int);
     callback pause_download(string);
     callback resume_download(string);
@@ -498,6 +503,49 @@ export component AppWindow inherits Window {
                                 }
                             }
 
+                            // Subtitle extraction & embedding option
+                            HorizontalLayout {
+                                spacing: 10px;
+                                alignment: space-between;
+
+                                Rectangle {
+                                    background: root.download_subtitles ? #1e3a5f : #171a26;
+                                    border-radius: 8px;
+                                    border-width: 1px;
+                                    border-color: root.download_subtitles ? #38bdf8 : #2b3044;
+                                    height: 32px;
+
+                                    HorizontalLayout {
+                                        padding-left: 10px;
+                                        padding-right: 10px;
+                                        spacing: 6px;
+                                        alignment: center;
+
+                                        Text {
+                                            text: root.download_subtitles ? "💬 Subtitles: Enabled (.srt/embed)" : "💬 Subtitles: Disabled";
+                                            color: root.download_subtitles ? #38bdf8 : #8c93a8;
+                                            font-size: 12px;
+                                            font-weight: 600;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    TouchArea {
+                                        clicked => { root.download_subtitles = !root.download_subtitles; }
+                                    }
+                                }
+
+                                if root.has_subtitles: VerticalLayout {
+                                    alignment: center;
+                                    Text {
+                                        text: "Detected: " + root.subtitles_summary;
+                                        color: #64748b;
+                                        font-size: 11px;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+
                             HorizontalLayout {
                                 alignment: end;
                                 spacing: 10px;
@@ -506,7 +554,7 @@ export component AppWindow inherits Window {
                                     text: root.is_playlist ? ("📥 Download All " + root.playlist_count + " Episodes") : "Start Download";
                                     height: 36px;
                                     clicked => {
-                                        root.start_download(root.selected_format_index);
+                                        root.start_download(root.selected_format_index, root.download_subtitles);
                                     }
                                 }
                             }
