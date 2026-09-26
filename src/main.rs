@@ -7,10 +7,11 @@ mod models;
 mod network;
 pub mod notifications;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -195,11 +196,37 @@ fn run_url_analysis(
                     None
                 };
 
+                let episodes: Vec<EpisodeItemData> = if is_playlist {
+                    metadata
+                        .playlist_entries
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, entry)| EpisodeItemData {
+                            index: idx as i32,
+                            title: entry.title.clone().into(),
+                            url: entry.url.clone().into(),
+                            selected: true,
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let selected_count = episodes.len() as i32;
+
                 *meta_for_async.lock().await = Some(metadata);
 
                 let _ = weak_for_async.upgrade_in_event_loop(move |window| {
                     window.set_is_analyzing(false);
                     window.set_has_metadata(true);
+                    let ep_model = Rc::new(VecModel::from(episodes));
+                    window.set_playlist_episodes(ModelRc::from(ep_model));
+                    window.set_selected_episodes_count(selected_count);
+                    window.set_episode_range_input(if selected_count > 0 {
+                        format!("1-{}", selected_count).into()
+                    } else {
+                        "".into()
+                    });
+
                     if let Some(ref p) = thumb_path {
                         if let Ok(img) = slint::Image::load_from_path(p) {
                             window.set_has_thumbnail(true);
@@ -237,6 +264,9 @@ fn run_url_analysis(
                 let _ = weak_for_async.upgrade_in_event_loop(move |window| {
                     window.set_is_analyzing(false);
                     window.set_has_metadata(false);
+                    window.set_playlist_episodes(ModelRc::default());
+                    window.set_selected_episodes_count(0);
+                    window.set_episode_range_input("".into());
                     window.set_has_thumbnail(false);
                     window.set_thumbnail_image(slint::Image::default());
                     window.set_has_error(true);
@@ -512,7 +542,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             window.set_subtitles_summary("".into());
             window.set_is_playlist(false);
             window.set_playlist_count(0);
+            window.set_playlist_episodes(ModelRc::default());
+            window.set_selected_episodes_count(0);
+            window.set_episode_range_input("".into());
             window.set_status_message("Analysis cleared. Ready to download media.".into());
+        }
+    });
+
+    // Callback: Toggle single episode selection
+    let weak_toggle = main_window.as_weak();
+    main_window.on_toggle_episode(move |idx| {
+        if let Some(window) = weak_toggle.upgrade() {
+            let model = window.get_playlist_episodes();
+            let mut items: Vec<EpisodeItemData> = (0..model.row_count())
+                .filter_map(|i| model.row_data(i))
+                .collect();
+            if let Some(item) = items.get_mut(idx as usize) {
+                item.selected = !item.selected;
+            }
+            let selected_count = items.iter().filter(|e| e.selected).count() as i32;
+            window.set_playlist_episodes(ModelRc::from(Rc::new(VecModel::from(items))));
+            window.set_selected_episodes_count(selected_count);
+        }
+    });
+
+    // Callback: Select all / none episodes
+    let weak_select_all = main_window.as_weak();
+    main_window.on_select_all_episodes(move |select| {
+        if let Some(window) = weak_select_all.upgrade() {
+            let model = window.get_playlist_episodes();
+            let mut items: Vec<EpisodeItemData> = (0..model.row_count())
+                .filter_map(|i| model.row_data(i))
+                .collect();
+            for item in &mut items {
+                item.selected = select;
+            }
+            let selected_count = if select { items.len() as i32 } else { 0 };
+            window.set_playlist_episodes(ModelRc::from(Rc::new(VecModel::from(items))));
+            window.set_selected_episodes_count(selected_count);
+        }
+    });
+
+    // Callback: Apply episode range (e.g. "1-10", "1, 3, 5")
+    let weak_range = main_window.as_weak();
+    main_window.on_apply_episode_range(move |range_str| {
+        if let Some(window) = weak_range.upgrade() {
+            let model = window.get_playlist_episodes();
+            let mut items: Vec<EpisodeItemData> = (0..model.row_count())
+                .filter_map(|i| model.row_data(i))
+                .collect();
+            let total = items.len();
+            let selected_set = downloader::parse_episode_range(&range_str, total);
+            for (idx, item) in items.iter_mut().enumerate() {
+                item.selected = selected_set.contains(&idx);
+            }
+            let selected_count = items.iter().filter(|e| e.selected).count() as i32;
+            window.set_playlist_episodes(ModelRc::from(Rc::new(VecModel::from(items))));
+            window.set_selected_episodes_count(selected_count);
         }
     });
 
@@ -580,6 +666,15 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
             format_idx, is_audio_only, quality, download_subs
         );
 
+        let selected_indices: Option<HashSet<usize>> = window_weak_dl.upgrade().map(|win| {
+            let model = win.get_playlist_episodes();
+            (0..model.row_count())
+                .filter_map(|i| {
+                    model.row_data(i).and_then(|ep| if ep.selected { Some(i) } else { None })
+                })
+                .collect()
+        });
+
         let weak = window_weak_dl.clone();
         let meta_arc = meta_clone_dl.clone();
         let mgr = mgr_clone_dl.clone();
@@ -599,11 +694,16 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
 
             let download_dir = dir_lock.read().await.clone();
 
-            // If album/series playlist, queue all episodes
+            // If album/series playlist, queue selected episodes
             if metadata.is_playlist {
                 let series_title = metadata.title.clone();
                 let mut queued_count = 0;
-                for entry in metadata.playlist_entries {
+                for (idx, entry) in metadata.playlist_entries.into_iter().enumerate() {
+                    if let Some(ref sel) = selected_indices {
+                        if !sel.contains(&idx) {
+                            continue;
+                        }
+                    }
                     let ep_title = format!("{} - {}", series_title, entry.title);
                     if let Ok(_) = mgr
                         .add_download(

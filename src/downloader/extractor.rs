@@ -1212,5 +1212,81 @@ mod tests {
         assert_eq!(meta.playlist_entries[1].url, "https://example.com/index.php/vod/play/id/30/sid/1/nid/1.html");
         assert_eq!(meta.thumbnail_url, Some("https://example.com/poster.webp".to_string()));
     }
+
+    #[test]
+    fn test_parse_episode_range() {
+        // Range 1-5 from 41
+        let r1 = parse_episode_range("1-5", 41);
+        assert_eq!(r1.len(), 5);
+        assert!(r1.contains(&0));
+        assert!(r1.contains(&4));
+        assert!(!r1.contains(&5));
+
+        // Mixed comma and ranges
+        let r2 = parse_episode_range("1, 3, 5-7, 10", 41);
+        assert_eq!(r2.len(), 6);
+        assert!(r2.contains(&0)); // 1
+        assert!(r2.contains(&2)); // 3
+        assert!(r2.contains(&4)); // 5
+        assert!(r2.contains(&5)); // 6
+        assert!(r2.contains(&6)); // 7
+        assert!(r2.contains(&9)); // 10
+
+        // Tail range
+        let r3 = parse_episode_range("40-", 41);
+        assert_eq!(r3.len(), 2);
+        assert!(r3.contains(&39));
+        assert!(r3.contains(&40));
+
+        // Head range
+        let r4 = parse_episode_range("-3", 41);
+        assert_eq!(r4.len(), 3);
+        assert!(r4.contains(&0));
+        assert!(r4.contains(&1));
+        assert!(r4.contains(&2));
+
+        // Clamping & Empty
+        let r5 = parse_episode_range("1-100", 10);
+        assert_eq!(r5.len(), 10);
+        let r6 = parse_episode_range("", 10);
+        assert_eq!(r6.len(), 0);
+    }
+}
+
+/// Parses an episode selection range string (e.g. "1-10", "1, 3, 5", "1-5, 10-15") into a set of 0-based indices
+pub fn parse_episode_range(input: &str, total: usize) -> std::collections::HashSet<usize> {
+    let mut selected = std::collections::HashSet::new();
+    if total == 0 {
+        return selected;
+    }
+
+    for part in input.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+
+        if let Some((start_str, end_str)) = part.split_once('-') {
+            let start: usize = start_str.trim().parse().unwrap_or(1).max(1);
+            let end: usize = if end_str.trim().is_empty() {
+                total
+            } else {
+                end_str.trim().parse().unwrap_or(total).min(total)
+            };
+            if start <= end {
+                for i in start..=end {
+                    if i >= 1 && i <= total {
+                        selected.insert(i - 1);
+                    }
+                }
+            }
+        } else if let Ok(num) = part.parse::<usize>() {
+            if num >= 1 && num <= total {
+                selected.insert(num - 1);
+            }
+        }
+    }
+
+    selected
 }
 

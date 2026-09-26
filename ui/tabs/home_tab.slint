@@ -1,6 +1,7 @@
 import { LineEdit, ProgressIndicator, ScrollView, TextEdit } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
+import { EpisodeItemData } from "../models.slint";
 
 export component HomeTab inherits ScrollView {
     in-out property <bool> has_error: false;
@@ -15,6 +16,9 @@ export component HomeTab inherits ScrollView {
     in-out property <string> video_resolution: "";
     in-out property <bool> is_playlist: false;
     in-out property <int> playlist_count: 0;
+    in-out property <[EpisodeItemData]> playlist_episodes: [];
+    in-out property <int> selected_episodes_count: 0;
+    in-out property <string> episode_range_input: "";
     in-out property <int> selected_format_index: 0;
     in-out property <bool> has_subtitles: false;
     in-out property <string> subtitles_summary: "";
@@ -24,6 +28,9 @@ export component HomeTab inherits ScrollView {
 
     callback analyze_url(string);
     callback clear_analysis();
+    callback toggle_episode(int);
+    callback select_all_episodes(bool);
+    callback apply_episode_range(string);
     callback paste_from_clipboard();
     callback paste_batch_from_clipboard();
     callback start_download(int, bool);
@@ -440,6 +447,181 @@ export component HomeTab inherits ScrollView {
                     }
                 }
 
+                // Episode Selection Toolbar & List for Playlists/Series
+                if root.is_playlist && root.playlist_episodes.length > 0: VerticalLayout {
+                    spacing: 8px;
+
+                    HorizontalLayout {
+                        alignment: space-between;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: "Select Episodes to Download:";
+                                color: #c7cbd9;
+                                font-size: 13px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+
+                            Rectangle {
+                                background: root.selected_episodes_count > 0 ? #172554 : #381216;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: root.selected_episodes_count > 0 ? #2563eb : #991b1b;
+                                height: 22px;
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    alignment: center;
+                                    Text {
+                                        text: root.selected_episodes_count + " of " + root.playlist_episodes.length + " selected";
+                                        color: root.selected_episodes_count > 0 ? #60a5fa : #f87171;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            alignment: end;
+
+                            ActionButton {
+                                text: "All";
+                                height: 26px;
+                                clicked => { root.select_all_episodes(true); }
+                            }
+
+                            ActionButton {
+                                text: "None";
+                                height: 26px;
+                                clicked => { root.select_all_episodes(false); }
+                            }
+
+                            range_box := LineEdit {
+                                width: 90px;
+                                height: 26px;
+                                font_size: 11px;
+                                placeholder_text: "1-10, 15";
+                                text <=> root.episode_range_input;
+                                accepted => { root.apply_episode_range(self.text); }
+                            }
+
+                            ActionButton {
+                                text: "Apply";
+                                height: 26px;
+                                clicked => { root.apply_episode_range(range_box.text); }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        background: #111420;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: #202638;
+                        height: 140px;
+                        clip: true;
+
+                        ScrollView {
+                            VerticalLayout {
+                                padding: 6px;
+                                spacing: 4px;
+
+                                for ep in root.playlist_episodes: Rectangle {
+                                    background: ep.selected ? (touch.has-hover ? #242c44 : #1c2338) :
+                                                (touch.has-hover ? #171b28 : transparent);
+                                    border-radius: 6px;
+                                    border-width: 1px;
+                                    border-color: ep.selected ? #33416b : transparent;
+                                    height: 32px;
+                                    animate background { duration: 100ms; }
+
+                                    touch := TouchArea {
+                                        clicked => { root.toggle_episode(ep.index); }
+                                    }
+
+                                    HorizontalLayout {
+                                        padding-left: 10px;
+                                        padding-right: 10px;
+                                        spacing: 10px;
+                                        alignment: space-between;
+
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            alignment: start;
+
+                                            // Checkbox box
+                                            Rectangle {
+                                                width: 16px;
+                                                height: 16px;
+                                                border-radius: 4px;
+                                                border-width: 1px;
+                                                background: ep.selected ? #4f58c7 : #161a26;
+                                                border-color: ep.selected ? #7082ff : #2e354e;
+                                                y: (parent.height - self.height) / 2;
+
+                                                if ep.selected: Image {
+                                                    source: @image-url("../icons/check.svg");
+                                                    width: 10px;
+                                                    height: 10px;
+                                                    colorize: #ffffff;
+                                                    x: (parent.width - self.width) / 2;
+                                                    y: (parent.height - self.height) / 2;
+                                                }
+                                            }
+
+                                            // Episode Index Pill
+                                            Rectangle {
+                                                height: 20px;
+                                                border-radius: 3px;
+                                                background: #202538;
+                                                y: (parent.height - self.height) / 2;
+
+                                                HorizontalLayout {
+                                                    padding-left: 6px;
+                                                    padding-right: 6px;
+                                                    alignment: center;
+                                                    Text {
+                                                        text: "#" + (ep.index + 1);
+                                                        color: #949db2;
+                                                        font-size: 10px;
+                                                        font-weight: 700;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+
+                                            // Episode Title
+                                            Text {
+                                                text: ep.title;
+                                                color: ep.selected ? #ffffff : #8c93a8;
+                                                font-size: 12px;
+                                                font-weight: ep.selected ? 600 : 500;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+
+                                        Text {
+                                            text: ep.selected ? "Included" : "Skipped";
+                                            color: ep.selected ? #4ade80 : #525a70;
+                                            font-size: 11px;
+                                            font-weight: 500;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Format & Quality Selection Chips
                 Text {
                     text: root.is_playlist ? "Select Quality for All Episodes:" : "Select Format & Quality:";
@@ -554,10 +736,14 @@ export component HomeTab inherits ScrollView {
                     }
 
                     ActionButton {
-                        text: root.is_playlist ? ("Download All " + root.playlist_count + " Episodes") : "Start Download";
+                        text: !root.is_playlist ? "Start Download" :
+                              root.selected_episodes_count == 0 ? "Select At Least 1 Episode" :
+                              root.selected_episodes_count == root.playlist_episodes.length ? ("Download All " + root.playlist_count + " Episodes") :
+                              ("Download " + root.selected_episodes_count + " Selected Episodes");
                         icon: @image-url("../icons/download.svg");
                         has_icon: true;
                         primary: true;
+                        enabled: !root.is_playlist || root.selected_episodes_count > 0;
                         height: 38px;
                         clicked => {
                             root.start_download(root.selected_format_index, root.download_subtitles);

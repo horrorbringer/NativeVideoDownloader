@@ -1,4 +1,4 @@
-import { DownloadItemData, HistoryItemData, LogEntryData } from "models.slint";
+import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData } from "models.slint";
 import { NavButton } from "components/nav_button.slint";
 import { HomeTab } from "tabs/home_tab.slint";
 import { DownloadsTab } from "tabs/downloads_tab.slint";
@@ -6,7 +6,7 @@ import { HistoryTab } from "tabs/history_tab.slint";
 import { LogsTab } from "tabs/logs_tab.slint";
 import { SettingsTab } from "tabs/settings_tab.slint";
 
-export { DownloadItemData, HistoryItemData, LogEntryData }
+export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData }
 
 export component AppWindow inherits Window {
     title: "Native Video Downloader";
@@ -53,6 +53,9 @@ export component AppWindow inherits Window {
     in-out property <int> selected_format_index: 0;
     in-out property <bool> is_playlist: false;
     in-out property <int> playlist_count: 0;
+    in-out property <[EpisodeItemData]> playlist_episodes: [];
+    in-out property <int> selected_episodes_count: 0;
+    in-out property <string> episode_range_input: "";
 
     // Subtitles properties
     in-out property <bool> has_subtitles: false;
@@ -108,6 +111,9 @@ export component AppWindow inherits Window {
     callback search_logs(string);
     callback dismiss_error();
     callback clear_analysis();
+    callback toggle_episode(int);
+    callback select_all_episodes(bool);
+    callback apply_episode_range(string);
 
     HorizontalLayout {
         // Sidebar Navigation
@@ -342,6 +348,9 @@ export component AppWindow inherits Window {
                 video_resolution: root.video_resolution;
                 is_playlist: root.is_playlist;
                 playlist_count: root.playlist_count;
+                playlist_episodes: root.playlist_episodes;
+                selected_episodes_count: root.selected_episodes_count;
+                episode_range_input <=> root.episode_range_input;
                 selected_format_index <=> root.selected_format_index;
                 has_subtitles: root.has_subtitles;
                 subtitles_summary: root.subtitles_summary;
@@ -351,6 +360,9 @@ export component AppWindow inherits Window {
 
                 analyze_url(url) => { root.analyze_url(url); }
                 clear_analysis() => { root.clear_analysis(); }
+                toggle_episode(idx) => { root.toggle_episode(idx); }
+                select_all_episodes(all) => { root.select_all_episodes(all); }
+                apply_episode_range(range) => { root.apply_episode_range(range); }
                 paste_from_clipboard() => { root.paste_from_clipboard(); }
                 paste_batch_from_clipboard() => { root.paste_batch_from_clipboard(); }
                 start_download(fmt, subs) => { root.start_download(fmt, subs); }
