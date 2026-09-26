@@ -1,0 +1,451 @@
+import { Button, LineEdit, ProgressIndicator, ScrollView } from "std-widgets.slint";
+
+component NavButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> active: false;
+    callback clicked();
+
+    background: active ? #2d3250 : touch.has-hover ? #25283b : transparent;
+    border-radius: 8px;
+    height: 42px;
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        alignment: start;
+
+        Text {
+            text: root.text;
+            color: root.active ? #ffffff : #a0a5b5;
+            font-size: 14px;
+            font-weight: root.active ? 600 : 400;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Native Video Downloader";
+    preferred-width: 940px;
+    preferred-height: 640px;
+    min-width: 780px;
+    min-height: 520px;
+    background: #14161f;
+
+    in-out property <int> active_tab: 0;
+    in-out property <string> status_message: "Ready to download media";
+    in-out property <bool> is_analyzing: false;
+    in-out property <string> video_title: "";
+    in-out property <string> video_duration: "";
+    in-out property <string> video_resolution: "";
+    in-out property <bool> has_metadata: false;
+
+    callback analyze_url(string);
+    callback start_download();
+
+    HorizontalLayout {
+        // Sidebar Navigation
+        Rectangle {
+            width: 220px;
+            background: #1a1d29;
+
+            VerticalLayout {
+                padding: 18px;
+                spacing: 12px;
+
+                // App Title
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 8px;
+                    padding-bottom: 12px;
+
+                    Text {
+                        text: "⚡ Video Downloader";
+                        color: #7082ff;
+                        font-size: 16px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Nav Items
+                NavButton {
+                    text: "🏠  Home";
+                    active: root.active_tab == 0;
+                    clicked => { root.active_tab = 0; }
+                }
+
+                NavButton {
+                    text: "📥  Downloads";
+                    active: root.active_tab == 1;
+                    clicked => { root.active_tab = 1; }
+                }
+
+                NavButton {
+                    text: "📜  History";
+                    active: root.active_tab == 2;
+                    clicked => { root.active_tab = 2; }
+                }
+
+                NavButton {
+                    text: "⚙️  Settings";
+                    active: root.active_tab == 3;
+                    clicked => { root.active_tab = 3; }
+                }
+
+                // Spacer
+                Rectangle { }
+
+                // System / Engine status indicator
+                Rectangle {
+                    background: #232736;
+                    border-radius: 8px;
+                    height: 50px;
+                    padding: 8px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        Text {
+                            text: "ENGINE STATUS";
+                            color: #6c738a;
+                            font-size: 10px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "● Online & Idle";
+                            color: #4ade80;
+                            font-size: 12px;
+                            font-weight: 600;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Main Content Area
+        VerticalLayout {
+            padding: 24px;
+            spacing: 20px;
+
+            // Header Bar
+            HorizontalLayout {
+                alignment: space-between;
+
+                VerticalLayout {
+                    Text {
+                        text: root.active_tab == 0 ? "Download Media" :
+                              root.active_tab == 1 ? "Active Downloads" :
+                              root.active_tab == 2 ? "Download History" : "Application Settings";
+                        color: #ffffff;
+                        font-size: 22px;
+                        font-weight: 700;
+                    }
+                    Text {
+                        text: root.active_tab == 0 ? "Enter an authorized media URL to analyze and download" :
+                              root.active_tab == 1 ? "Monitor ongoing queues, speeds and progress" :
+                              root.active_tab == 2 ? "Past completed and archived downloads" : "Configure directories, concurrency, and defaults";
+                        color: #8c93a8;
+                        font-size: 13px;
+                    }
+                }
+            }
+
+            // Tab Content
+            if root.active_tab == 0: VerticalLayout {
+                spacing: 16px;
+
+                // URL Input Card
+                Rectangle {
+                    background: #1c202d;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: #2b3044;
+                    padding: 18px;
+
+                    VerticalLayout {
+                        spacing: 12px;
+
+                        Text {
+                            text: "Source Media URL";
+                            color: #c7cbd9;
+                            font-size: 13px;
+                            font-weight: 600;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 10px;
+
+                            url_input := LineEdit {
+                                placeholder_text: "https://example.com/video/123";
+                                font_size: 14px;
+                                height: 38px;
+                                accepted => {
+                                    root.analyze_url(self.text);
+                                }
+                            }
+
+                            Button {
+                                text: root.is_analyzing ? "Analyzing..." : "Analyze URL";
+                                enabled: !root.is_analyzing && url_input.text != "";
+                                height: 38px;
+                                clicked => {
+                                    root.analyze_url(url_input.text);
+                                }
+                            }
+                        }
+
+                        if root.is_analyzing: HorizontalLayout {
+                            ProgressIndicator {
+                                indeterminate: true;
+                                height: 6px;
+                            }
+                        }
+                    }
+                }
+
+                // Video Analysis Result Card (shown when metadata is found)
+                if root.has_metadata: Rectangle {
+                    background: #1c202d;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: #2b3044;
+                    padding: 20px;
+
+                    VerticalLayout {
+                        spacing: 14px;
+
+                        Text {
+                            text: "Media Information";
+                            color: #7082ff;
+                            font-size: 14px;
+                            font-weight: 700;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 16px;
+
+                            // Video preview icon/box
+                            Rectangle {
+                                width: 140px;
+                                height: 90px;
+                                background: #262c3e;
+                                border-radius: 8px;
+
+                                Text {
+                                    text: "🎬 Media";
+                                    color: #a4adc7;
+                                    font-size: 14px;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 6px;
+                                alignment: center;
+
+                                Text {
+                                    text: root.video_title != "" ? root.video_title : "Title unknown";
+                                    color: #ffffff;
+                                    font-size: 16px;
+                                    font-weight: 600;
+                                }
+
+                                Text {
+                                    text: "Resolution: " + root.video_resolution + "  •  Duration: " + root.video_duration;
+                                    color: #949db2;
+                                    font-size: 13px;
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            alignment: end;
+                            spacing: 10px;
+
+                            Button {
+                                text: "Start Download";
+                                height: 36px;
+                                clicked => {
+                                    root.start_download();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Empty / Placeholder state when no video analyzed
+                if !root.has_metadata && !root.is_analyzing: Rectangle {
+                    background: #181a24;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: #232736;
+                    height: 180px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 8px;
+
+                        Text {
+                            text: "🚀 Ready to analyze media";
+                            color: #5c647a;
+                            font-size: 15px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Paste a video link above and click Analyze to view streams and qualities";
+                            color: #4b5266;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                // Spacer
+                Rectangle { }
+            }
+
+            // Tab 1: Downloads
+            if root.active_tab == 1: VerticalLayout {
+                spacing: 12px;
+
+                Rectangle {
+                    background: #1c202d;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: #2b3044;
+                    height: 220px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 8px;
+
+                        Text {
+                            text: "📥 No active downloads";
+                            color: #5c647a;
+                            font-size: 15px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Downloads in progress and in queue will appear here.";
+                            color: #4b5266;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                Rectangle { }
+            }
+
+            // Tab 2: History
+            if root.active_tab == 2: VerticalLayout {
+                spacing: 12px;
+
+                Rectangle {
+                    background: #1c202d;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: #2b3044;
+                    height: 220px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 8px;
+
+                        Text {
+                            text: "📜 Download history is empty";
+                            color: #5c647a;
+                            font-size: 15px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Completed downloads stored in SQLite will appear here.";
+                            color: #4b5266;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                Rectangle { }
+            }
+
+            // Tab 3: Settings
+            if root.active_tab == 3: VerticalLayout {
+                spacing: 12px;
+
+                Rectangle {
+                    background: #1c202d;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: #2b3044;
+                    padding: 16px;
+
+                    VerticalLayout {
+                        spacing: 12px;
+
+                        Text {
+                            text: "Engine & Network Configuration";
+                            color: #ffffff;
+                            font-size: 15px;
+                            font-weight: 600;
+                        }
+                        Text {
+                            text: "Default download directory: ~/Downloads";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
+                        Text {
+                            text: "Max concurrent downloads: 3";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
+                        Text {
+                            text: "Retry attempts: 5";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
+                    }
+                }
+
+                Rectangle { }
+            }
+
+            // Status bar at bottom
+            Rectangle {
+                background: #181a24;
+                border-radius: 8px;
+                height: 36px;
+                padding-left: 12px;
+                padding-right: 12px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    Text {
+                        text: root.status_message;
+                        color: #79829c;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: "v0.1.0 • Slint Native";
+                        color: #52596e;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}
