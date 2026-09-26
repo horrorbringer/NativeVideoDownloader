@@ -82,6 +82,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let network_client = Arc::new(NetworkClient::new());
     let download_manager = Arc::new(DownloadManager::new(3, db.clone())); // 3 bounded concurrent workers
 
+    // Download directory management with persistence
+    let initial_download_dir = if let Ok(Some(saved)) = db.get_setting("download_dir").await {
+        let p = PathBuf::from(saved);
+        if p.exists() {
+            p
+        } else {
+            filesystem::default_download_dir()
+        }
+    } else {
+        filesystem::default_download_dir()
+    };
+
+    main_window.set_download_dir_path(initial_download_dir.to_string_lossy().to_string().into());
+    let current_download_dir = Arc::new(tokio::sync::RwLock::new(initial_download_dir));
+
     // Crash Recovery: restore unfinished downloads from previous session
     match download_manager.restore_unfinished_jobs().await {
         Ok(count) if count > 0 => {
@@ -125,6 +140,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let is_dl = j.status == DownloadStatus::Downloading;
                         let is_paused = j.status == DownloadStatus::Paused;
                         let is_active = is_dl || is_paused || j.status == DownloadStatus::Queued;
+                        let is_completed = j.status == DownloadStatus::Completed;
+                        let output_path = j.output_path.to_string_lossy().to_string();
                         let size_text = j.size_display();
                         let speed_text = j.speed_display();
                         let eta_text = j.eta_display();
@@ -137,6 +154,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             size_text: size_text.into(),
                             speed_text: speed_text.into(),
                             eta_text: eta_text.into(),
+                            output_path: output_path.into(),
+                            is_completed,
                             can_pause: is_dl,
                             can_resume: is_paused || matches!(j.status, DownloadStatus::Failed(_)),
                             can_cancel: is_active,
@@ -326,6 +345,7 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
     let window_weak_dl = main_window.as_weak();
     let meta_clone_dl = current_metadata.clone();
     let mgr_clone_dl = download_manager.clone();
+    let current_dir_dl = current_download_dir.clone();
 
     main_window.on_start_download(move |format_idx| {
         let (is_audio_only, quality) = map_format_index(format_idx);
@@ -337,6 +357,7 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
         let weak = window_weak_dl.clone();
         let meta_arc = meta_clone_dl.clone();
         let mgr = mgr_clone_dl.clone();
+        let dir_lock = current_dir_dl.clone();
 
         tokio::spawn(async move {
             let maybe_meta = meta_arc.lock().await.clone();
@@ -350,7 +371,7 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
                 }
             };
 
-            let download_dir = filesystem::default_download_dir();
+            let download_dir = dir_lock.read().await.clone();
 
             // If album/series playlist, queue all episodes
             if metadata.is_playlist {
@@ -419,12 +440,14 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
     // Callback: Start Batch Downloads
     let window_weak_batch = main_window.as_weak();
     let mgr_clone_batch = download_manager.clone();
+    let current_dir_batch = current_download_dir.clone();
 
     main_window.on_start_batch_download(move |raw_text, format_idx| {
         let text_val = raw_text.to_string();
         let (is_audio_only, quality) = map_format_index(format_idx);
         let weak = window_weak_batch.clone();
         let mgr = mgr_clone_batch.clone();
+        let dir_lock = current_dir_batch.clone();
 
         tokio::spawn(async move {
             let lines: Vec<String> = text_val
@@ -443,7 +466,7 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
                 return;
             }
 
-            let download_dir = filesystem::default_download_dir();
+            let download_dir = dir_lock.read().await.clone();
             let mut queued_count = 0;
 
             for url in lines {
@@ -559,21 +582,41 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
         });
     });
 
-    // Callback: Open folder for a history item
+    // Callback: Open folder for a history item (Reveal in Finder)
     main_window.on_open_history_folder(move |path_str| {
         let path = PathBuf::from(path_str.to_string());
-        let _ = filesystem::open_parent_folder(&path);
+        let _ = filesystem::reveal_in_file_manager(&path);
+    });
+
+    // Callback: Play media file for a history item
+    main_window.on_play_history_file(move |path_str| {
+        let path = PathBuf::from(path_str.to_string());
+        let _ = filesystem::play_media_file(&path);
+    });
+
+    // Callback: Open/play file for a completed download
+    main_window.on_open_download_file(move |path_str| {
+        let path = PathBuf::from(path_str.to_string());
+        let _ = filesystem::play_media_file(&path);
+    });
+
+    // Callback: Reveal completed download in Finder
+    main_window.on_open_download_folder(move |path_str| {
+        let path = PathBuf::from(path_str.to_string());
+        let _ = filesystem::reveal_in_file_manager(&path);
     });
 
     // Callback: Redownload from history
     let mgr_redl = download_manager.clone();
     let weak_redl = main_window.as_weak();
+    let current_dir_redl = current_download_dir.clone();
     main_window.on_redownload_history(move |url_str| {
         let mgr = mgr_redl.clone();
         let weak = weak_redl.clone();
+        let dir_lock = current_dir_redl.clone();
         let url = url_str.to_string();
         tokio::spawn(async move {
-            let download_dir = filesystem::default_download_dir();
+            let download_dir = dir_lock.read().await.clone();
             let title = url
                 .split('/')
                 .last()
@@ -635,6 +678,61 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
     let ui_logger_clear = ui_log_layer.clone();
     main_window.on_clear_logs(move || {
         ui_logger_clear.clear();
+    });
+
+    // Callback: Browse Download Directory
+    let dir_browse = current_download_dir.clone();
+    let db_browse = db.clone();
+    let weak_browse = main_window.as_weak();
+    main_window.on_browse_download_dir(move || {
+        let dir_lock = dir_browse.clone();
+        let db = db_browse.clone();
+        let weak = weak_browse.clone();
+        tokio::spawn(async move {
+            if let Some(picked) = filesystem::pick_directory().await {
+                let path_str = picked.to_string_lossy().to_string();
+                *dir_lock.write().await = picked.clone();
+                let _ = db.set_setting("download_dir", &path_str).await;
+                info!("Updated download directory to: {}", path_str);
+                let path_for_ui = path_str.clone();
+                let _ = weak.upgrade_in_event_loop(move |window| {
+                    window.set_download_dir_path(path_for_ui.into());
+                    window.set_status_message(format!("Download directory: {}", path_str).into());
+                });
+            }
+        });
+    });
+
+    // Callback: Reset Download Directory
+    let dir_reset = current_download_dir.clone();
+    let db_reset = db.clone();
+    let weak_reset = main_window.as_weak();
+    main_window.on_reset_download_dir(move || {
+        let default_dir = filesystem::default_download_dir();
+        let dir_lock = dir_reset.clone();
+        let db = db_reset.clone();
+        let weak = weak_reset.clone();
+        tokio::spawn(async move {
+            let path_str = default_dir.to_string_lossy().to_string();
+            *dir_lock.write().await = default_dir.clone();
+            let _ = db.set_setting("download_dir", &path_str).await;
+            info!("Reset download directory to default: {}", path_str);
+            let path_for_ui = path_str.clone();
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                window.set_download_dir_path(path_for_ui.into());
+                window.set_status_message("Reset download directory to default Downloads".into());
+            });
+        });
+    });
+
+    // Callback: Open Current Download Directory in Finder
+    let dir_open_curr = current_download_dir.clone();
+    main_window.on_open_current_download_dir(move || {
+        let dir_lock = dir_open_curr.clone();
+        tokio::spawn(async move {
+            let current = dir_lock.read().await.clone();
+            let _ = filesystem::reveal_in_file_manager(&current);
+        });
     });
 
     // Callback: Dismiss Error Alert

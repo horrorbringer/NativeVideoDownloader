@@ -65,6 +65,8 @@ export struct DownloadItemData {
     size_text: string,
     speed_text: string,
     eta_text: string,
+    output_path: string,
+    is_completed: bool,
     can_pause: bool,
     can_resume: bool,
     can_cancel: bool,
@@ -122,6 +124,9 @@ export component AppWindow inherits Window {
     in-out property <bool> is_playlist: false;
     in-out property <int> playlist_count: 0;
 
+    // Settings properties
+    in-out property <string> download_dir_path: "~/Downloads";
+
     callback analyze_url(string);
     callback start_download(int);
     callback start_batch_download(string, int);
@@ -134,9 +139,17 @@ export component AppWindow inherits Window {
 
     callback search_history(string);
     callback open_history_folder(string);
+    callback play_history_file(string);
     callback redownload_history(string);
     callback delete_history_item(string);
     callback clear_all_history();
+
+    callback open_download_file(string);
+    callback open_download_folder(string);
+
+    callback browse_download_dir();
+    callback reset_download_dir();
+    callback open_current_download_dir();
 
     callback clear_logs();
     callback dismiss_error();
@@ -717,6 +730,18 @@ export component AppWindow inherits Window {
                                         spacing: 6px;
                                         alignment: end;
 
+                                        if item.is_completed: Button {
+                                            text: "▶ Play";
+                                            height: 30px;
+                                            clicked => { root.open_download_file(item.output_path); }
+                                        }
+
+                                        if item.is_completed: Button {
+                                            text: "📂 Finder";
+                                            height: 30px;
+                                            clicked => { root.open_download_folder(item.output_path); }
+                                        }
+
                                         if item.can_pause: Button {
                                             text: "Pause";
                                             height: 30px;
@@ -873,8 +898,14 @@ export component AppWindow inherits Window {
                                         spacing: 8px;
                                         alignment: end;
 
+                                        if item.status == "Completed": Button {
+                                            text: "▶ Play";
+                                            height: 30px;
+                                            clicked => { root.play_history_file(item.output_path); }
+                                        }
+
                                         Button {
-                                            text: "📂 Folder";
+                                            text: "📂 Finder";
                                             height: 30px;
                                             clicked => { root.open_history_folder(item.output_path); }
                                         }
@@ -1009,8 +1040,9 @@ export component AppWindow inherits Window {
 
             // Tab 4: Settings
             if root.active_tab == 4: VerticalLayout {
-                spacing: 12px;
+                spacing: 16px;
 
+                // Download Directory Card
                 Rectangle {
                     background: #1c202d;
                     border-radius: 12px;
@@ -1018,29 +1050,148 @@ export component AppWindow inherits Window {
                     border-color: #2b3044;
 
                     VerticalLayout {
-                        padding: 16px;
-                        spacing: 12px;
+                        padding: 20px;
+                        spacing: 14px;
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: "📁 Default Download Directory";
+                                color: #ffffff;
+                                font-size: 16px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "All media, video series, and audio extractions will be saved into this folder";
+                                color: #8c93a8;
+                                font-size: 13px;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 10px;
+
+                            Rectangle {
+                                background: #131622;
+                                border-radius: 8px;
+                                border-width: 1px;
+                                border-color: #2b3044;
+                                horizontal-stretch: 1;
+                                height: 38px;
+
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+                                    alignment: start;
+
+                                    Text {
+                                        text: root.download_dir_path;
+                                        color: #e2e8f0;
+                                        font-size: 13px;
+                                        font-weight: 500;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+
+                            Button {
+                                text: "📂 Browse...";
+                                height: 38px;
+                                clicked => { root.browse_download_dir(); }
+                            }
+
+                            Button {
+                                text: "Finder";
+                                height: 38px;
+                                clicked => { root.open_current_download_dir(); }
+                            }
+
+                            Button {
+                                text: "Reset";
+                                height: 38px;
+                                clicked => { root.reset_download_dir(); }
+                            }
+                        }
+                    }
+                }
+
+                // Engine & Queue Defaults Card
+                Rectangle {
+                    background: #1c202d;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: #2b3044;
+
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 14px;
 
                         Text {
-                            text: "Engine & Network Configuration";
+                            text: "⚡ Engine & Network Architecture";
                             color: #ffffff;
-                            font-size: 15px;
-                            font-weight: 600;
+                            font-size: 16px;
+                            font-weight: 700;
                         }
-                        Text {
-                            text: "Default download directory: ~/Downloads";
-                            color: #8c93a8;
-                            font-size: 13px;
+
+                        HorizontalLayout {
+                            alignment: space-between;
+                            Text {
+                                text: "Concurrent Download Workers";
+                                color: #cbd5e1;
+                                font-size: 13px;
+                            }
+                            Text {
+                                text: "3 Parallel Jobs (Auto-Queued)";
+                                color: #38bdf8;
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
                         }
-                        Text {
-                            text: "Max concurrent downloads: 3";
-                            color: #8c93a8;
-                            font-size: 13px;
+
+                        HorizontalLayout {
+                            alignment: space-between;
+                            Text {
+                                text: "Auto-Retry Maximum Attempts";
+                                color: #cbd5e1;
+                                font-size: 13px;
+                            }
+                            Text {
+                                text: "3 Retries with Exponential Backoff";
+                                color: #38bdf8;
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
                         }
-                        Text {
-                            text: "Retry attempts: 5";
-                            color: #8c93a8;
-                            font-size: 13px;
+
+                        HorizontalLayout {
+                            alignment: space-between;
+                            Text {
+                                text: "Crash Recovery & Chunk Resumption";
+                                color: #cbd5e1;
+                                font-size: 13px;
+                            }
+                            Text {
+                                text: "HTTP Range + .part Atomic Resume";
+                                color: #4ade80;
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            alignment: space-between;
+                            Text {
+                                text: "Media Multiplexer Backend";
+                                color: #cbd5e1;
+                                font-size: 13px;
+                            }
+                            Text {
+                                text: "FFmpeg v9 + yt-dlp Native";
+                                color: #a78bfa;
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
                         }
                     }
                 }

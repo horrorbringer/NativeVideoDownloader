@@ -63,6 +63,11 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
             CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at);
+
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             "#,
         )
         .execute(&pool)
@@ -296,6 +301,33 @@ impl Database {
         }
 
         Ok(jobs)
+    }
+
+    pub async fn get_setting(&self, key: &str) -> Result<Option<String>> {
+        let row = sqlx::query_scalar::<_, String>(
+            "SELECT value FROM app_settings WHERE key = ?"
+        )
+        .bind(key)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO app_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            "#,
+        )
+        .bind(key)
+        .bind(value)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 }
 
