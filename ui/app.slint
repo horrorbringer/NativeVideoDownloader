@@ -117,6 +117,7 @@ export component AppWindow inherits Window {
 
     // History properties
     in-out property <[HistoryItemData]> history_items: [];
+    in-out property <string> history_search_query: "";
 
     // Real-time Logs properties
     in-out property <[LogEntryData]> log_entries: [];
@@ -928,48 +929,72 @@ export component AppWindow inherits Window {
 
             // Tab 2: History
             if root.active_tab == 2: VerticalLayout {
-                spacing: 14px;
+                spacing: 12px;
 
                 // Search and toolbar
                 HorizontalLayout {
-                    alignment: space-between;
                     spacing: 12px;
+                    alignment: space-between;
 
                     search_box := LineEdit {
-                        placeholder_text: "🔍 Search history by title or URL...";
-                        font_size: 14px;
+                        horizontal-stretch: 1;
+                        placeholder_text: "🔍 Search history by title or file path...";
+                        font_size: 13px;
                         height: 36px;
+                        text <=> root.history_search_query;
                         edited => { root.search_history(self.text); }
+                    }
+
+                    Rectangle {
+                        background: #181b26;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: #272d42;
+                        height: 36px;
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            alignment: center;
+                            Text {
+                                text: root.history_items.length + " Records";
+                                color: #8c93a8;
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
                     }
 
                     Button {
                         text: "🗑️ Clear All";
                         height: 36px;
+                        enabled: root.history_items.length > 0;
                         clicked => { root.clear_all_history(); }
                     }
                 }
 
                 // If no history items
                 if root.history_items.length == 0: Rectangle {
-                    background: #1c202d;
+                    background: #181b27;
                     border-radius: 12px;
                     border-width: 1px;
-                    border-color: #2b3044;
-                    height: 220px;
+                    border-color: #272d42;
+                    vertical-stretch: 1;
 
                     VerticalLayout {
                         alignment: center;
                         spacing: 8px;
 
                         Text {
-                            text: "📜 No history records found";
+                            text: root.history_search_query != "" ? "🔍 No history records match your search" : "📜 No download history yet";
                             color: #5c647a;
                             font-size: 15px;
                             font-weight: 600;
                             horizontal-alignment: center;
                         }
                         Text {
-                            text: "Finished and saved media downloads will be persisted here.";
+                            text: root.history_search_query != "" ? "Try a different keyword or clear the search box above." : "Finished and saved media downloads will be persisted here.";
                             color: #4b5266;
                             font-size: 13px;
                             horizontal-alignment: center;
@@ -979,83 +1004,141 @@ export component AppWindow inherits Window {
 
                 // If history items exist
                 if root.history_items.length > 0: ScrollView {
+                    vertical-stretch: 1;
+
                     VerticalLayout {
                         spacing: 10px;
+                        padding-bottom: 8px;
 
                         for item in root.history_items: Rectangle {
-                            background: #1c202d;
+                            background: touch_history.has-hover ? #1f2334 : #171a26;
                             border-radius: 12px;
                             border-width: 1px;
-                            border-color: #2b3044;
+                            border-color: item.status == "Completed" ? #252d40 : (item.status == "Failed" ? #451b1b : #24293a);
+                            animate background { duration: 150ms; }
+
+                            touch_history := TouchArea { }
 
                             VerticalLayout {
                                 padding: 14px;
-                                spacing: 8px;
+                                spacing: 10px;
 
+                                // Row 1: Title & Action Buttons
                                 HorizontalLayout {
                                     alignment: space-between;
+                                    spacing: 12px;
 
                                     VerticalLayout {
-                                        spacing: 4px;
+                                        horizontal-stretch: 1;
+                                        spacing: 6px;
 
                                         Text {
                                             text: item.title;
                                             color: #ffffff;
                                             font-size: 15px;
-                                            font-weight: 600;
+                                            font-weight: 700;
+                                            overflow: elide;
                                         }
 
                                         HorizontalLayout {
-                                            spacing: 12px;
+                                            spacing: 10px;
+                                            alignment: start;
 
-                                            Text {
-                                                text: "Status: " + item.status;
-                                                color: item.status == "Completed" ? #4ade80 :
-                                                       item.status == "Cancelled" ? #a0a7ba : #ef4444;
-                                                font-size: 12px;
-                                                font-weight: 600;
+                                            // Status pill
+                                            Rectangle {
+                                                height: 20px;
+                                                border-radius: 4px;
+                                                background: item.status == "Completed" ? #14532d : (item.status == "Failed" ? #7f1d1d : #334155);
+
+                                                HorizontalLayout {
+                                                    padding-left: 8px;
+                                                    padding-right: 8px;
+                                                    alignment: center;
+                                                    Text {
+                                                        text: item.status == "Completed" ? "✓ Completed" : item.status;
+                                                        color: item.status == "Completed" ? #4ade80 : (item.status == "Failed" ? #fca5a5 : #cbd5e1);
+                                                        font-size: 11px;
+                                                        font-weight: 700;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
                                             }
 
+                                            // File size
                                             Text {
-                                                text: "Size: " + item.size_text;
-                                                color: #8c93a8;
+                                                text: "📦 " + item.size_text;
+                                                color: #949db2;
                                                 font-size: 12px;
+                                                vertical-alignment: center;
                                             }
 
-                                            Text {
-                                                text: "Path: " + item.output_path;
-                                                color: #636b80;
-                                                font-size: 11px;
+                                            // Date / Timestamp
+                                            if item.date_text != "": Text {
+                                                text: "🕒 " + item.date_text;
+                                                color: #64748b;
+                                                font-size: 12px;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
 
+                                    // Action buttons
                                     HorizontalLayout {
                                         spacing: 8px;
                                         alignment: end;
 
                                         if item.status == "Completed": Button {
                                             text: "▶ Play";
-                                            height: 30px;
+                                            height: 32px;
                                             clicked => { root.play_history_file(item.output_path); }
                                         }
 
                                         Button {
-                                            text: "📂 Finder";
-                                            height: 30px;
+                                            text: "🖥️ Finder";
+                                            height: 32px;
                                             clicked => { root.open_history_folder(item.output_path); }
                                         }
 
                                         Button {
                                             text: "🔄 Redownload";
-                                            height: 30px;
+                                            height: 32px;
                                             clicked => { root.redownload_history(item.url); }
                                         }
 
                                         Button {
                                             text: "✕";
-                                            height: 30px;
+                                            height: 32px;
                                             clicked => { root.delete_history_item(item.id); }
+                                        }
+                                    }
+                                }
+
+                                // Row 2: Recessed File Path Bezel
+                                Rectangle {
+                                    background: #111420;
+                                    border-radius: 6px;
+                                    border-width: 1px;
+                                    border-color: #202538;
+                                    height: 28px;
+
+                                    HorizontalLayout {
+                                        padding-left: 10px;
+                                        padding-right: 10px;
+                                        alignment: start;
+                                        spacing: 6px;
+
+                                        Text {
+                                            text: "📁";
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                        }
+                                        Text {
+                                            text: item.output_path;
+                                            color: #64748b;
+                                            font-size: 11px;
+                                            overflow: elide;
+                                            horizontal-stretch: 1;
+                                            vertical-alignment: center;
                                         }
                                     }
                                 }
@@ -1063,9 +1146,8 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-
-                Rectangle { }
             }
+
 
             // Tab 3: Logs View
             if root.active_tab == 3: VerticalLayout {
@@ -1189,14 +1271,14 @@ export component AppWindow inherits Window {
                             spacing: 2px;
 
                             for entry in root.log_entries: Rectangle {
-                                background: touch.has-hover ? #191e2c : (
+                                background: touch_log.has-hover ? #191e2c : (
                                     entry.level == "ERROR" ? #241419 :
                                     entry.level == "WARN" ? #221c12 :
                                     transparent
                                 );
                                 border-radius: 4px;
 
-                                touch := TouchArea { }
+                                touch_log := TouchArea { }
 
                                 HorizontalLayout {
                                     padding-top: 6px;
