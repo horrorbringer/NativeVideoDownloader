@@ -12,13 +12,17 @@ pub struct ProgressCalculator {
 
 impl ProgressCalculator {
     pub fn new(total_bytes: Option<u64>) -> Self {
+        Self::with_initial_bytes(total_bytes, 0)
+    }
+
+    pub fn with_initial_bytes(total_bytes: Option<u64>, downloaded_bytes: u64) -> Self {
         let now = Instant::now();
         Self {
             total_bytes,
-            downloaded_bytes: 0,
+            downloaded_bytes,
             _start_time: now,
             last_sample_time: now,
-            last_sample_bytes: 0,
+            last_sample_bytes: downloaded_bytes,
             current_speed: 0.0,
         }
     }

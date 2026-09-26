@@ -92,6 +92,7 @@ impl NetworkClient {
         url: &str,
         destination_path: &Path,
         cancel_token: CancellationToken,
+        preserve_part_on_cancel: bool,
         mut on_progress: F,
     ) -> Result<()>
     where
@@ -105,21 +106,51 @@ impl NetworkClient {
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        let mut response = self.client.get(url).send().await?;
+        // Check if partial download already exists on disk
+        let existing_bytes = if part_path.exists() {
+            tokio::fs::metadata(&part_path)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(0)
+        } else {
+            0
+        };
 
-        if !response.status().is_success() {
-            let status = response.status();
+        let request_builder = self.client.get(url);
+        let request_builder = if existing_bytes > 0 {
+            info!("Attempting resume for {:?} from byte offset {}", destination_path, existing_bytes);
+            request_builder.header(RANGE, format!("bytes={}-", existing_bytes))
+        } else {
+            request_builder
+        };
+
+        let mut response = request_builder.send().await?;
+        let status = response.status();
+
+        if !status.is_success() && status.as_u16() != 206 {
             return Err(AppError::Http {
                 status: status.as_u16(),
                 message: format!("Download request failed: {}", status),
             });
         }
 
-        let total_bytes = response.content_length();
-        let mut progress_calc = ProgressCalculator::new(total_bytes);
-
-        // Open .part file for writing
-        let mut file = tokio::fs::File::create(&part_path).await?;
+        let is_partial = status.as_u16() == 206;
+        let (mut file, mut progress_calc) = if is_partial && existing_bytes > 0 {
+            info!("Server accepted Range request (206 Partial Content)");
+            let total = response.content_length().map(|len| len + existing_bytes);
+            let file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .append(true)
+                .open(&part_path)
+                .await?;
+            let calc = ProgressCalculator::with_initial_bytes(total, existing_bytes);
+            (file, calc)
+        } else {
+            let total = response.content_length();
+            let file = tokio::fs::File::create(&part_path).await?;
+            let calc = ProgressCalculator::new(total);
+            (file, calc)
+        };
 
         // Inform initial progress
         on_progress(progress_calc.update(0));
@@ -127,9 +158,11 @@ impl NetworkClient {
         loop {
             tokio::select! {
                 _ = cancel_token.cancelled() => {
-                    warn!("Download cancelled by user for: {:?}", destination_path);
+                    warn!("Download stopped/cancelled for: {:?}", destination_path);
                     drop(file);
-                    let _ = cleanup_part_file(&part_path);
+                    if !preserve_part_on_cancel {
+                        let _ = cleanup_part_file(&part_path);
+                    }
                     return Err(AppError::Cancelled);
                 }
                 chunk_res = response.chunk() => {
@@ -146,7 +179,6 @@ impl NetworkClient {
                         }
                         Err(err) => {
                             drop(file);
-                            let _ = cleanup_part_file(&part_path);
                             return Err(AppError::Network(err));
                         }
                     }

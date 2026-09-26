@@ -28,6 +28,29 @@ component NavButton inherits Rectangle {
     }
 }
 
+export struct DownloadItemData {
+    id: string,
+    title: string,
+    status: string,
+    progress: float,
+    size_text: string,
+    speed_text: string,
+    eta_text: string,
+    can_pause: bool,
+    can_resume: bool,
+    can_cancel: bool,
+}
+
+export struct HistoryItemData {
+    id: string,
+    title: string,
+    status: string,
+    size_text: string,
+    date_text: string,
+    url: string,
+    output_path: string,
+}
+
 export component AppWindow inherits Window {
     title: "Native Video Downloader";
     preferred-width: 940px;
@@ -44,18 +67,27 @@ export component AppWindow inherits Window {
     in-out property <string> video_resolution: "";
     in-out property <bool> has_metadata: false;
 
-    // Active download properties
-    in-out property <bool> is_downloading: false;
-    in-out property <float> download_progress: 0.0;
-    in-out property <string> download_speed: "-- MB/s";
-    in-out property <string> download_size_text: "0 MB / 0 MB";
-    in-out property <string> download_eta: "--:--";
-    in-out property <string> download_filename: "";
-    in-out property <string> download_status: "Idle";
+    // Queue & Downloads properties
+    in-out property <[DownloadItemData]> download_items: [];
+    in-out property <int> active_downloads_count: 0;
+
+    // History properties
+    in-out property <[HistoryItemData]> history_items: [];
 
     callback analyze_url(string);
     callback start_download();
-    callback cancel_download();
+    callback pause_download(string);
+    callback resume_download(string);
+    callback cancel_download(string);
+    callback pause_all();
+    callback resume_all();
+    callback clear_completed();
+
+    callback search_history(string);
+    callback open_history_folder(string);
+    callback redownload_history(string);
+    callback delete_history_item(string);
+    callback clear_all_history();
 
     HorizontalLayout {
         // Sidebar Navigation
@@ -323,72 +355,45 @@ export component AppWindow inherits Window {
 
             // Tab 1: Downloads
             if root.active_tab == 1: VerticalLayout {
-                spacing: 12px;
+                spacing: 14px;
 
-                if root.download_status != "Idle": Rectangle {
-                    background: #1c202d;
-                    border-radius: 12px;
-                    border-width: 1px;
-                    border-color: #2b3044;
+                // Queue Toolbar
+                HorizontalLayout {
+                    alignment: space-between;
 
-                    VerticalLayout {
-                        padding: 20px;
-                        spacing: 14px;
+                    Text {
+                        text: "Queue (" + root.download_items.length + " jobs)";
+                        color: #a0a7ba;
+                        font-size: 13px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
 
-                        HorizontalLayout {
-                            alignment: space-between;
+                    HorizontalLayout {
+                        spacing: 8px;
 
-                            VerticalLayout {
-                                spacing: 4px;
-                                Text {
-                                    text: root.download_filename != "" ? root.download_filename : "Active Download";
-                                    color: #ffffff;
-                                    font-size: 15px;
-                                    font-weight: 600;
-                                }
-                                Text {
-                                    text: "Status: " + root.download_status;
-                                    color: root.download_status == "Completed" ? #4ade80 :
-                                           root.download_status == "Cancelled" ? #f87171 :
-                                           root.download_status == "Failed" ? #ef4444 : #60a5fa;
-                                    font-size: 12px;
-                                    font-weight: 600;
-                                }
-                            }
-
-                            if root.is_downloading: Button {
-                                text: "Cancel";
-                                height: 32px;
-                                clicked => {
-                                    root.cancel_download();
-                                }
-                            }
+                        Button {
+                            text: "⏸ Pause All";
+                            height: 32px;
+                            clicked => { root.pause_all(); }
                         }
 
-                        ProgressIndicator {
-                            progress: root.download_progress;
-                            height: 8px;
+                        Button {
+                            text: "▶ Resume All";
+                            height: 32px;
+                            clicked => { root.resume_all(); }
                         }
 
-                        HorizontalLayout {
-                            alignment: space-between;
-
-                            Text {
-                                text: root.download_size_text;
-                                color: #949db2;
-                                font-size: 12px;
-                            }
-
-                            Text {
-                                text: "Speed: " + root.download_speed + "  •  ETA: " + root.download_eta;
-                                color: #949db2;
-                                font-size: 12px;
-                            }
+                        Button {
+                            text: "🧹 Clear Finished";
+                            height: 32px;
+                            clicked => { root.clear_completed(); }
                         }
                     }
                 }
 
-                if root.download_status == "Idle": Rectangle {
+                // If no downloads in queue
+                if root.download_items.length == 0: Rectangle {
                     background: #1c202d;
                     border-radius: 12px;
                     border-width: 1px;
@@ -407,10 +412,96 @@ export component AppWindow inherits Window {
                             horizontal-alignment: center;
                         }
                         Text {
-                            text: "Downloads in progress and in queue will appear here.";
+                            text: "Downloads in progress, paused, or queued will appear here.";
                             color: #4b5266;
                             font-size: 13px;
                             horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                // If downloads exist in queue
+                if root.download_items.length > 0: ScrollView {
+                    VerticalLayout {
+                        spacing: 12px;
+
+                        for item in root.download_items: Rectangle {
+                            background: #1c202d;
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: #2b3044;
+
+                            VerticalLayout {
+                                padding: 16px;
+                                spacing: 12px;
+
+                                HorizontalLayout {
+                                    alignment: space-between;
+
+                                    VerticalLayout {
+                                        spacing: 4px;
+                                        Text {
+                                            text: item.title;
+                                            color: #ffffff;
+                                            font-size: 15px;
+                                            font-weight: 600;
+                                        }
+                                        Text {
+                                            text: "Status: " + item.status;
+                                            color: item.status == "Completed" ? #4ade80 :
+                                                   item.status == "Paused" ? #facc15 :
+                                                   item.status == "Downloading" ? #60a5fa :
+                                                   item.status == "Queued" ? #c084fc : #f87171;
+                                            font-size: 12px;
+                                            font-weight: 600;
+                                        }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        alignment: end;
+
+                                        if item.can_pause: Button {
+                                            text: "Pause";
+                                            height: 30px;
+                                            clicked => { root.pause_download(item.id); }
+                                        }
+
+                                        if item.can_resume: Button {
+                                            text: "Resume";
+                                            height: 30px;
+                                            clicked => { root.resume_download(item.id); }
+                                        }
+
+                                        if item.can_cancel: Button {
+                                            text: "Cancel";
+                                            height: 30px;
+                                            clicked => { root.cancel_download(item.id); }
+                                        }
+                                    }
+                                }
+
+                                ProgressIndicator {
+                                    progress: item.progress;
+                                    height: 7px;
+                                }
+
+                                HorizontalLayout {
+                                    alignment: space-between;
+
+                                    Text {
+                                        text: item.size_text;
+                                        color: #949db2;
+                                        font-size: 12px;
+                                    }
+
+                                    Text {
+                                        text: "Speed: " + item.speed_text + "  •  ETA: " + item.eta_text;
+                                        color: #949db2;
+                                        font-size: 12px;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -420,9 +511,29 @@ export component AppWindow inherits Window {
 
             // Tab 2: History
             if root.active_tab == 2: VerticalLayout {
-                spacing: 12px;
+                spacing: 14px;
 
-                Rectangle {
+                // Search and toolbar
+                HorizontalLayout {
+                    alignment: space-between;
+                    spacing: 12px;
+
+                    search_box := LineEdit {
+                        placeholder_text: "🔍 Search history by title or URL...";
+                        font_size: 14px;
+                        height: 36px;
+                        edited => { root.search_history(self.text); }
+                    }
+
+                    Button {
+                        text: "🗑️ Clear All";
+                        height: 36px;
+                        clicked => { root.clear_all_history(); }
+                    }
+                }
+
+                // If no history items
+                if root.history_items.length == 0: Rectangle {
                     background: #1c202d;
                     border-radius: 12px;
                     border-width: 1px;
@@ -434,17 +545,98 @@ export component AppWindow inherits Window {
                         spacing: 8px;
 
                         Text {
-                            text: "📜 Download history is empty";
+                            text: "📜 No history records found";
                             color: #5c647a;
                             font-size: 15px;
                             font-weight: 600;
                             horizontal-alignment: center;
                         }
                         Text {
-                            text: "Completed downloads stored in SQLite will appear here.";
+                            text: "Finished and saved media downloads will be persisted here.";
                             color: #4b5266;
                             font-size: 13px;
                             horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                // If history items exist
+                if root.history_items.length > 0: ScrollView {
+                    VerticalLayout {
+                        spacing: 10px;
+
+                        for item in root.history_items: Rectangle {
+                            background: #1c202d;
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: #2b3044;
+
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 8px;
+
+                                HorizontalLayout {
+                                    alignment: space-between;
+
+                                    VerticalLayout {
+                                        spacing: 4px;
+
+                                        Text {
+                                            text: item.title;
+                                            color: #ffffff;
+                                            font-size: 15px;
+                                            font-weight: 600;
+                                        }
+
+                                        HorizontalLayout {
+                                            spacing: 12px;
+
+                                            Text {
+                                                text: "Status: " + item.status;
+                                                color: item.status == "Completed" ? #4ade80 :
+                                                       item.status == "Cancelled" ? #a0a7ba : #ef4444;
+                                                font-size: 12px;
+                                                font-weight: 600;
+                                            }
+
+                                            Text {
+                                                text: "Size: " + item.size_text;
+                                                color: #8c93a8;
+                                                font-size: 12px;
+                                            }
+
+                                            Text {
+                                                text: "Path: " + item.output_path;
+                                                color: #636b80;
+                                                font-size: 11px;
+                                            }
+                                        }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: end;
+
+                                        Button {
+                                            text: "📂 Folder";
+                                            height: 30px;
+                                            clicked => { root.open_history_folder(item.output_path); }
+                                        }
+
+                                        Button {
+                                            text: "🔄 Redownload";
+                                            height: 30px;
+                                            clicked => { root.redownload_history(item.url); }
+                                        }
+
+                                        Button {
+                                            text: "✕";
+                                            height: 30px;
+                                            clicked => { root.delete_history_item(item.id); }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
