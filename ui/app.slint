@@ -107,6 +107,7 @@ export component AppWindow inherits Window {
     callback set_log_filter(int);
     callback search_logs(string);
     callback dismiss_error();
+    callback clear_analysis();
 
     HorizontalLayout {
         // Sidebar Navigation
@@ -288,10 +289,10 @@ export component AppWindow inherits Window {
                 VerticalLayout {
                     alignment: center;
                     Rectangle {
-                        background: #181c2b;
+                        background: #141724;
                         border-radius: 14px;
                         border-width: 1px;
-                        border-color: #272f44;
+                        border-color: #22283a;
                         height: 28px;
 
                         HorizontalLayout {
@@ -313,15 +314,14 @@ export component AppWindow inherits Window {
                             }
 
                             Text {
-                                text: root.has_error ? "Alert logged" :
+                                text: root.has_error ? "Alert" :
                                       root.is_analyzing ? "Analyzing stream..." :
                                       root.active_downloads_count > 0 ? (root.active_downloads_count + " active tasks") :
-                                      root.status_message;
+                                      "Ready";
                                 color: #cbd5e1;
                                 font-size: 11px;
                                 font-weight: 500;
                                 vertical-alignment: center;
-                                overflow: elide;
                             }
                         }
                     }
@@ -350,6 +350,7 @@ export component AppWindow inherits Window {
                 thumbnail_image: root.thumbnail_image;
 
                 analyze_url(url) => { root.analyze_url(url); }
+                clear_analysis() => { root.clear_analysis(); }
                 paste_from_clipboard() => { root.paste_from_clipboard(); }
                 paste_batch_from_clipboard() => { root.paste_batch_from_clipboard(); }
                 start_download(fmt, subs) => { root.start_download(fmt, subs); }

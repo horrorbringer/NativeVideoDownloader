@@ -1,8 +1,8 @@
-import { LineEdit, ProgressIndicator, TextEdit } from "std-widgets.slint";
+import { LineEdit, ProgressIndicator, ScrollView, TextEdit } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
 
-export component HomeTab inherits VerticalLayout {
+export component HomeTab inherits ScrollView {
     in-out property <bool> has_error: false;
     in-out property <string> error_message: "";
     in-out property <bool> batch_mode: false;
@@ -23,6 +23,7 @@ export component HomeTab inherits VerticalLayout {
     in-out property <image> thumbnail_image;
 
     callback analyze_url(string);
+    callback clear_analysis();
     callback paste_from_clipboard();
     callback paste_batch_from_clipboard();
     callback start_download(int, bool);
@@ -30,10 +31,14 @@ export component HomeTab inherits VerticalLayout {
     callback dismiss_error();
     callback open_logs();
 
-    spacing: 16px;
+    vertical-stretch: 1;
 
-    // Error / Alert Banner
-    if root.has_error: Rectangle {
+    VerticalLayout {
+        spacing: 16px;
+        padding-bottom: 16px;
+
+        // Error / Alert Banner
+        if root.has_error: Rectangle {
         background: #2a151b;
         border-radius: 10px;
         border-width: 1px;
@@ -133,10 +138,12 @@ export component HomeTab inherits VerticalLayout {
             border-radius: 12px;
             border-width: 1px;
             border-color: #242c40;
+            height: root.is_analyzing ? 122px : 106px;
 
             VerticalLayout {
-                padding: 18px;
+                padding: 16px;
                 spacing: 12px;
+                alignment: start;
 
                 HorizontalLayout {
                     alignment: space-between;
@@ -168,6 +175,17 @@ export component HomeTab inherits VerticalLayout {
                         height: 38px;
                         accepted => {
                             root.analyze_url(self.text);
+                        }
+                    }
+
+                    if root.input_url_text != "": ActionButton {
+                        text: "Clear";
+                        icon: @image-url("../icons/x.svg");
+                        has_icon: true;
+                        height: 38px;
+                        clicked => {
+                            root.input_url_text = "";
+                            root.clear_analysis();
                         }
                     }
 
@@ -240,21 +258,38 @@ export component HomeTab inherits VerticalLayout {
                         }
                     }
 
-                    Rectangle {
-                        background: #163625;
-                        border-radius: 4px;
-                        height: 22px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
 
-                        HorizontalLayout {
-                            padding-left: 8px;
-                            padding-right: 8px;
-                            alignment: center;
-                            Text {
-                                text: "Ready to Download";
-                                color: #4ade80;
-                                font-size: 11px;
-                                font-weight: 700;
-                                vertical-alignment: center;
+                        Rectangle {
+                            background: #0e291b;
+                            border-radius: 4px;
+                            border-width: 1px;
+                            border-color: #166534;
+                            height: 24px;
+
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                alignment: center;
+                                Text {
+                                    text: "Ready to Download";
+                                    color: #4ade80;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        ActionButton {
+                            text: "Dismiss";
+                            icon: @image-url("../icons/x.svg");
+                            has_icon: true;
+                            height: 24px;
+                            clicked => {
+                                root.clear_analysis();
                             }
                         }
                     }
@@ -509,6 +544,16 @@ export component HomeTab inherits VerticalLayout {
                     spacing: 10px;
 
                     ActionButton {
+                        text: "Cancel";
+                        icon: @image-url("../icons/x.svg");
+                        has_icon: true;
+                        height: 38px;
+                        clicked => {
+                            root.clear_analysis();
+                        }
+                    }
+
+                    ActionButton {
                         text: root.is_playlist ? ("Download All " + root.playlist_count + " Episodes") : "Start Download";
                         icon: @image-url("../icons/download.svg");
                         has_icon: true;
@@ -528,7 +573,7 @@ export component HomeTab inherits VerticalLayout {
             border-radius: 12px;
             border-width: 1px;
             border-color: #22283a;
-            vertical-stretch: 1;
+            height: 200px;
 
             VerticalLayout {
                 alignment: center;
@@ -731,5 +776,6 @@ export component HomeTab inherits VerticalLayout {
             }
         }
     }
+}
 }
 }

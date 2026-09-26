@@ -5,27 +5,18 @@ export component NavButton inherits Rectangle {
     in property <int> badge_count: 0;
     callback clicked();
 
-    background: root.active ? #252b45 :
-                touch.has-hover ? #1c2132 : transparent;
-    animate background { duration: 140ms; }
+    background: root.active ? #242c46 :
+                touch.has-hover ? #191e2e : transparent;
+    animate background { duration: 120ms; }
     border-radius: 8px;
     border-width: 1px;
-    border-color: root.active ? #38426a : transparent;
-    animate border-color { duration: 140ms; }
-    height: 40px;
-
-    // Active accent indicator bar on left edge
-    if root.active: Rectangle {
-        x: 4px;
-        y: (parent.height - self.height) / 2;
-        width: 3px;
-        height: 18px;
-        border-radius: 2px;
-        background: #7082ff;
-    }
+    border-color: root.active ? #3b4872 :
+                  touch.has-hover ? #252c40 : transparent;
+    animate border-color { duration: 120ms; }
+    height: 38px;
 
     HorizontalLayout {
-        padding-left: root.active ? 16px : 14px;
+        padding-left: 12px;
         padding-right: 12px;
         spacing: 12px;
         alignment: space-between;
@@ -40,18 +31,18 @@ export component NavButton inherits Rectangle {
                     source: root.icon;
                     width: 16px;
                     height: 16px;
-                    colorize: root.active ? #7082ff : (touch.has-hover ? #ffffff : #8c93a8);
-                    animate colorize { duration: 140ms; }
+                    colorize: root.active ? #7082ff : (touch.has-hover ? #ffffff : #8c94a9);
+                    animate colorize { duration: 120ms; }
                 }
             }
 
             Text {
                 text: root.text;
-                color: root.active ? #ffffff : (touch.has-hover ? #f1f5f9 : #949db2);
+                color: root.active ? #ffffff : (touch.has-hover ? #f1f5f9 : #94a0b8);
                 font-size: 13px;
                 font-weight: root.active ? 600 : 500;
                 vertical-alignment: center;
-                animate color { duration: 140ms; }
+                animate color { duration: 120ms; }
             }
         }
 

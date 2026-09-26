@@ -487,6 +487,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     });
 
+    // Callback: Clear / Cancel Analysis
+    let weak_clear = main_window.as_weak();
+    let meta_clear = current_metadata.clone();
+    main_window.on_clear_analysis(move || {
+        if let Ok(mut meta) = meta_clear.try_lock() {
+            *meta = None;
+        } else {
+            let meta_async = meta_clear.clone();
+            tokio::spawn(async move {
+                let mut meta = meta_async.lock().await;
+                *meta = None;
+            });
+        }
+        if let Some(window) = weak_clear.upgrade() {
+            window.set_has_metadata(false);
+            window.set_is_analyzing(false);
+            window.set_video_title("".into());
+            window.set_video_duration("".into());
+            window.set_video_resolution("".into());
+            window.set_has_thumbnail(false);
+            window.set_thumbnail_image(slint::Image::default());
+            window.set_has_subtitles(false);
+            window.set_subtitles_summary("".into());
+            window.set_is_playlist(false);
+            window.set_playlist_count(0);
+            window.set_status_message("Analysis cleared. Ready to download media.".into());
+        }
+    });
+
     // Callback: Paste from Clipboard into URL input & Auto-Analyze
     let weak_paste = main_window.as_weak();
     let meta_paste = current_metadata.clone();
