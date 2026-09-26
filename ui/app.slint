@@ -139,6 +139,7 @@ export component AppWindow inherits Window {
     // Settings properties
     in-out property <string> download_dir_path: "~/Downloads";
     in-out property <int> selected_speed_limit_index: 0;
+    in-out property <int> selected_concurrency: 3;
 
     callback analyze_url(string);
     callback paste_from_clipboard();
@@ -168,6 +169,7 @@ export component AppWindow inherits Window {
     callback reset_download_dir();
     callback open_current_download_dir();
     callback set_speed_limit(int);
+    callback set_max_concurrency(int);
     callback test_notification();
 
     callback clear_logs();
@@ -1335,6 +1337,72 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                // Concurrent Download Workers Card
+                Rectangle {
+                    background: #1c202d;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: #2b3044;
+
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 14px;
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: "⚡ Concurrent Download Workers";
+                                color: #ffffff;
+                                font-size: 16px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "Maximum number of simultaneous downloads processed in parallel";
+                                color: #8c93a8;
+                                font-size: 13px;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            QualityChip {
+                                text: "1 (Sequential)";
+                                selected: root.selected_concurrency == 1;
+                                clicked => {
+                                    root.selected_concurrency = 1;
+                                    root.set_max_concurrency(1);
+                                }
+                            }
+                            QualityChip {
+                                text: "2 Parallel";
+                                selected: root.selected_concurrency == 2;
+                                clicked => {
+                                    root.selected_concurrency = 2;
+                                    root.set_max_concurrency(2);
+                                }
+                            }
+                            QualityChip {
+                                text: "3 Parallel (Default)";
+                                selected: root.selected_concurrency == 3;
+                                clicked => {
+                                    root.selected_concurrency = 3;
+                                    root.set_max_concurrency(3);
+                                }
+                            }
+                            QualityChip {
+                                text: "5 Parallel (Fast)";
+                                selected: root.selected_concurrency == 5;
+                                clicked => {
+                                    root.selected_concurrency = 5;
+                                    root.set_max_concurrency(5);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Engine & Queue Defaults Card
                 Rectangle {
                     background: #1c202d;
@@ -1361,7 +1429,7 @@ export component AppWindow inherits Window {
                                 font-size: 13px;
                             }
                             Text {
-                                text: "3 Parallel Jobs (Auto-Queued)";
+                                text: root.selected_concurrency + " Parallel Jobs (Auto-Queued)";
                                 color: #38bdf8;
                                 font-size: 13px;
                                 font-weight: 600;

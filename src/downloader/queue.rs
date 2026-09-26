@@ -33,6 +33,10 @@ impl DownloadQueue {
         &self.jobs
     }
 
+    pub fn all_jobs_mut(&mut self) -> &mut [DownloadJob] {
+        &mut self.jobs
+    }
+
     pub fn next_queued_job(&self) -> Option<Uuid> {
         self.jobs
             .iter()

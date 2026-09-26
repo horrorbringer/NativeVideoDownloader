@@ -244,7 +244,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Shared state between UI callbacks and background tasks
     let current_metadata: Arc<Mutex<Option<VideoMetadata>>> = Arc::new(Mutex::new(None));
     let network_client = Arc::new(NetworkClient::new());
-    let download_manager = Arc::new(DownloadManager::new(3, db.clone())); // 3 bounded concurrent workers
+
+    // Restore max concurrency preference
+    let initial_concurrency = if let Ok(Some(saved)) = db.get_setting("max_concurrency").await {
+        saved.parse::<usize>().unwrap_or(3).clamp(1, 10)
+    } else {
+        3
+    };
+    main_window.set_selected_concurrency(initial_concurrency as i32);
+    let download_manager = Arc::new(DownloadManager::new(initial_concurrency, db.clone()));
 
     // Download directory management with persistence
     let initial_download_dir = if let Ok(Some(saved)) = db.get_setting("download_dir").await {
@@ -909,6 +917,25 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
             info!("Updated bandwidth speed limit: {}", label);
             let _ = weak.upgrade_in_event_loop(move |window| {
                 window.set_status_message(format!("Download speed limit set to: {}", label).into());
+            });
+        });
+    });
+
+    // Callback: Set Max Concurrent Download Workers
+    let db_conc = db.clone();
+    let mgr_conc = download_manager.clone();
+    let weak_conc = main_window.as_weak();
+    main_window.on_set_max_concurrency(move |limit| {
+        let db = db_conc.clone();
+        let mgr = mgr_conc.clone();
+        let weak = weak_conc.clone();
+        let count = (limit as usize).clamp(1, 10);
+        tokio::spawn(async move {
+            mgr.set_max_concurrency(count).await;
+            let _ = db.set_setting("max_concurrency", &count.to_string()).await;
+            info!("Updated concurrent worker limit to: {}", count);
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                window.set_status_message(format!("Concurrent workers limit set to: {} parallel", count).into());
             });
         });
     });

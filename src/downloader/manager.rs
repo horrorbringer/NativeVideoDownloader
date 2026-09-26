@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, Semaphore};
+use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -35,7 +35,7 @@ pub fn parse_speed_limit_bytes(limit_str: Option<&str>) -> Option<u64> {
 
 pub struct DownloadManager {
     queue: Arc<Mutex<DownloadQueue>>,
-    semaphore: Arc<Semaphore>,
+    max_concurrency: Arc<RwLock<usize>>,
     network_client: Arc<NetworkClient>,
     retry_policy: RetryPolicy,
     db: Arc<Database>,
@@ -47,7 +47,7 @@ impl DownloadManager {
     pub fn new(max_concurrent: usize, db: Arc<Database>) -> Self {
         Self {
             queue: Arc::new(Mutex::new(DownloadQueue::new())),
-            semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            max_concurrency: Arc::new(RwLock::new(max_concurrent.clamp(1, 10))),
             network_client: Arc::new(NetworkClient::new()),
             retry_policy: RetryPolicy::default(),
             db,
@@ -83,13 +83,26 @@ impl DownloadManager {
         guard.clone()
     }
 
+    pub async fn set_max_concurrency(self: &Arc<Self>, count: usize) {
+        let valid_count = count.clamp(1, 10);
+        *self.max_concurrency.write().await = valid_count;
+        info!("Updated max concurrent download workers to: {}", valid_count);
+        self.process_queue().await;
+        self.notify_update().await;
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_max_concurrency(&self) -> usize {
+        *self.max_concurrency.read().await
+    }
+
     pub async fn get_jobs_snapshot(&self) -> Vec<DownloadJob> {
         let queue = self.queue.lock().await;
         queue.all_jobs().to_vec()
     }
 
     /// Restore unfinished jobs from previous session (Crash Recovery)
-    pub async fn restore_unfinished_jobs(&self) -> Result<usize, AppError> {
+    pub async fn restore_unfinished_jobs(self: &Arc<Self>) -> Result<usize, AppError> {
         let unfinished = self.db.get_unfinished_jobs().await?;
         let count = unfinished.len();
         if count == 0 {
@@ -117,6 +130,7 @@ impl DownloadManager {
 
         info!("Crash recovery: restored {} unfinished downloads to queue", count);
         self.notify_update().await;
+        self.process_queue().await;
         Ok(count)
     }
 
@@ -155,12 +169,12 @@ impl DownloadManager {
         }
 
         self.notify_update().await;
-        self.spawn_worker(id).await;
+        self.process_queue().await;
 
         Ok(id)
     }
 
-    pub async fn pause_job(&self, id: Uuid) {
+    pub async fn pause_job(self: &Arc<Self>, id: Uuid) {
         let mut queue = self.queue.lock().await;
         if let Some(job) = queue.get_job_mut(id) {
             if job.status == DownloadStatus::Downloading || job.status == DownloadStatus::Queued {
@@ -177,6 +191,7 @@ impl DownloadManager {
         }
         drop(queue);
         self.notify_update().await;
+        self.process_queue().await;
     }
 
     pub async fn resume_job(self: &Arc<Self>, id: Uuid) {
@@ -191,10 +206,10 @@ impl DownloadManager {
             }
         }
         self.notify_update().await;
-        self.spawn_worker(id).await;
+        self.process_queue().await;
     }
 
-    pub async fn cancel_job(&self, id: Uuid) {
+    pub async fn cancel_job(self: &Arc<Self>, id: Uuid) {
         let mut queue = self.queue.lock().await;
         if let Some(job) = queue.get_job_mut(id) {
             info!("Cancelling download job {}", id);
@@ -209,9 +224,10 @@ impl DownloadManager {
         }
         drop(queue);
         self.notify_update().await;
+        self.process_queue().await;
     }
 
-    pub async fn pause_all(&self) {
+    pub async fn pause_all(self: &Arc<Self>) {
         let ids: Vec<Uuid> = {
             let queue = self.queue.lock().await;
             queue
@@ -227,18 +243,17 @@ impl DownloadManager {
     }
 
     pub async fn resume_all(self: &Arc<Self>) {
-        let ids: Vec<Uuid> = {
-            let queue = self.queue.lock().await;
-            queue
-                .all_jobs()
-                .iter()
-                .filter(|j| j.status == DownloadStatus::Paused)
-                .map(|j| j.id)
-                .collect()
-        };
-        for id in ids {
-            self.resume_job(id).await;
+        {
+            let mut queue = self.queue.lock().await;
+            for job in queue.all_jobs_mut() {
+                if job.status == DownloadStatus::Paused || matches!(job.status, DownloadStatus::Failed(_)) {
+                    job.status = DownloadStatus::Queued;
+                    let _ = self.db.upsert_job(job).await;
+                }
+            }
         }
+        self.notify_update().await;
+        self.process_queue().await;
     }
 
     pub async fn clear_completed(&self) {
@@ -248,27 +263,46 @@ impl DownloadManager {
         self.notify_update().await;
     }
 
-    async fn spawn_worker(self: &Arc<Self>, id: Uuid) {
+    pub async fn process_queue(self: &Arc<Self>) {
+        let max = *self.max_concurrency.read().await;
+        loop {
+            let job_id = {
+                let mut queue = self.queue.lock().await;
+                if queue.active_downloads_count() < max {
+                    if let Some(id) = queue.next_queued_job() {
+                        if let Some(j) = queue.get_job_mut(id) {
+                            j.status = DownloadStatus::Downloading;
+                            Some(id)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+
+            match job_id {
+                Some(id) => {
+                    self.spawn_worker(id);
+                }
+                None => break,
+            }
+        }
+    }
+
+    fn spawn_worker(self: &Arc<Self>, id: Uuid) {
         let manager = self.clone();
 
         tokio::spawn(async move {
-            // Acquire permit from bounded concurrency semaphore
-            let _permit = match manager.semaphore.clone().acquire_owned().await {
-                Ok(p) => p,
-                Err(_) => return,
-            };
-
-            // Check if job is still in Queued status (it might have been cancelled while waiting)
             let (url, destination, _total_bytes, is_extractor, is_audio_only, quality, download_subtitles) = {
                 let mut queue = manager.queue.lock().await;
                 let job = match queue.get_job_mut(id) {
                     Some(j) => j,
                     None => return,
                 };
-
-                if job.status != DownloadStatus::Queued {
-                    return;
-                }
 
                 let cancel_token = CancellationToken::new();
                 job.cancel_token = Some(cancel_token.clone());
@@ -494,6 +528,9 @@ impl DownloadManager {
                     }
                 }
             }
+
+            manager.process_queue().await;
+            manager.notify_update().await;
         });
     }
 }
