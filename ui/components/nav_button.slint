@@ -13,16 +13,16 @@ export component NavButton inherits Rectangle {
     border-color: root.active ? #3b4872 :
                   touch.has-hover ? #252c40 : transparent;
     animate border-color { duration: 120ms; }
-    height: 38px;
+    height: 36px;
 
     HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
-        spacing: 12px;
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
         alignment: space-between;
 
         HorizontalLayout {
-            spacing: 11px;
+            spacing: 10px;
             alignment: start;
 
             VerticalLayout {

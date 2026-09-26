@@ -118,22 +118,22 @@ export component AppWindow inherits Window {
     HorizontalLayout {
         // Sidebar Navigation
         Rectangle {
-            width: 210px;
+            width: 200px;
             background: #141724;
             border-width: 1px;
             border-color: #1e2436;
 
             VerticalLayout {
-                padding: 16px;
-                spacing: 8px;
+                padding: 10px;
+                spacing: 4px;
 
                 // App Title & Brand
                 HorizontalLayout {
                     alignment: start;
                     spacing: 10px;
-                    padding-bottom: 14px;
+                    padding-bottom: 10px;
                     padding-left: 2px;
-                    padding-top: 4px;
+                    padding-top: 2px;
 
                     Rectangle {
                         width: 32px;
@@ -263,8 +263,8 @@ export component AppWindow inherits Window {
 
         // Main Content Area
         VerticalLayout {
-            padding: 24px;
-            spacing: 18px;
+            padding: 16px;
+            spacing: 14px;
 
             // Header Bar
             HorizontalLayout {
@@ -278,7 +278,7 @@ export component AppWindow inherits Window {
                               root.active_tab == 2 ? "Download History" :
                               root.active_tab == 3 ? "Engine & Activity Logs" : "Application Settings";
                         color: #ffffff;
-                        font-size: 22px;
+                        font-size: 20px;
                         font-weight: 700;
                     }
                     Text {
@@ -287,7 +287,7 @@ export component AppWindow inherits Window {
                               root.active_tab == 2 ? "Past completed and archived downloads" :
                               root.active_tab == 3 ? "Real-time engine operations, streaming events, and diagnostics" : "Configure directories, concurrency, and defaults";
                         color: #8c93a8;
-                        font-size: 13px;
+                        font-size: 12px;
                     }
                 }
 
