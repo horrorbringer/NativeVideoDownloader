@@ -47,97 +47,97 @@ export component HomeTab inherits ScrollView {
 
         // Error / Alert Banner
         if root.has_error: Rectangle {
-        background: #2a151b;
-        border-radius: 10px;
-        border-width: 1px;
-        border-color: #ef4444;
-
-        HorizontalLayout {
-            padding: 12px;
-            spacing: 12px;
-            alignment: space-between;
+            background: #2a151b;
+            border-radius: 10px;
+            border-width: 1px;
+            border-color: #ef4444;
 
             HorizontalLayout {
-                horizontal-stretch: 1;
+                padding: 12px;
                 spacing: 12px;
+                alignment: space-between;
 
-                VerticalLayout {
-                    alignment: center;
-                    Image {
-                        source: @image-url("../icons/alert.svg");
-                        width: 20px;
-                        height: 20px;
-                        colorize: #ef4444;
-                    }
-                }
-
-                VerticalLayout {
+                HorizontalLayout {
                     horizontal-stretch: 1;
-                    spacing: 2px;
-                    alignment: center;
+                    spacing: 12px;
 
-                    Text {
-                        text: "Analysis / Download Alert";
-                        color: #ef4444;
-                        font-size: 13px;
-                        font-weight: 700;
+                    VerticalLayout {
+                        alignment: center;
+                        Image {
+                            source: @image-url("../icons/alert.svg");
+                            width: 20px;
+                            height: 20px;
+                            colorize: #ef4444;
+                        }
                     }
-                    Text {
-                        text: root.error_message;
-                        color: #fca5a5;
-                        font-size: 12px;
-                        wrap: word-wrap;
+
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 2px;
+                        alignment: center;
+
+                        Text {
+                            text: "Analysis / Download Alert";
+                            color: #ef4444;
+                            font-size: 13px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: root.error_message;
+                            color: #fca5a5;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    ActionButton {
+                        text: "Logs";
+                        icon: @image-url("../icons/logs.svg");
+                        has_icon: true;
+                        height: 28px;
+                        clicked => { root.open_logs(); }
+                    }
+
+                    ActionButton {
+                        text: "Dismiss";
+                        icon: @image-url("../icons/x.svg");
+                        has_icon: true;
+                        height: 28px;
+                        clicked => { root.dismiss_error(); }
                     }
                 }
             }
+        }
 
-            HorizontalLayout {
-                spacing: 8px;
-                alignment: end;
+        // Mode switcher: Single URL vs Batch URLs
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
 
-                ActionButton {
-                    text: "Logs";
-                    icon: @image-url("../icons/logs.svg");
-                    has_icon: true;
-                    height: 28px;
-                    clicked => { root.open_logs(); }
-                }
+            IconChip {
+                text: "Single URL";
+                icon: @image-url("../icons/link.svg");
+                has_icon: true;
+                selected: !root.batch_mode;
+                clicked => { root.batch_mode = false; }
+            }
 
-                ActionButton {
-                    text: "Dismiss";
-                    icon: @image-url("../icons/x.svg");
-                    has_icon: true;
-                    height: 28px;
-                    clicked => { root.dismiss_error(); }
-                }
+            IconChip {
+                text: "Batch URLs (Bulk)";
+                icon: @image-url("../icons/layers.svg");
+                has_icon: true;
+                selected: root.batch_mode;
+                clicked => { root.batch_mode = true; }
             }
         }
-    }
 
-    // Mode switcher: Single URL vs Batch URLs
-    HorizontalLayout {
-        spacing: 8px;
-        alignment: start;
-
-        IconChip {
-            text: "Single URL";
-            icon: @image-url("../icons/link.svg");
-            has_icon: true;
-            selected: !root.batch_mode;
-            clicked => { root.batch_mode = false; }
-        }
-
-        IconChip {
-            text: "Batch URLs (Bulk)";
-            icon: @image-url("../icons/layers.svg");
-            has_icon: true;
-            selected: root.batch_mode;
-            clicked => { root.batch_mode = true; }
-        }
-    }
-
-    // --- SINGLE URL MODE ---
-    if !root.batch_mode: VerticalLayout {
+        // --- SINGLE URL MODE ---
+        if !root.batch_mode: VerticalLayout {
         alignment: start;
         spacing: 12px;
 

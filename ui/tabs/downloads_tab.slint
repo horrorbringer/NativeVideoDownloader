@@ -1,13 +1,19 @@
 import { LineEdit, ProgressIndicator, ScrollView } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
-import { DownloadItemData } from "../models.slint";
+import { DownloadItemData, SpeedSampleData } from "../models.slint";
 
 export component DownloadsTab inherits VerticalLayout {
     in-out property <[DownloadItemData]> download_items: [];
     in-out property <int> total_queue_count: 0;
     in-out property <int> queue_filter_index: 0;
     in-out property <string> queue_search_query: "";
+    in-out property <[SpeedSampleData]> speed_samples: [];
+    in-out property <string> current_total_speed_text: "0 B/s";
+    in-out property <string> peak_speed_text: "0 B/s";
+    in-out property <string> session_downloaded_text: "0 B";
+    in-out property <bool> show_speed_graph: true;
+    in-out property <bool> is_downloading_active: false;
 
     callback pause_all();
     callback resume_all();
@@ -20,7 +26,175 @@ export component DownloadsTab inherits VerticalLayout {
     callback resume_download(string);
     callback cancel_download(string);
 
-    spacing: 14px;
+    spacing: 12px;
+
+    // Live Bandwidth & Speed Graph Monitor Card
+    Rectangle {
+        background: #151928;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: #242c42;
+        height: root.show_speed_graph ? 114px : 42px;
+        animate height { duration: 150ms; }
+
+        VerticalLayout {
+            padding: 10px;
+            spacing: 8px;
+
+            // Header: Live Speed, Metrics, and Toggle
+            HorizontalLayout {
+                alignment: space-between;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+
+                    // Live Indicator & Speed text
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 4px;
+                                background: root.is_downloading_active ? #38bdf8 : #475569;
+                                animate background { duration: 200ms; }
+                            }
+                        }
+
+                        Text {
+                            text: root.current_total_speed_text;
+                            color: root.is_downloading_active ? #38bdf8 : #94a3b8;
+                            font-size: 15px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Peak speed pill
+                    Rectangle {
+                        background: #1c2236;
+                        border-radius: 4px;
+                        height: 22px;
+                        HorizontalLayout {
+                            padding-left: 7px;
+                            padding-right: 7px;
+                            alignment: center;
+                            Text {
+                                text: "Peak: " + root.peak_speed_text;
+                                color: #8e9bb3;
+                                font-size: 10px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Session total transferred pill
+                    Rectangle {
+                        background: #1c2236;
+                        border-radius: 4px;
+                        height: 22px;
+                        HorizontalLayout {
+                            padding-left: 7px;
+                            padding-right: 7px;
+                            alignment: center;
+                            Text {
+                                text: "Session: " + root.session_downloaded_text;
+                                color: #8e9bb3;
+                                font-size: 10px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // Show/Hide Graph Button
+                ActionButton {
+                    text: root.show_speed_graph ? "Hide Graph" : "Show Graph";
+                    icon: root.show_speed_graph ? @image-url("../icons/x.svg") : @image-url("../icons/bolt.svg");
+                    has_icon: true;
+                    height: 24px;
+                    clicked => {
+                        root.show_speed_graph = !root.show_speed_graph;
+                    }
+                }
+            }
+
+            // Real-time Bar Visualizer Area
+            if root.show_speed_graph: VerticalLayout {
+                spacing: 4px;
+
+                Rectangle {
+                    background: #0f131f;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: #1e2538;
+                    height: 48px;
+                    clip: true;
+
+                    HorizontalLayout {
+                        padding-left: 6px;
+                        padding-right: 6px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
+                        spacing: 2px;
+
+                        for sample in root.speed_samples: VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: end;
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                height: Math.max(3px, sample.ratio * 38px);
+                                border-radius: 2px;
+                                background: sample.ratio > 0.6 ? #60a5fa :
+                                            sample.ratio > 0.2 ? #3b82f6 :
+                                            sample.ratio > 0.01 ? #1d4ed8 : #1a2234;
+                                animate height { duration: 150ms; }
+                                animate background { duration: 150ms; }
+                            }
+                        }
+                    }
+                }
+
+                // Timeline markers
+                HorizontalLayout {
+                    alignment: space-between;
+                    padding-left: 8px;
+                    padding-right: 8px;
+
+                    Text {
+                        text: "-30s";
+                        color: #4b5568;
+                        font-size: 9px;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "-20s";
+                        color: #4b5568;
+                        font-size: 9px;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "-10s";
+                        color: #4b5568;
+                        font-size: 9px;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "Now";
+                        color: root.is_downloading_active ? #38bdf8 : #4b5568;
+                        font-size: 9px;
+                        font-weight: 700;
+                    }
+                }
+            }
+        }
+    }
 
     // Queue Toolbar
     HorizontalLayout {

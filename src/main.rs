@@ -7,10 +7,11 @@ mod models;
 mod network;
 pub mod notifications;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
@@ -386,6 +387,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     download_manager.set_speed_limit(manager_limit).await;
 
+    // Initialize speed samples for the graph with 30 idle points
+    let initial_samples: Vec<SpeedSampleData> = (0..30)
+        .map(|_| SpeedSampleData {
+            ratio: 0.0,
+            speed_text: "0 B/s".into(),
+        })
+        .collect();
+    main_window.set_speed_samples(ModelRc::from(Rc::new(VecModel::from(initial_samples))));
+
     // Crash Recovery: restore unfinished downloads from previous session
     match download_manager.restore_unfinished_jobs().await {
         Ok(count) if count > 0 => {
@@ -404,12 +414,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let queue_filter_idx: Arc<tokio::sync::RwLock<i32>> = Arc::new(tokio::sync::RwLock::new(0));
     let queue_search_term: Arc<tokio::sync::RwLock<String>> = Arc::new(tokio::sync::RwLock::new(String::new()));
 
+    // Speed history, peak tracking, and session bytes
+    let speed_history = Arc::new(tokio::sync::Mutex::new(VecDeque::from(vec![0.0f64; 30])));
+    let peak_speed_bytes = Arc::new(AtomicU64::new(0));
+    let session_downloaded_bytes = Arc::new(AtomicU64::new(0));
+
     // Wire up DownloadManager status updates -> Slint UI with frame-rate decoupling
     let window_weak_sync = main_window.as_weak();
     let mgr_for_sync = download_manager.clone();
-    let is_rendering = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let is_rendering = Arc::new(AtomicBool::new(false));
     let filter_sync = queue_filter_idx.clone();
     let search_sync = queue_search_term.clone();
+    let speed_hist_sync = speed_history.clone();
+    let peak_speed_sync = peak_speed_bytes.clone();
+    let session_bytes_sync = session_downloaded_bytes.clone();
 
     download_manager
         .set_update_listener(move || {
@@ -418,9 +436,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let rendering_flag = is_rendering.clone();
             let filter_lock = filter_sync.clone();
             let search_lock = search_sync.clone();
+            let speed_hist_lock = speed_hist_sync.clone();
+            let peak_lock = peak_speed_sync.clone();
+            let session_lock = session_bytes_sync.clone();
 
             // Skip queuing redundant frames if a frame render is already pending
-            if rendering_flag.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            if rendering_flag.swap(true, Ordering::SeqCst) {
                 return;
             }
 
@@ -431,6 +452,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .iter()
                     .filter(|j| j.status == DownloadStatus::Downloading)
                     .count() as i32;
+
+                let total_current_speed: f64 = jobs
+                    .iter()
+                    .filter(|j| j.status == DownloadStatus::Downloading)
+                    .map(|j| j.speed_bytes_sec)
+                    .sum();
+
+                let total_downloaded: u64 = jobs
+                    .iter()
+                    .map(|j| j.downloaded_bytes)
+                    .sum();
+
+                // Peak speed tracking
+                let current_peak = peak_lock.load(Ordering::Relaxed);
+                if (total_current_speed as u64) > current_peak {
+                    peak_lock.store(total_current_speed as u64, Ordering::Relaxed);
+                }
+                let peak_val = peak_lock.load(Ordering::Relaxed) as f64;
+
+                // Session downloaded tracking
+                let cur_session = session_lock.load(Ordering::Relaxed);
+                if total_downloaded > cur_session {
+                    session_lock.store(total_downloaded, Ordering::Relaxed);
+                }
+                let session_val = session_lock.load(Ordering::Relaxed);
+
+                // History shift
+                let mut hist = speed_hist_lock.lock().await;
+                hist.pop_front();
+                hist.push_back(total_current_speed);
+
+                let max_in_window = hist.iter().copied().fold(0.0f64, f64::max).max(200.0 * 1024.0);
+                let speed_samples: Vec<SpeedSampleData> = hist
+                    .iter()
+                    .map(|&spd| {
+                        let ratio = (spd / max_in_window).clamp(0.0, 1.0) as f32;
+                        SpeedSampleData {
+                            ratio,
+                            speed_text: DownloadProgress::format_speed_val(spd).into(),
+                        }
+                    })
+                    .collect();
+
+                let cur_speed_text = DownloadProgress::format_speed_val(total_current_speed);
+                let peak_speed_text = DownloadProgress::format_speed_val(peak_val);
+                let session_text = DownloadProgress::format_size(session_val);
+                let is_active = active_count > 0 && total_current_speed > 100.0;
 
                 let cur_filter = *filter_lock.read().await;
                 let cur_search = search_lock.read().await.trim().to_lowercase();
@@ -497,11 +565,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     window.set_download_items(ModelRc::from(model));
                     window.set_active_downloads_count(active_count);
                     window.set_total_queue_count(total_queue_count);
-                    reset_flag.store(false, std::sync::atomic::Ordering::SeqCst);
+
+                    let speed_model = Rc::new(VecModel::from(speed_samples));
+                    window.set_speed_samples(ModelRc::from(speed_model));
+                    window.set_current_total_speed_text(cur_speed_text.into());
+                    window.set_peak_speed_text(peak_speed_text.into());
+                    window.set_session_downloaded_text(session_text.into());
+                    window.set_is_downloading_active(is_active);
+
+                    reset_flag.store(false, Ordering::SeqCst);
                 });
             });
         })
         .await;
+
+    // Periodic background ticker (every 1000ms) to keep speed graph smooth and responsive
+    let ticker_mgr = download_manager.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(1000));
+        loop {
+            interval.tick().await;
+            ticker_mgr.notify_update().await;
+        }
+    });
 
     // Callback: Analyze URL
     let window_weak = main_window.as_weak();

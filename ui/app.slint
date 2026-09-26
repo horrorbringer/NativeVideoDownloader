@@ -1,4 +1,4 @@
-import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData } from "models.slint";
+import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData } from "models.slint";
 import { NavButton } from "components/nav_button.slint";
 import { HomeTab } from "tabs/home_tab.slint";
 import { DownloadsTab } from "tabs/downloads_tab.slint";
@@ -6,7 +6,7 @@ import { HistoryTab } from "tabs/history_tab.slint";
 import { LogsTab } from "tabs/logs_tab.slint";
 import { SettingsTab } from "tabs/settings_tab.slint";
 
-export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData }
+export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData }
 
 export component AppWindow inherits Window {
     title: "Native Video Downloader";
@@ -34,6 +34,12 @@ export component AppWindow inherits Window {
     in-out property <int> total_queue_count: 0;
     in-out property <int> queue_filter_index: 0;
     in-out property <string> queue_search_query: "";
+    in-out property <[SpeedSampleData]> speed_samples: [];
+    in-out property <string> current_total_speed_text: "0 B/s";
+    in-out property <string> peak_speed_text: "0 B/s";
+    in-out property <string> session_downloaded_text: "0 B";
+    in-out property <bool> show_speed_graph: true;
+    in-out property <bool> is_downloading_active: false;
 
     // History properties
     in-out property <[HistoryItemData]> history_items: [];
@@ -376,6 +382,12 @@ export component AppWindow inherits Window {
                 total_queue_count: root.total_queue_count;
                 queue_filter_index <=> root.queue_filter_index;
                 queue_search_query <=> root.queue_search_query;
+                speed_samples: root.speed_samples;
+                current_total_speed_text: root.current_total_speed_text;
+                peak_speed_text: root.peak_speed_text;
+                session_downloaded_text: root.session_downloaded_text;
+                show_speed_graph <=> root.show_speed_graph;
+                is_downloading_active: root.is_downloading_active;
 
                 pause_all() => { root.pause_all(); }
                 resume_all() => { root.resume_all(); }

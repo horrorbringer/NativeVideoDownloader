@@ -65,18 +65,21 @@ impl DownloadProgress {
         }
     }
 
-    pub fn format_speed(&self) -> String {
-        let b = self.speed_bytes_sec;
+    pub fn format_speed_val(speed: f64) -> String {
         const KB: f64 = 1024.0;
         const MB: f64 = KB * 1024.0;
 
-        if b >= MB {
-            format!("{:.2} MB/s", b / MB)
-        } else if b >= KB {
-            format!("{:.1} KB/s", b / KB)
+        if speed >= MB {
+            format!("{:.2} MB/s", speed / MB)
+        } else if speed >= KB {
+            format!("{:.1} KB/s", speed / KB)
         } else {
-            format!("{:.0} B/s", b)
+            format!("{:.0} B/s", speed)
         }
+    }
+
+    pub fn format_speed(&self) -> String {
+        Self::format_speed_val(self.speed_bytes_sec)
     }
 
     pub fn format_eta(&self) -> String {
