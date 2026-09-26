@@ -13,6 +13,7 @@ export component SettingsTab inherits ScrollView {
     callback set_speed_limit(int);
     callback set_max_concurrency(int);
     callback test_notification();
+    callback update_extractor();
 
     vertical-stretch: 1;
 
@@ -454,6 +455,31 @@ export component SettingsTab inherits ScrollView {
                         color: #38bdf8;
                         font-size: 12px;
                         font-weight: 600;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    VerticalLayout {
+                        spacing: 2px;
+                        alignment: center;
+                        Text {
+                            text: "Streaming Extractor (yt-dlp)";
+                            color: #949db2;
+                            font-size: 12px;
+                        }
+                        Text {
+                            text: "Keep site extractors and parsers up to date";
+                            color: #64748b;
+                            font-size: 10px;
+                        }
+                    }
+                    ActionButton {
+                        text: "Check for Updates";
+                        icon: @image-url("../icons/refresh.svg");
+                        has_icon: true;
+                        height: 28px;
+                        clicked => { root.update_extractor(); }
                     }
                 }
             }

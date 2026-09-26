@@ -38,12 +38,27 @@ pub type Result<T> = std::result::Result<T, AppError>;
 
 pub fn clean_user_error(err: &str) -> String {
     let lower = err.to_lowercase();
-    if lower.contains("no video formats found") {
-        "No compatible video streams found. The media may be DRM-protected, require login, or is unavailable in this region.".to_string()
+    if lower.contains("iq.com") || lower.contains("iqiyi") {
+        "iQIYI stream is DRM-protected or requires VIP login. DRM-encrypted content cannot be downloaded.".to_string()
+    } else if lower.contains("drm") || lower.contains("widevine") {
+        "This video stream is DRM-protected (encrypted) and cannot be downloaded.".to_string()
+    } else if lower.contains("phantomjs") {
+        "Stream requires an external JavaScript execution engine or is DRM-encrypted.".to_string()
+    } else if lower.contains("no video formats found") {
+        "No downloadable video formats found. Stream may be DRM-protected, require VIP login, or be region-locked.".to_string()
     } else if lower.contains("unsupported url") || lower.contains("is not a valid url") {
         "This URL format is not supported. Please verify the link and try again.".to_string()
-    } else if lower.contains("private video") || lower.contains("sign in") {
-        "This media is private or requires account authentication.".to_string()
+    } else if lower.contains("private video")
+        || lower.contains("sign in")
+        || lower.contains("members-only")
+        || lower.contains("registered users")
+    {
+        "This media is private or requires account authentication/subscription.".to_string()
+    } else if lower.contains("not available in your country")
+        || lower.contains("geo-restricted")
+        || lower.contains("blocked in your region")
+    {
+        "This video is not available in your region (Geo-restricted).".to_string()
     } else if lower.contains("timed out") || lower.contains("connection refused") {
         "Network connection timed out. Please check your internet connection.".to_string()
     } else {

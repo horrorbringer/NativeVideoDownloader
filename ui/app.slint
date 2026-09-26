@@ -110,6 +110,7 @@ export component AppWindow inherits Window {
     callback set_speed_limit(int);
     callback set_max_concurrency(int);
     callback test_notification();
+    callback update_extractor();
 
     callback clear_logs();
     callback copy_logs();
@@ -439,6 +440,7 @@ export component AppWindow inherits Window {
                 set_speed_limit(idx) => { root.set_speed_limit(idx); }
                 set_max_concurrency(c) => { root.set_max_concurrency(c); }
                 test_notification() => { root.test_notification(); }
+                update_extractor() => { root.update_extractor(); }
             }
 
             // Status bar at bottom

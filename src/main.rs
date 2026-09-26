@@ -1270,6 +1270,32 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
         });
     });
 
+    // Callback: Check / Update yt-dlp Extractor Engine
+    let weak_update = main_window.as_weak();
+    main_window.on_update_extractor(move || {
+        let weak = weak_update.clone();
+        tokio::spawn(async move {
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_status_message("Checking for yt-dlp extractor engine updates...".into());
+            });
+            match downloader::update_ytdlp_engine().await {
+                Ok(msg) => {
+                    info!("Extractor engine update: {}", msg);
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_status_message(format!("Extractor engine: {}", msg).into());
+                    });
+                }
+                Err(err) => {
+                    warn!("Failed to update extractor engine: {}", err);
+                    let err_str = err.to_string();
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_status_message(format!("Extractor update check: {}", err_str).into());
+                    });
+                }
+            }
+        });
+    });
+
     // Load initial history on startup
     let db_init_hist = db.clone();
     let weak_init_hist = main_window.as_weak();

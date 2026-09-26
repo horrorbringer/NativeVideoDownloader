@@ -232,7 +232,8 @@ pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
                     .trim()
             });
 
-        return Err(AppError::Generic(format!("Extractor: {}", first_err_line)));
+        let cleaned = clean_extractor_error(first_err_line);
+        return Err(AppError::Generic(cleaned));
     }
 
     let json_val: serde_json::Value = serde_json::from_slice(&output.stdout)
@@ -1251,6 +1252,19 @@ mod tests {
         let r6 = parse_episode_range("", 10);
         assert_eq!(r6.len(), 0);
     }
+
+    #[test]
+    fn test_clean_extractor_error() {
+        let iq_err = "[iq.com] z1b52xonyk: No video formats found!; please report this issue on https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using yt-dlp -U";
+        let cleaned = clean_extractor_error(iq_err);
+        assert!(cleaned.contains("iQIYI stream is DRM-protected"));
+
+        let drm_err = "ERROR: This video contains DRM protection (Widevine)";
+        assert!(clean_extractor_error(drm_err).contains("DRM-protected"));
+
+        let geo_err = "ERROR: This video is not available in your country";
+        assert!(clean_extractor_error(geo_err).to_lowercase().contains("geo-restricted"));
+    }
 }
 
 /// Parses an episode selection range string (e.g. "1-10", "1, 3, 5", "1-5, 10-15") into a set of 0-based indices
@@ -1289,4 +1303,75 @@ pub fn parse_episode_range(input: &str, total: usize) -> std::collections::HashS
 
     selected
 }
+
+/// Translates low-level or platform-specific extractor errors into clear, actionable user messages
+pub fn clean_extractor_error(raw_err: &str) -> String {
+    let lower = raw_err.to_lowercase();
+
+    if lower.contains("iq.com") || lower.contains("iqiyi") {
+        return "iQIYI stream is DRM-protected or requires VIP login. DRM-encrypted content cannot be downloaded.".to_string();
+    }
+    if lower.contains("phantomjs") {
+        return "Stream requires an external JavaScript execution engine or is DRM-encrypted.".to_string();
+    }
+    if lower.contains("this video is only available for registered users")
+        || lower.contains("sign in to confirm your age")
+        || lower.contains("members-only")
+        || lower.contains("private video")
+    {
+        return "This video is private, age-restricted, or requires a signed-in account/subscription.".to_string();
+    }
+    if lower.contains("drm") || lower.contains("widevine") {
+        return "This video stream is DRM-protected (encrypted) and cannot be downloaded.".to_string();
+    }
+    if lower.contains("no video formats found") {
+        return "No downloadable video formats found. Stream may be DRM-protected, require VIP login, or be region-locked.".to_string();
+    }
+    if lower.contains("not available in your country")
+        || lower.contains("geo-restricted")
+        || lower.contains("blocked in your region")
+    {
+        return "This video is not available in your region (Geo-restricted).".to_string();
+    }
+
+    // Strip verbose yt-dlp issue template boilerplate
+    let clean = raw_err
+        .split("; please report this issue")
+        .next()
+        .unwrap_or(raw_err)
+        .split("; confirm you are on the latest version")
+        .next()
+        .unwrap_or(raw_err)
+        .trim();
+
+    format!("Extractor: {}", clean)
+}
+
+/// Updates the yt-dlp binary to the latest official release via `yt-dlp -U`
+pub async fn update_ytdlp_engine() -> Result<String> {
+    let ytdlp_bin = ensure_ytdlp_installed().await?;
+    info!("Running yt-dlp self-update check via {:?}", ytdlp_bin);
+    let output = Command::new(&ytdlp_bin)
+        .arg("-U")
+        .output()
+        .await?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if output.status.success() {
+        let msg = stdout
+            .lines()
+            .find(|l| l.contains("up to date") || l.contains("Updated") || l.contains("Updating to"))
+            .unwrap_or("yt-dlp is up to date")
+            .trim()
+            .to_string();
+        info!("yt-dlp update result: {}", msg);
+        Ok(msg)
+    } else {
+        let err_msg = stderr.lines().next().unwrap_or("Failed to check for updates").trim().to_string();
+        Err(AppError::Generic(err_msg))
+    }
+}
+
 
