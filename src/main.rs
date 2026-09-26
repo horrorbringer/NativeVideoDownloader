@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::info;
 
 slint::include_modules!();
 
@@ -47,12 +47,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Async analysis pipeline started for {}", url_str);
             tokio::time::sleep(Duration::from_millis(1200)).await;
 
-            // Extract simulated or basic metadata
+            // Extract simulated or basic metadata as owned String
             let filename = url_str
                 .split('/')
                 .last()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("media_stream.mp4");
+                .unwrap_or("media_stream.mp4")
+                .to_string();
 
             info!("Analysis complete for {}, extracted filename: {}", url_str, filename);
 
