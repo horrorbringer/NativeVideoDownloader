@@ -109,6 +109,12 @@ pub struct DownloadJob {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaylistEntry {
+    pub title: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoMetadata {
     pub url: String,
     pub title: String,
@@ -119,4 +125,7 @@ pub struct VideoMetadata {
     pub duration_seconds: Option<u64>,
     pub resolution: Option<String>,
     pub ext: Option<String>,
+    pub is_playlist: bool,
+    pub playlist_count: usize,
+    pub playlist_entries: Vec<PlaylistEntry>,
 }

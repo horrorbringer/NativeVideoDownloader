@@ -6,6 +6,7 @@ component NavButton inherits Rectangle {
     callback clicked();
 
     background: active ? #2d3250 : touch.has-hover ? #25283b : transparent;
+    animate background { duration: 120ms; }
     border-radius: 8px;
     height: 42px;
 
@@ -34,6 +35,7 @@ component QualityChip inherits Rectangle {
     callback clicked();
 
     background: selected ? #4f58c7 : touch.has-hover ? #2d3348 : #232738;
+    animate background { duration: 120ms; }
     border-radius: 6px;
     height: 32px;
 
@@ -117,6 +119,8 @@ export component AppWindow inherits Window {
     // Batch mode & Quality selection
     in-out property <bool> batch_mode: false;
     in-out property <int> selected_format_index: 0;
+    in-out property <bool> is_playlist: false;
+    in-out property <int> playlist_count: 0;
 
     callback analyze_url(string);
     callback start_download(int);
@@ -413,7 +417,8 @@ export component AppWindow inherits Window {
                                     border-radius: 8px;
 
                                     Text {
-                                        text: root.selected_format_index == 4 ? "🎵 Audio" : "🎬 Video";
+                                        text: root.is_playlist ? "📺 Series" :
+                                              root.selected_format_index == 4 ? "🎵 Audio" : "🎬 Video";
                                         color: #a4adc7;
                                         font-size: 14px;
                                         vertical-alignment: center;
@@ -433,7 +438,8 @@ export component AppWindow inherits Window {
                                     }
 
                                     Text {
-                                        text: "Resolution: " + root.video_resolution + "  •  Duration: " + root.video_duration;
+                                        text: root.is_playlist ? ("Series • " + root.playlist_count + " Episodes Available") :
+                                              ("Resolution: " + root.video_resolution + "  •  Duration: " + root.video_duration);
                                         color: #949db2;
                                         font-size: 13px;
                                     }
@@ -442,7 +448,7 @@ export component AppWindow inherits Window {
 
                             // Format & Quality Selection Chips
                             Text {
-                                text: "Select Format & Quality:";
+                                text: root.is_playlist ? "Select Quality for All Episodes:" : "Select Format & Quality:";
                                 color: #c7cbd9;
                                 font-size: 12px;
                                 font-weight: 600;
@@ -483,7 +489,7 @@ export component AppWindow inherits Window {
                                 spacing: 10px;
 
                                 Button {
-                                    text: "Start Download";
+                                    text: root.is_playlist ? ("📥 Download All " + root.playlist_count + " Episodes") : "Start Download";
                                     height: 36px;
                                     clicked => {
                                         root.start_download(root.selected_format_index);

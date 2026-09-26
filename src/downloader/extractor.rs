@@ -197,7 +197,7 @@ fn create_ytdlp_cmd(ytdlp_bin: &Path) -> Command {
     cmd
 }
 
-/// Inspects a video streaming URL to fetch metadata (title, duration, resolution, approximate size)
+/// Inspects a video or album/playlist streaming URL to fetch metadata
 pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
     let ytdlp_bin = ensure_ytdlp_installed().await?;
 
@@ -205,7 +205,7 @@ pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
     let mut cmd = create_ytdlp_cmd(&ytdlp_bin);
     let output = cmd
         .arg("--dump-single-json")
-        .arg("--no-playlist")
+        .arg("--flat-playlist")
         .arg(url)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -238,28 +238,52 @@ pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
     let json_val: serde_json::Value = serde_json::from_slice(&output.stdout)
         .map_err(|e| AppError::Generic(format!("Failed to parse metadata JSON: {}", e)))?;
 
+    let is_playlist = json_val.get("_type").and_then(|v| v.as_str()) == Some("playlist");
+
     let title = json_val
         .get("title")
         .and_then(|v| v.as_str())
         .unwrap_or("media_video")
         .to_string();
 
+    let mut playlist_entries = Vec::new();
+    if is_playlist {
+        if let Some(arr) = json_val.get("entries").and_then(|v| v.as_array()) {
+            for item in arr {
+                let item_url = item.get("url").and_then(|v| v.as_str())
+                    .or_else(|| item.get("webpage_url").and_then(|v| v.as_str()));
+                let item_title = item.get("title").and_then(|v| v.as_str()).unwrap_or("Episode");
+                if let Some(u) = item_url {
+                    playlist_entries.push(crate::models::PlaylistEntry {
+                        title: item_title.to_string(),
+                        url: u.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    let playlist_count = playlist_entries.len();
+
     let duration_secs = json_val
         .get("duration")
         .and_then(|v| v.as_u64());
 
-    let resolution = json_val
-        .get("resolution")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .or_else(|| {
-            let w = json_val.get("width").and_then(|v| v.as_u64());
-            let h = json_val.get("height").and_then(|v| v.as_u64());
-            match (w, h) {
-                (Some(w), Some(h)) => Some(format!("{}x{}", w, h)),
-                _ => None,
-            }
-        });
+    let resolution = if is_playlist {
+        Some(format!("{} Episodes Series", playlist_count))
+    } else {
+        json_val
+            .get("resolution")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                let w = json_val.get("width").and_then(|v| v.as_u64());
+                let h = json_val.get("height").and_then(|v| v.as_u64());
+                match (w, h) {
+                    (Some(w), Some(h)) => Some(format!("{}x{}", w, h)),
+                    _ => None,
+                }
+            })
+    };
 
     let filesize = json_val
         .get("filesize")
@@ -282,6 +306,9 @@ pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
         duration_seconds: duration_secs,
         resolution,
         ext: Some(ext),
+        is_playlist,
+        playlist_count,
+        playlist_entries,
     })
 }
 
@@ -337,6 +364,9 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
         duration_seconds: None,
         resolution: Some("Web Stream".to_string()),
         ext: Some(ext),
+        is_playlist: false,
+        playlist_count: 0,
+        playlist_entries: Vec::new(),
     })
 }
 

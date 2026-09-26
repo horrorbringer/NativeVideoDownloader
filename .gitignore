@@ -1,1 +1,22 @@
+# Rust build artifacts
 /target
+Cargo.lock
+
+# App Distribution artifacts
+/dist
+
+# macOS files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Temporary files and logs
+*.log
+*.tmp
+*.part
+*.ytdl
+
+# Downloaded test outputs
+/Downloads/

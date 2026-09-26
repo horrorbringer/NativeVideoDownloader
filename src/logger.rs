@@ -16,6 +16,7 @@ pub struct LogItem {
 pub struct UiLogLayer {
     entries: Arc<Mutex<Vec<LogItem>>>,
     window: Arc<Mutex<Option<slint::Weak<AppWindow>>>>,
+    last_dispatch: Arc<Mutex<std::time::Instant>>,
 }
 
 impl UiLogLayer {
@@ -23,6 +24,7 @@ impl UiLogLayer {
         Self {
             entries: Arc::new(Mutex::new(Vec::with_capacity(500))),
             window: Arc::new(Mutex::new(None)),
+            last_dispatch: Arc::new(Mutex::new(std::time::Instant::now())),
         }
     }
 
@@ -73,6 +75,17 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for UiLogLayer {
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
         let metadata = event.metadata();
+        let target = metadata.target();
+
+        // Strictly ignore high-volume GUI/network/internal crates
+        if !target.starts_with("native_video_downloader") {
+            return;
+        }
+
+        if *metadata.level() > tracing::Level::INFO {
+            return;
+        }
+
         let level = metadata.level().to_string();
 
         struct MessageVisitor(String);
@@ -119,39 +132,60 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for UiLogLayer {
             lock.push(item);
         }
 
-        if let Ok(guard) = self.window.lock() {
-            if let Some(weak) = guard.as_ref() {
-                let is_error = level == "ERROR";
-                let msg = clean_msg.clone();
-                let entries_clone = self.entries.clone();
+        let is_error = level == "ERROR";
+        let should_dispatch = if is_error {
+            true
+        } else if let Ok(mut last) = self.last_dispatch.lock() {
+            if last.elapsed() >= std::time::Duration::from_millis(150) {
+                *last = std::time::Instant::now();
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
 
-                let _ = weak.upgrade_in_event_loop(move |win| {
-                    if is_error {
-                        win.set_has_error(true);
-                        win.set_error_message(msg.into());
-                    }
-                    if let Ok(list) = entries_clone.lock() {
-                        let ui_items: Vec<LogEntryData> = list
-                            .iter()
-                            .map(|it| LogEntryData {
-                                timestamp: it.timestamp.clone().into(),
-                                level: it.level.clone().into(),
-                                message: it.message.clone().into(),
-                            })
-                            .collect();
-                        win.set_log_entries(slint::ModelRc::from(std::rc::Rc::new(
-                            slint::VecModel::from(ui_items),
-                        )));
-                    }
-                });
+        if should_dispatch {
+            if let Ok(guard) = self.window.lock() {
+                if let Some(weak) = guard.as_ref() {
+                    let msg = clean_msg.clone();
+                    let entries_clone = self.entries.clone();
+
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        if is_error {
+                            win.set_has_error(true);
+                            win.set_error_message(msg.into());
+                        }
+                        if let Ok(list) = entries_clone.lock() {
+                            let ui_items: Vec<LogEntryData> = list
+                                .iter()
+                                .map(|it| LogEntryData {
+                                    timestamp: it.timestamp.clone().into(),
+                                    level: it.level.clone().into(),
+                                    message: it.message.clone().into(),
+                                })
+                                .collect();
+                            win.set_log_entries(slint::ModelRc::from(std::rc::Rc::new(
+                                slint::VecModel::from(ui_items),
+                            )));
+                        }
+                    });
+                }
             }
         }
     }
 }
 
 pub fn init_subscribers(ui_layer: UiLogLayer) {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| {
+            tracing_subscriber::EnvFilter::new("warn,native_video_downloader=info")
+        });
+
     let fmt_layer = tracing_subscriber::fmt::layer();
     let subscriber = tracing_subscriber::registry()
+        .with(filter)
         .with(fmt_layer)
         .with(ui_layer);
 

@@ -266,8 +266,12 @@ impl DownloadManager {
                     None => CancellationToken::new(),
                 };
 
+                let last_notify_stream = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+                let last_notify_net = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+
                 let mgr_progress = manager.clone();
                 let download_res = if is_extractor {
+                    let last_time = last_notify_stream.clone();
                     crate::downloader::extractor::download_stream(
                         &url,
                         &destination,
@@ -276,6 +280,7 @@ impl DownloadManager {
                         cancel_token,
                         move |progress| {
                             let mgr = mgr_progress.clone();
+                            let last_t = last_time.clone();
                             tokio::spawn(async move {
                                 let mut queue = mgr.queue.lock().await;
                                 if let Some(j) = queue.get_job_mut(id) {
@@ -284,7 +289,19 @@ impl DownloadManager {
                                     }
                                 }
                                 drop(queue);
-                                mgr.notify_update().await;
+
+                                let should_notify = {
+                                    let mut guard = last_t.lock().unwrap();
+                                    if guard.elapsed() >= std::time::Duration::from_millis(60) {
+                                        *guard = std::time::Instant::now();
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                };
+                                if should_notify {
+                                    mgr.notify_update().await;
+                                }
                             });
                         },
                     )
@@ -300,6 +317,7 @@ impl DownloadManager {
                         ()
                     })
                 } else {
+                    let last_time = last_notify_net.clone();
                     manager
                         .network_client
                         .download_file(
@@ -309,6 +327,7 @@ impl DownloadManager {
                             true, // Preserve .part file on cancel/pause for resume
                             move |progress| {
                                 let mgr = mgr_progress.clone();
+                                let last_t = last_time.clone();
                                 tokio::spawn(async move {
                                     let mut queue = mgr.queue.lock().await;
                                     if let Some(j) = queue.get_job_mut(id) {
@@ -317,7 +336,19 @@ impl DownloadManager {
                                         }
                                     }
                                     drop(queue);
-                                    mgr.notify_update().await;
+
+                                    let should_notify = {
+                                        let mut guard = last_t.lock().unwrap();
+                                        if guard.elapsed() >= std::time::Duration::from_millis(60) {
+                                            *guard = std::time::Instant::now();
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    };
+                                    if should_notify {
+                                        mgr.notify_update().await;
+                                    }
                                 });
                             },
                         )

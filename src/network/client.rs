@@ -87,6 +87,9 @@ impl NetworkClient {
             duration_seconds: None,
             resolution: None,
             ext: None,
+            is_playlist: false,
+            playlist_count: 0,
+            playlist_entries: Vec::new(),
         })
     }
 
@@ -158,6 +161,7 @@ impl NetworkClient {
 
         // Inform initial progress
         on_progress(progress_calc.update(0));
+        let mut last_prog_instant = std::time::Instant::now();
 
         loop {
             tokio::select! {
@@ -175,10 +179,14 @@ impl NetworkClient {
                             let len = chunk.len();
                             file.write_all(&chunk).await?;
                             let prog = progress_calc.update(len);
-                            on_progress(prog);
+                            if last_prog_instant.elapsed() >= std::time::Duration::from_millis(60) {
+                                last_prog_instant = std::time::Instant::now();
+                                on_progress(prog);
+                            }
                         }
                         Ok(None) => {
-                            // Stream completed successfully
+                            // Stream completed successfully - emit final 100% progress
+                            on_progress(progress_calc.update(0));
                             break;
                         }
                         Err(err) => {

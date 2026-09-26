@@ -96,14 +96,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => {}
     }
 
-    // Wire up DownloadManager status updates -> Slint UI
+    // Wire up DownloadManager status updates -> Slint UI with frame-rate decoupling
     let window_weak_sync = main_window.as_weak();
     let mgr_for_sync = download_manager.clone();
+    let is_rendering = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     download_manager
         .set_update_listener(move || {
             let weak = window_weak_sync.clone();
             let mgr = mgr_for_sync.clone();
+            let rendering_flag = is_rendering.clone();
+
+            // Skip queuing redundant frames if a frame render is already pending
+            if rendering_flag.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
 
             tokio::spawn(async move {
                 let jobs = mgr.get_jobs_snapshot().await;
@@ -137,10 +144,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })
                     .collect();
 
+                let reset_flag = rendering_flag.clone();
                 let _ = weak.upgrade_in_event_loop(move |window| {
                     let model = Rc::new(VecModel::from(items));
                     window.set_download_items(ModelRc::from(model));
                     window.set_active_downloads_count(active_count);
+                    reset_flag.store(false, std::sync::atomic::Ordering::SeqCst);
                 });
             });
         })
@@ -174,6 +183,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             window.set_has_metadata(false);
             window.set_has_error(false);
             window.set_error_message("".into());
+            window.set_is_playlist(false);
+            window.set_playlist_count(0);
             window.set_status_message(format!("Inspecting media at {}...", url_str).into());
         }
 
@@ -215,11 +226,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match inspect_result {
                 Ok(metadata) => {
                     info!("Successfully inspected URL: {:?}", metadata);
-                    let title = metadata.title.clone();
+                    let is_playlist = metadata.is_playlist;
+                    let playlist_count = metadata.playlist_count as i32;
+                    let title = if is_playlist {
+                        format!("{} ({} Episodes)", metadata.title, playlist_count)
+                    } else {
+                        metadata.title.clone()
+                    };
+
                     let size_str = metadata
                         .content_length
                         .map(DownloadProgress::format_size)
-                        .unwrap_or_else(|| "Dynamic size".to_string());
+                        .unwrap_or_else(|| {
+                            if is_playlist {
+                                format!("{} episodes series", playlist_count)
+                            } else {
+                                "Dynamic size".to_string()
+                            }
+                        });
 
                     let res_str = metadata
                         .resolution
@@ -232,7 +256,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .map(downloader::format_duration)
                         .unwrap_or_default();
 
-                    let details_str = if !duration_str.is_empty() {
+                    let details_str = if is_playlist {
+                        format!("Series Album  •  {} Episodes", playlist_count)
+                    } else if !duration_str.is_empty() {
                         format!("{}  •  Duration: {}", size_str, duration_str)
                     } else if metadata.supports_ranges {
                         format!("{}  •  Resumable", size_str)
@@ -240,7 +266,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         format!("{}  •  Single-stream", size_str)
                     };
 
-                    let format_display = if metadata.is_extractor {
+                    let format_display = if is_playlist {
+                        format!("Album  •  {} Episodes", playlist_count)
+                    } else if metadata.is_extractor {
                         format!("Stream  •  {}", res_str)
                     } else {
                         format!("Format: {}", res_str)
@@ -253,11 +281,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         window.set_has_metadata(true);
                         window.set_has_error(false);
                         window.set_error_message("".into());
+                        window.set_is_playlist(is_playlist);
+                        window.set_playlist_count(playlist_count);
                         window.set_video_title(title.into());
                         window.set_video_resolution(format_display.into());
                         window.set_video_duration(details_str.into());
                         window.set_status_message(
-                            "Media analyzed successfully. Ready to download.".into(),
+                            if is_playlist {
+                                format!("Series analyzed: {} episodes found. Ready to download.", playlist_count).into()
+                            } else {
+                                "Media analyzed successfully. Ready to download.".into()
+                            },
                         );
                     });
                 }
@@ -317,6 +351,37 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
             };
 
             let download_dir = filesystem::default_download_dir();
+
+            // If album/series playlist, queue all episodes
+            if metadata.is_playlist {
+                let series_title = metadata.title.clone();
+                let mut queued_count = 0;
+                for entry in metadata.playlist_entries {
+                    let ep_title = format!("{} - {}", series_title, entry.title);
+                    if let Ok(_) = mgr
+                        .add_download(
+                            entry.url,
+                            ep_title,
+                            &download_dir,
+                            None,
+                            true,
+                            is_audio_only,
+                            quality.clone(),
+                        )
+                        .await
+                    {
+                        queued_count += 1;
+                    }
+                }
+                info!("Queued {} series episodes for download", queued_count);
+                let msg = format!("Queued {} episodes for download", queued_count);
+                let _ = weak.upgrade_in_event_loop(move |window| {
+                    window.set_status_message(msg.into());
+                    window.set_active_tab(1); // Switch to Downloads view
+                });
+                return;
+            }
+
             let is_extractor = metadata.is_extractor;
             match mgr
                 .add_download(
