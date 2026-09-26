@@ -285,6 +285,8 @@ impl Database {
                     PathBuf::from(path_str),
                     total_size.map(|s| s.max(0) as u64),
                     is_extractor,
+                    false,
+                    None,
                 );
                 job.id = id;
                 job.status = DownloadStatus::Paused; // Restore in paused state

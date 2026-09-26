@@ -1,9 +1,10 @@
-mod error;
-mod models;
-mod filesystem;
-mod network;
-mod downloader;
 mod database;
+mod downloader;
+mod error;
+mod filesystem;
+mod logger;
+mod models;
+mod network;
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -15,6 +16,7 @@ use uuid::Uuid;
 
 use database::Database;
 use downloader::DownloadManager;
+use logger::UiLogLayer;
 use models::{DownloadProgress, DownloadStatus, VideoMetadata};
 use network::NetworkClient;
 
@@ -61,10 +63,9 @@ async fn refresh_history(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize structured logging
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+    // Initialize structured logging with real-time UI streaming
+    let ui_log_layer = UiLogLayer::new();
+    logger::init_subscribers(ui_log_layer.clone());
 
     info!("Starting Native Video Downloader v0.1.0 (Rust + Slint)");
 
@@ -74,6 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize Slint UI window
     let main_window = AppWindow::new()?;
+    ui_log_layer.set_window(main_window.as_weak());
 
     // Shared state between UI callbacks and background tasks
     let current_metadata: Arc<Mutex<Option<VideoMetadata>>> = Arc::new(Mutex::new(None));
@@ -170,6 +172,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(window) = window_weak.upgrade() {
             window.set_is_analyzing(true);
             window.set_has_metadata(false);
+            window.set_has_error(false);
+            window.set_error_message("".into());
             window.set_status_message(format!("Inspecting media at {}...", url_str).into());
         }
 
@@ -247,6 +251,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = weak_for_async.upgrade_in_event_loop(move |window| {
                         window.set_is_analyzing(false);
                         window.set_has_metadata(true);
+                        window.set_has_error(false);
+                        window.set_error_message("".into());
                         window.set_video_title(title.into());
                         window.set_video_resolution(format_display.into());
                         window.set_video_duration(details_str.into());
@@ -258,9 +264,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(err) => {
                     warn!("Failed to inspect URL {}: {}", url_str, err);
                     let err_msg = format!("Inspection failed: {}", err);
+                    let err_for_box = err_msg.clone();
                     let _ = weak_for_async.upgrade_in_event_loop(move |window| {
                         window.set_is_analyzing(false);
                         window.set_has_metadata(false);
+                        window.set_has_error(true);
+                        window.set_error_message(err_for_box.into());
                         window.set_status_message(err_msg.into());
                     });
                 }
@@ -268,13 +277,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     });
 
+/// Helper: Map UI format index to (is_audio_only, quality_spec)
+fn map_format_index(idx: i32) -> (bool, Option<String>) {
+    match idx {
+        1 => (false, Some("1080p".to_string())),
+        2 => (false, Some("720p".to_string())),
+        3 => (false, Some("480p".to_string())),
+        4 => (true, None), // Audio Only (MP3)
+        _ => (false, None), // Best quality video
+    }
+}
+
     // Callback: Start Download (add to queue)
     let window_weak_dl = main_window.as_weak();
     let meta_clone_dl = current_metadata.clone();
     let mgr_clone_dl = download_manager.clone();
 
-    main_window.on_start_download(move || {
-        info!("User triggered 'Start Download'");
+    main_window.on_start_download(move |format_idx| {
+        let (is_audio_only, quality) = map_format_index(format_idx);
+        info!(
+            "User triggered 'Start Download' with format_idx: {} (audio_only: {}, quality: {:?})",
+            format_idx, is_audio_only, quality
+        );
 
         let weak = window_weak_dl.clone();
         let meta_arc = meta_clone_dl.clone();
@@ -301,6 +325,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &download_dir,
                     metadata.content_length,
                     is_extractor,
+                    is_audio_only,
+                    quality,
                 )
                 .await
             {
@@ -314,11 +340,79 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(err) => {
                     error!("Failed to queue download: {}", err);
                     let err_msg = format!("Failed to queue download: {}", err);
+                    let err_box = err_msg.clone();
                     let _ = weak.upgrade_in_event_loop(move |window| {
+                        window.set_has_error(true);
+                        window.set_error_message(err_box.into());
                         window.set_status_message(err_msg.into());
                     });
                 }
             }
+        });
+    });
+
+    // Callback: Start Batch Downloads
+    let window_weak_batch = main_window.as_weak();
+    let mgr_clone_batch = download_manager.clone();
+
+    main_window.on_start_batch_download(move |raw_text, format_idx| {
+        let text_val = raw_text.to_string();
+        let (is_audio_only, quality) = map_format_index(format_idx);
+        let weak = window_weak_batch.clone();
+        let mgr = mgr_clone_batch.clone();
+
+        tokio::spawn(async move {
+            let lines: Vec<String> = text_val
+                .lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty() && (l.starts_with("http://") || l.starts_with("https://")))
+                .collect();
+
+            if lines.is_empty() {
+                let _ = weak.upgrade_in_event_loop(|window| {
+                    window.set_has_error(true);
+                    window.set_error_message(
+                        "No valid URLs found in batch input (each URL must start with http:// or https://)".into(),
+                    );
+                });
+                return;
+            }
+
+            let download_dir = filesystem::default_download_dir();
+            let mut queued_count = 0;
+
+            for url in lines {
+                let title = url
+                    .split('/')
+                    .last()
+                    .and_then(|s| s.split('?').next())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("batch_media")
+                    .to_string();
+
+                let is_extractor = downloader::is_streaming_platform(&url);
+                if let Ok(_) = mgr
+                    .add_download(
+                        url,
+                        title,
+                        &download_dir,
+                        None,
+                        is_extractor,
+                        is_audio_only,
+                        quality.clone(),
+                    )
+                    .await
+                {
+                    queued_count += 1;
+                }
+            }
+
+            info!("Batch queue completed: {} URLs queued", queued_count);
+            let msg = format!("Queued {} batch download(s)", queued_count);
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                window.set_status_message(msg.into());
+                window.set_active_tab(1); // Switch to Downloads view
+            });
         });
     });
 
@@ -424,7 +518,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .to_string();
 
             let is_extractor = downloader::is_streaming_platform(&url);
-            match mgr.add_download(url, title, &download_dir, None, is_extractor).await {
+            match mgr
+                .add_download(url, title, &download_dir, None, is_extractor, false, None)
+                .await
+            {
                 Ok(id) => {
                     info!("Redownload queued with id: {}", id);
                     let _ = weak.upgrade_in_event_loop(move |window| {
@@ -466,6 +563,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::spawn(async move {
             let _ = db.clear_all_history().await;
             refresh_history(&db, None, weak).await;
+        });
+    });
+
+    // Callback: Clear Logs
+    let ui_logger_clear = ui_log_layer.clone();
+    main_window.on_clear_logs(move || {
+        ui_logger_clear.clear();
+    });
+
+    // Callback: Dismiss Error Alert
+    let weak_dismiss = main_window.as_weak();
+    main_window.on_dismiss_error(move || {
+        let _ = weak_dismiss.upgrade_in_event_loop(|win| {
+            win.set_has_error(false);
+            win.set_error_message("".into());
         });
     });
 

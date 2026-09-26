@@ -98,9 +98,19 @@ impl DownloadManager {
         output_dir: &PathBuf,
         total_bytes: Option<u64>,
         is_extractor: bool,
+        is_audio_only: bool,
+        quality: Option<String>,
     ) -> Result<Uuid, AppError> {
         let destination = validate_destination_path(output_dir, &title)?;
-        let job = DownloadJob::new(url, title, destination, total_bytes, is_extractor);
+        let job = DownloadJob::new(
+            url,
+            title,
+            destination,
+            total_bytes,
+            is_extractor,
+            is_audio_only,
+            quality,
+        );
         let id = job.id;
 
         // Persist to database
@@ -218,7 +228,7 @@ impl DownloadManager {
             };
 
             // Check if job is still in Queued status (it might have been cancelled while waiting)
-            let (url, destination, _total_bytes, is_extractor) = {
+            let (url, destination, _total_bytes, is_extractor, is_audio_only, quality) = {
                 let mut queue = manager.queue.lock().await;
                 let job = match queue.get_job_mut(id) {
                     Some(j) => j,
@@ -232,7 +242,14 @@ impl DownloadManager {
                 let cancel_token = CancellationToken::new();
                 job.cancel_token = Some(cancel_token.clone());
                 job.status = DownloadStatus::Downloading;
-                (job.url.clone(), job.output_path.clone(), job.total_bytes, job.is_extractor)
+                (
+                    job.url.clone(),
+                    job.output_path.clone(),
+                    job.total_bytes,
+                    job.is_extractor,
+                    job.is_audio_only,
+                    job.quality.clone(),
+                )
             };
 
             manager.notify_update().await;
@@ -254,6 +271,8 @@ impl DownloadManager {
                     crate::downloader::extractor::download_stream(
                         &url,
                         &destination,
+                        is_audio_only,
+                        quality.as_deref(),
                         cancel_token,
                         move |progress| {
                             let mgr = mgr_progress.clone();

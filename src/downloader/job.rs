@@ -21,6 +21,8 @@ pub struct DownloadJob {
     pub max_retries: u32,
     pub cancel_token: Option<CancellationToken>,
     pub is_extractor: bool,
+    pub is_audio_only: bool,
+    pub quality: Option<String>,
 }
 
 impl DownloadJob {
@@ -30,6 +32,8 @@ impl DownloadJob {
         output_path: PathBuf,
         total_bytes: Option<u64>,
         is_extractor: bool,
+        is_audio_only: bool,
+        quality: Option<String>,
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -46,6 +50,8 @@ impl DownloadJob {
             max_retries: 3,
             cancel_token: None,
             is_extractor,
+            is_audio_only,
+            quality,
         }
     }
 

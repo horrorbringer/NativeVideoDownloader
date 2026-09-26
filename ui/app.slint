@@ -1,4 +1,4 @@
-import { Button, LineEdit, ProgressIndicator, ScrollView } from "std-widgets.slint";
+import { Button, LineEdit, ProgressIndicator, ScrollView, TextEdit } from "std-widgets.slint";
 
 component NavButton inherits Rectangle {
     in property <string> text;
@@ -19,6 +19,33 @@ component NavButton inherits Rectangle {
             color: root.active ? #ffffff : #a0a5b5;
             font-size: 14px;
             font-weight: root.active ? 600 : 400;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component QualityChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected: false;
+    callback clicked();
+
+    background: selected ? #4f58c7 : touch.has-hover ? #2d3348 : #232738;
+    border-radius: 6px;
+    height: 32px;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: center;
+        Text {
+            text: root.text;
+            color: root.selected ? #ffffff : #a0a7ba;
+            font-size: 12px;
+            font-weight: root.selected ? 600 : 400;
             vertical-alignment: center;
         }
     }
@@ -51,6 +78,12 @@ export struct HistoryItemData {
     output_path: string,
 }
 
+export struct LogEntryData {
+    timestamp: string,
+    level: string,
+    message: string,
+}
+
 export component AppWindow inherits Window {
     title: "Native Video Downloader";
     preferred-width: 940px;
@@ -67,6 +100,10 @@ export component AppWindow inherits Window {
     in-out property <string> video_resolution: "";
     in-out property <bool> has_metadata: false;
 
+    // Error alert banner
+    in-out property <bool> has_error: false;
+    in-out property <string> error_message: "";
+
     // Queue & Downloads properties
     in-out property <[DownloadItemData]> download_items: [];
     in-out property <int> active_downloads_count: 0;
@@ -74,8 +111,16 @@ export component AppWindow inherits Window {
     // History properties
     in-out property <[HistoryItemData]> history_items: [];
 
+    // Real-time Logs properties
+    in-out property <[LogEntryData]> log_entries: [];
+
+    // Batch mode & Quality selection
+    in-out property <bool> batch_mode: false;
+    in-out property <int> selected_format_index: 0;
+
     callback analyze_url(string);
-    callback start_download();
+    callback start_download(int);
+    callback start_batch_download(string, int);
     callback pause_download(string);
     callback resume_download(string);
     callback cancel_download(string);
@@ -88,6 +133,9 @@ export component AppWindow inherits Window {
     callback redownload_history(string);
     callback delete_history_item(string);
     callback clear_all_history();
+
+    callback clear_logs();
+    callback dismiss_error();
 
     HorizontalLayout {
         // Sidebar Navigation
@@ -134,9 +182,15 @@ export component AppWindow inherits Window {
                 }
 
                 NavButton {
-                    text: "⚙️  Settings";
+                    text: "📋  Logs";
                     active: root.active_tab == 3;
                     clicked => { root.active_tab = 3; }
+                }
+
+                NavButton {
+                    text: "⚙️  Settings";
+                    active: root.active_tab == 4;
+                    clicked => { root.active_tab = 4; }
                 }
 
                 // Spacer
@@ -182,7 +236,8 @@ export component AppWindow inherits Window {
                     Text {
                         text: root.active_tab == 0 ? "Download Media" :
                               root.active_tab == 1 ? "Active Downloads" :
-                              root.active_tab == 2 ? "Download History" : "Application Settings";
+                              root.active_tab == 2 ? "Download History" :
+                              root.active_tab == 3 ? "Engine & Activity Logs" : "Application Settings";
                         color: #ffffff;
                         font-size: 22px;
                         font-weight: 700;
@@ -190,7 +245,8 @@ export component AppWindow inherits Window {
                     Text {
                         text: root.active_tab == 0 ? "Enter an authorized media URL to analyze and download" :
                               root.active_tab == 1 ? "Monitor ongoing queues, speeds and progress" :
-                              root.active_tab == 2 ? "Past completed and archived downloads" : "Configure directories, concurrency, and defaults";
+                              root.active_tab == 2 ? "Past completed and archived downloads" :
+                              root.active_tab == 3 ? "Real-time engine operations, streaming events, and diagnostics" : "Configure directories, concurrency, and defaults";
                         color: #8c93a8;
                         font-size: 13px;
                     }
@@ -201,150 +257,344 @@ export component AppWindow inherits Window {
             if root.active_tab == 0: VerticalLayout {
                 spacing: 16px;
 
-                // URL Input Card
-                Rectangle {
-                    background: #1c202d;
+                // Error / Alert Banner (shown when error occurs)
+                if root.has_error: Rectangle {
+                    background: #2a151b;
                     border-radius: 12px;
                     border-width: 1px;
-                    border-color: #2b3044;
+                    border-color: #ef4444;
 
-                    VerticalLayout {
-                        padding: 18px;
+                    HorizontalLayout {
+                        padding: 14px;
                         spacing: 12px;
+                        alignment: space-between;
 
-                        Text {
-                            text: "Source Media URL";
-                            color: #c7cbd9;
-                            font-size: 13px;
-                            font-weight: 600;
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text {
+                                text: "⚠️";
+                                font-size: 18px;
+                                vertical-alignment: center;
+                            }
+                            VerticalLayout {
+                                spacing: 2px;
+                                alignment: center;
+                                Text {
+                                    text: "Analysis / Download Alert";
+                                    color: #ef4444;
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                }
+                                Text {
+                                    text: root.error_message;
+                                    color: #fca5a5;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                }
+                            }
                         }
 
                         HorizontalLayout {
-                            spacing: 10px;
+                            spacing: 8px;
+                            alignment: end;
 
-                            url_input := LineEdit {
-                                placeholder_text: "https://example.com/video/123";
-                                font_size: 14px;
-                                height: 38px;
-                                accepted => {
-                                    root.analyze_url(self.text);
-                                }
+                            Button {
+                                text: "View Details in Logs";
+                                height: 30px;
+                                clicked => { root.active_tab = 3; }
                             }
 
                             Button {
-                                text: root.is_analyzing ? "Analyzing..." : "Analyze URL";
-                                enabled: !root.is_analyzing && url_input.text != "";
-                                height: 38px;
-                                clicked => {
-                                    root.analyze_url(url_input.text);
-                                }
-                            }
-                        }
-
-                        if root.is_analyzing: HorizontalLayout {
-                            ProgressIndicator {
-                                indeterminate: true;
-                                height: 6px;
+                                text: "✕";
+                                height: 30px;
+                                clicked => { root.dismiss_error(); }
                             }
                         }
                     }
                 }
 
-                // Video Analysis Result Card (shown when metadata is found)
-                if root.has_metadata: Rectangle {
-                    background: #1c202d;
-                    border-radius: 12px;
-                    border-width: 1px;
-                    border-color: #2b3044;
+                // Mode switcher: Single URL vs Batch URLs
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
 
-                    VerticalLayout {
-                        padding: 20px;
-                        spacing: 14px;
+                    QualityChip {
+                        text: "🔗 Single URL";
+                        selected: !root.batch_mode;
+                        clicked => { root.batch_mode = false; }
+                    }
 
-                        Text {
-                            text: "Media Information";
-                            color: #7082ff;
-                            font-size: 14px;
-                            font-weight: 700;
-                        }
+                    QualityChip {
+                        text: "📋 Batch URLs (Bulk)";
+                        selected: root.batch_mode;
+                        clicked => { root.batch_mode = true; }
+                    }
+                }
 
-                        HorizontalLayout {
-                            spacing: 16px;
+                // --- SINGLE URL MODE ---
+                if !root.batch_mode: VerticalLayout {
+                    spacing: 16px;
 
-                            // Video preview icon/box
-                            Rectangle {
-                                width: 140px;
-                                height: 90px;
-                                background: #262c3e;
-                                border-radius: 8px;
+                    // URL Input Card
+                    Rectangle {
+                        background: #1c202d;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: #2b3044;
 
-                                Text {
-                                    text: "🎬 Media";
-                                    color: #a4adc7;
-                                    font-size: 14px;
-                                    vertical-alignment: center;
-                                    horizontal-alignment: center;
+                        VerticalLayout {
+                            padding: 18px;
+                            spacing: 12px;
+
+                            Text {
+                                text: "Source Media URL";
+                                color: #c7cbd9;
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 10px;
+
+                                url_input := LineEdit {
+                                    placeholder_text: "https://example.com/video/123";
+                                    font_size: 14px;
+                                    height: 38px;
+                                    accepted => {
+                                        root.analyze_url(self.text);
+                                    }
+                                }
+
+                                Button {
+                                    text: root.is_analyzing ? "Analyzing..." : "Analyze URL";
+                                    enabled: !root.is_analyzing && url_input.text != "";
+                                    height: 38px;
+                                    clicked => {
+                                        root.analyze_url(url_input.text);
+                                    }
                                 }
                             }
 
-                            VerticalLayout {
-                                spacing: 6px;
-                                alignment: center;
+                            if root.is_analyzing: HorizontalLayout {
+                                ProgressIndicator {
+                                    indeterminate: true;
+                                    height: 6px;
+                                }
+                            }
+                        }
+                    }
 
+                    // Video Analysis Result Card (shown when metadata is found)
+                    if root.has_metadata: Rectangle {
+                        background: #1c202d;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: #2b3044;
+
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 14px;
+
+                            Text {
+                                text: "Media Information";
+                                color: #7082ff;
+                                font-size: 14px;
+                                font-weight: 700;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 16px;
+
+                                // Video preview icon/box
+                                Rectangle {
+                                    width: 140px;
+                                    height: 90px;
+                                    background: #262c3e;
+                                    border-radius: 8px;
+
+                                    Text {
+                                        text: root.selected_format_index == 4 ? "🎵 Audio" : "🎬 Video";
+                                        color: #a4adc7;
+                                        font-size: 14px;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: center;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    spacing: 6px;
+                                    alignment: center;
+
+                                    Text {
+                                        text: root.video_title != "" ? root.video_title : "Title unknown";
+                                        color: #ffffff;
+                                        font-size: 16px;
+                                        font-weight: 600;
+                                    }
+
+                                    Text {
+                                        text: "Resolution: " + root.video_resolution + "  •  Duration: " + root.video_duration;
+                                        color: #949db2;
+                                        font-size: 13px;
+                                    }
+                                }
+                            }
+
+                            // Format & Quality Selection Chips
+                            Text {
+                                text: "Select Format & Quality:";
+                                color: #c7cbd9;
+                                font-size: 12px;
+                                font-weight: 600;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+
+                                QualityChip {
+                                    text: "📹 Best Quality";
+                                    selected: root.selected_format_index == 0;
+                                    clicked => { root.selected_format_index = 0; }
+                                }
+                                QualityChip {
+                                    text: "📹 1080p FHD";
+                                    selected: root.selected_format_index == 1;
+                                    clicked => { root.selected_format_index = 1; }
+                                }
+                                QualityChip {
+                                    text: "📹 720p HD";
+                                    selected: root.selected_format_index == 2;
+                                    clicked => { root.selected_format_index = 2; }
+                                }
+                                QualityChip {
+                                    text: "📹 480p SD";
+                                    selected: root.selected_format_index == 3;
+                                    clicked => { root.selected_format_index = 3; }
+                                }
+                                QualityChip {
+                                    text: "🎵 Audio (MP3)";
+                                    selected: root.selected_format_index == 4;
+                                    clicked => { root.selected_format_index = 4; }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                alignment: end;
+                                spacing: 10px;
+
+                                Button {
+                                    text: "Start Download";
+                                    height: 36px;
+                                    clicked => {
+                                        root.start_download(root.selected_format_index);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Empty / Placeholder state when no video analyzed
+                    if !root.has_metadata && !root.is_analyzing: Rectangle {
+                        background: #181a24;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: #232736;
+                        height: 160px;
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 8px;
+
+                            Text {
+                                text: "🚀 Ready to analyze media";
+                                color: #5c647a;
+                                font-size: 15px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                            }
+                            Text {
+                                text: "Paste a video link above and click Analyze to choose quality or audio-only extraction";
+                                color: #4b5266;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // --- BATCH URLS MODE ---
+                if root.batch_mode: VerticalLayout {
+                    spacing: 16px;
+
+                    Rectangle {
+                        background: #1c202d;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: #2b3044;
+
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 14px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
                                 Text {
-                                    text: root.video_title != "" ? root.video_title : "Title unknown";
-                                    color: #ffffff;
-                                    font-size: 16px;
+                                    text: "Batch Download Queue (one link per line)";
+                                    color: #c7cbd9;
+                                    font-size: 14px;
                                     font-weight: 600;
                                 }
-
                                 Text {
-                                    text: "Resolution: " + root.video_resolution + "  •  Duration: " + root.video_duration;
-                                    color: #949db2;
-                                    font-size: 13px;
+                                    text: "Supports YouTube, streaming sites, direct media";
+                                    color: #6c738a;
+                                    font-size: 12px;
                                 }
                             }
-                        }
 
-                        HorizontalLayout {
-                            alignment: end;
-                            spacing: 10px;
+                            batch_input := TextEdit {
+                                font-size: 13px;
+                                height: 140px;
+                            }
 
-                            Button {
-                                text: "Start Download";
-                                height: 36px;
-                                clicked => {
-                                    root.start_download();
+                            Text {
+                                text: "Select Default Format for Batch:";
+                                color: #c7cbd9;
+                                font-size: 12px;
+                                font-weight: 600;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+
+                                QualityChip {
+                                    text: "📹 Best Quality";
+                                    selected: root.selected_format_index == 0;
+                                    clicked => { root.selected_format_index = 0; }
+                                }
+                                QualityChip {
+                                    text: "📹 720p HD";
+                                    selected: root.selected_format_index == 2;
+                                    clicked => { root.selected_format_index = 2; }
+                                }
+                                QualityChip {
+                                    text: "🎵 Audio (MP3)";
+                                    selected: root.selected_format_index == 4;
+                                    clicked => { root.selected_format_index = 4; }
                                 }
                             }
-                        }
-                    }
-                }
 
-                // Empty / Placeholder state when no video analyzed
-                if !root.has_metadata && !root.is_analyzing: Rectangle {
-                    background: #181a24;
-                    border-radius: 12px;
-                    border-width: 1px;
-                    border-color: #232736;
-                    height: 180px;
+                            HorizontalLayout {
+                                alignment: end;
+                                spacing: 10px;
 
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 8px;
-
-                        Text {
-                            text: "🚀 Ready to analyze media";
-                            color: #5c647a;
-                            font-size: 15px;
-                            font-weight: 600;
-                            horizontal-alignment: center;
-                        }
-                        Text {
-                            text: "Paste a video link above and click Analyze to view streams and qualities";
-                            color: #4b5266;
-                            font-size: 13px;
-                            horizontal-alignment: center;
+                                Button {
+                                    text: "📥 Queue All in Batch";
+                                    height: 38px;
+                                    clicked => {
+                                        root.start_batch_download(batch_input.text, root.selected_format_index);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -644,8 +894,115 @@ export component AppWindow inherits Window {
                 Rectangle { }
             }
 
-            // Tab 3: Settings
+            // Tab 3: Logs View
             if root.active_tab == 3: VerticalLayout {
+                spacing: 14px;
+
+                // Toolbar
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    Text {
+                        text: "Engine & Diagnostic Logs (" + root.log_entries.length + " entries)";
+                        color: #a0a7ba;
+                        font-size: 13px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+
+                    Button {
+                        text: "🧹 Clear Logs";
+                        height: 32px;
+                        clicked => { root.clear_logs(); }
+                    }
+                }
+
+                // If no logs recorded
+                if root.log_entries.length == 0: Rectangle {
+                    background: #1c202d;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: #2b3044;
+                    height: 220px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 8px;
+
+                        Text {
+                            text: "📋 No logs recorded yet";
+                            color: #5c647a;
+                            font-size: 15px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Engine operations, inspections, stream events, and errors will stream here live.";
+                            color: #4b5266;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                // If logs exist
+                if root.log_entries.length > 0: ScrollView {
+                    VerticalLayout {
+                        spacing: 6px;
+
+                        for entry in root.log_entries: Rectangle {
+                            background: #181b26;
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: entry.level == "ERROR" ? #7f1d1d :
+                                           entry.level == "WARN" ? #78350f : #232736;
+
+                            HorizontalLayout {
+                                padding: 8px;
+                                spacing: 10px;
+
+                                Text {
+                                    text: entry.timestamp;
+                                    color: #6c738a;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+
+                                Rectangle {
+                                    width: 52px;
+                                    height: 20px;
+                                    border-radius: 4px;
+                                    background: entry.level == "ERROR" ? #ef4444 :
+                                                entry.level == "WARN" ? #f59e0b : #3b82f6;
+
+                                    Text {
+                                        text: entry.level;
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                Text {
+                                    text: entry.message;
+                                    color: entry.level == "ERROR" ? #fca5a5 :
+                                           entry.level == "WARN" ? #fde68a : #cbd5e1;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { }
+            }
+
+            // Tab 4: Settings
+            if root.active_tab == 4: VerticalLayout {
                 spacing: 12px;
 
                 Rectangle {
@@ -698,7 +1055,7 @@ export component AppWindow inherits Window {
 
                     Text {
                         text: root.status_message;
-                        color: #79829c;
+                        color: root.has_error ? #f87171 : #79829c;
                         font-size: 12px;
                         vertical-alignment: center;
                     }

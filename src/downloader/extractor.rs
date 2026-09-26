@@ -186,12 +186,24 @@ pub fn format_duration(seconds: u64) -> String {
     }
 }
 
+/// Helper to construct a Command with `~/.native_video_downloader/bin` prepended to PATH
+fn create_ytdlp_cmd(ytdlp_bin: &Path) -> Command {
+    let mut cmd = Command::new(ytdlp_bin);
+    let bin_dir = get_bin_dir();
+    let current_path = std::env::var("PATH").unwrap_or_default();
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    let new_path = format!("{}{}{}", bin_dir.display(), separator, current_path);
+    cmd.env("PATH", new_path);
+    cmd
+}
+
 /// Inspects a video streaming URL to fetch metadata (title, duration, resolution, approximate size)
 pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
     let ytdlp_bin = ensure_ytdlp_installed().await?;
 
     info!("Inspecting streaming URL with yt-dlp: {}", url);
-    let output = Command::new(&ytdlp_bin)
+    let mut cmd = create_ytdlp_cmd(&ytdlp_bin);
+    let output = cmd
         .arg("--dump-single-json")
         .arg("--no-playlist")
         .arg(url)
@@ -452,6 +464,8 @@ fn html_escape_clean(input: &str) -> String {
 pub async fn download_stream<F>(
     url: &str,
     destination_path: &Path,
+    is_audio_only: bool,
+    quality: Option<&str>,
     cancel_token: CancellationToken,
     mut on_progress: F,
 ) -> Result<PathBuf>
@@ -481,10 +495,27 @@ where
 
     let output_template = parent.join(format!("{}.%(ext)s", filename_stem));
 
-    let mut cmd = Command::new(&ytdlp_bin);
+    let mut cmd = create_ytdlp_cmd(&ytdlp_bin);
     cmd.arg("--newline")
         .arg("--progress-template")
         .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s");
+
+    if is_audio_only {
+        cmd.arg("-x").arg("--audio-format").arg("mp3");
+    } else if let Some(q) = quality {
+        match q {
+            "1080p" => {
+                cmd.arg("-f").arg("bestvideo[height<=1080]+bestaudio/best[height<=1080]/best");
+            }
+            "720p" => {
+                cmd.arg("-f").arg("bestvideo[height<=720]+bestaudio/best[height<=720]/best");
+            }
+            "480p" => {
+                cmd.arg("-f").arg("bestvideo[height<=480]+bestaudio/best[height<=480]/best");
+            }
+            _ => {}
+        }
+    }
 
     if let Some(ffmpeg) = find_ffmpeg_path() {
         if let Some(ffmpeg_dir) = ffmpeg.parent() {
@@ -567,7 +598,7 @@ where
     }
 
     // Determine the actual downloaded file on disk
-    let candidate_extensions = ["mp4", "webm", "mkv", "m4a", "opus"];
+    let candidate_extensions = ["mp3", "mp4", "webm", "mkv", "m4a", "opus"];
     for ext in &candidate_extensions {
         let p = parent.join(format!("{}.{}", filename_stem, ext));
         if p.exists() {
