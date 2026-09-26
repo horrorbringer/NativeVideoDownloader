@@ -44,8 +44,18 @@ export component AppWindow inherits Window {
     in-out property <string> video_resolution: "";
     in-out property <bool> has_metadata: false;
 
+    // Active download properties
+    in-out property <bool> is_downloading: false;
+    in-out property <float> download_progress: 0.0;
+    in-out property <string> download_speed: "-- MB/s";
+    in-out property <string> download_size_text: "0 MB / 0 MB";
+    in-out property <string> download_eta: "--:--";
+    in-out property <string> download_filename: "";
+    in-out property <string> download_status: "Idle";
+
     callback analyze_url(string);
     callback start_download();
+    callback cancel_download();
 
     HorizontalLayout {
         // Sidebar Navigation
@@ -315,7 +325,70 @@ export component AppWindow inherits Window {
             if root.active_tab == 1: VerticalLayout {
                 spacing: 12px;
 
-                Rectangle {
+                if root.download_status != "Idle": Rectangle {
+                    background: #1c202d;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: #2b3044;
+
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 14px;
+
+                        HorizontalLayout {
+                            alignment: space-between;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                Text {
+                                    text: root.download_filename != "" ? root.download_filename : "Active Download";
+                                    color: #ffffff;
+                                    font-size: 15px;
+                                    font-weight: 600;
+                                }
+                                Text {
+                                    text: "Status: " + root.download_status;
+                                    color: root.download_status == "Completed" ? #4ade80 :
+                                           root.download_status == "Cancelled" ? #f87171 :
+                                           root.download_status == "Failed" ? #ef4444 : #60a5fa;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                }
+                            }
+
+                            if root.is_downloading: Button {
+                                text: "Cancel";
+                                height: 32px;
+                                clicked => {
+                                    root.cancel_download();
+                                }
+                            }
+                        }
+
+                        ProgressIndicator {
+                            progress: root.download_progress;
+                            height: 8px;
+                        }
+
+                        HorizontalLayout {
+                            alignment: space-between;
+
+                            Text {
+                                text: root.download_size_text;
+                                color: #949db2;
+                                font-size: 12px;
+                            }
+
+                            Text {
+                                text: "Speed: " + root.download_speed + "  •  ETA: " + root.download_eta;
+                                color: #949db2;
+                                font-size: 12px;
+                            }
+                        }
+                    }
+                }
+
+                if root.download_status == "Idle": Rectangle {
                     background: #1c202d;
                     border-radius: 12px;
                     border-width: 1px;
