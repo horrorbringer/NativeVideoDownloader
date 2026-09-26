@@ -840,6 +840,34 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
         ui_logger_clear.clear();
     });
 
+    // Callback: Copy Logs to System Clipboard
+    let ui_logger_copy = ui_log_layer.clone();
+    let weak_copy = main_window.as_weak();
+    main_window.on_copy_logs(move || {
+        let text = ui_logger_copy.get_formatted_logs();
+        if !text.is_empty() {
+            let count = text.lines().count();
+            let success = filesystem::write_clipboard_text(&text);
+            if success {
+                let _ = weak_copy.upgrade_in_event_loop(move |win| {
+                    win.set_status_message(format!("Copied {} log entries to clipboard", count).into());
+                });
+            }
+        }
+    });
+
+    // Callback: Filter Logs by Level
+    let ui_logger_filter = ui_log_layer.clone();
+    main_window.on_set_log_filter(move |level_idx| {
+        ui_logger_filter.set_filter(level_idx);
+    });
+
+    // Callback: Search Logs Text
+    let ui_logger_search = ui_log_layer.clone();
+    main_window.on_search_logs(move |query| {
+        ui_logger_search.set_search(query.to_string());
+    });
+
     // Callback: Browse Download Directory
     let dir_browse = current_download_dir.clone();
     let db_browse = db.clone();

@@ -17,6 +17,8 @@ pub struct UiLogLayer {
     entries: Arc<Mutex<Vec<LogItem>>>,
     window: Arc<Mutex<Option<slint::Weak<AppWindow>>>>,
     last_dispatch: Arc<Mutex<std::time::Instant>>,
+    filter_level: Arc<Mutex<i32>>,
+    search_query: Arc<Mutex<String>>,
 }
 
 impl UiLogLayer {
@@ -25,46 +27,131 @@ impl UiLogLayer {
             entries: Arc::new(Mutex::new(Vec::with_capacity(500))),
             window: Arc::new(Mutex::new(None)),
             last_dispatch: Arc::new(Mutex::new(std::time::Instant::now())),
+            filter_level: Arc::new(Mutex::new(0)),
+            search_query: Arc::new(Mutex::new(String::new())),
         }
     }
 
     pub fn set_window(&self, weak: slint::Weak<AppWindow>) {
         if let Ok(mut guard) = self.window.lock() {
-            *guard = Some(weak.clone());
+            *guard = Some(weak);
         }
-        let entries_clone = self.entries.clone();
-        let _ = weak.upgrade_in_event_loop(move |win| {
-            if let Ok(list) = entries_clone.lock() {
-                let ui_items: Vec<LogEntryData> = list
-                    .iter()
-                    .map(|it| LogEntryData {
-                        timestamp: it.timestamp.clone().into(),
-                        level: it.level.clone().into(),
-                        message: it.message.clone().into(),
-                    })
-                    .collect();
-                win.set_log_entries(slint::ModelRc::from(std::rc::Rc::new(
-                    slint::VecModel::from(ui_items),
-                )));
+        self.dispatch_update();
+    }
+
+    pub fn set_filter(&self, level_idx: i32) {
+        if let Ok(mut guard) = self.filter_level.lock() {
+            *guard = level_idx;
+        }
+        self.dispatch_update();
+    }
+
+    pub fn set_search(&self, query: String) {
+        if let Ok(mut guard) = self.search_query.lock() {
+            *guard = query;
+        }
+        self.dispatch_update();
+    }
+
+    pub fn get_formatted_logs(&self) -> String {
+        if let Ok(list) = self.entries.lock() {
+            let filter_level = *self.filter_level.lock().unwrap_or_else(|e| e.into_inner());
+            let query = self.search_query.lock().unwrap_or_else(|e| e.into_inner()).to_lowercase();
+
+            let lines: Vec<String> = list
+                .iter()
+                .filter(|it| {
+                    let matches_level = match filter_level {
+                        1 => it.level == "INFO",
+                        2 => it.level == "WARN",
+                        3 => it.level == "ERROR",
+                        _ => true,
+                    };
+                    if !matches_level {
+                        return false;
+                    }
+                    if !query.is_empty() {
+                        return it.message.to_lowercase().contains(&query)
+                            || it.timestamp.contains(&query)
+                            || it.level.to_lowercase().contains(&query);
+                    }
+                    true
+                })
+                .map(|it| format!("[{}] [{}] {}", it.timestamp, it.level, it.message))
+                .collect();
+            lines.join("\n")
+        } else {
+            String::new()
+        }
+    }
+
+    pub fn dispatch_update(&self) {
+        if let Ok(guard) = self.window.lock() {
+            if let Some(weak) = guard.as_ref() {
+                let entries_clone = self.entries.clone();
+                let filter_level = *self.filter_level.lock().unwrap_or_else(|e| e.into_inner());
+                let query = self.search_query.lock().unwrap_or_else(|e| e.into_inner()).to_lowercase();
+
+                let _ = weak.upgrade_in_event_loop(move |win| {
+                    if let Ok(list) = entries_clone.lock() {
+                        let total_count = list.len() as i32;
+                        let mut info_count = 0;
+                        let mut warn_count = 0;
+                        let mut error_count = 0;
+
+                        for it in list.iter() {
+                            match it.level.as_str() {
+                                "ERROR" => error_count += 1,
+                                "WARN" => warn_count += 1,
+                                _ => info_count += 1,
+                            }
+                        }
+
+                        win.set_log_total_count(total_count);
+                        win.set_log_info_count(info_count);
+                        win.set_log_warn_count(warn_count);
+                        win.set_log_error_count(error_count);
+
+                        let filtered: Vec<LogEntryData> = list
+                            .iter()
+                            .filter(|it| {
+                                let matches_level = match filter_level {
+                                    1 => it.level == "INFO",
+                                    2 => it.level == "WARN",
+                                    3 => it.level == "ERROR",
+                                    _ => true,
+                                };
+                                if !matches_level {
+                                    return false;
+                                }
+                                if !query.is_empty() {
+                                    return it.message.to_lowercase().contains(&query)
+                                        || it.timestamp.contains(&query)
+                                        || it.level.to_lowercase().contains(&query);
+                                }
+                                true
+                            })
+                            .map(|it| LogEntryData {
+                                timestamp: it.timestamp.clone().into(),
+                                level: it.level.clone().into(),
+                                message: it.message.clone().into(),
+                            })
+                            .collect();
+
+                        win.set_log_entries(slint::ModelRc::from(std::rc::Rc::new(
+                            slint::VecModel::from(filtered),
+                        )));
+                    }
+                });
             }
-        });
+        }
     }
 
     pub fn clear(&self) {
         if let Ok(mut guard) = self.entries.lock() {
             guard.clear();
         }
-        if let Ok(guard) = self.window.lock() {
-            if let Some(weak) = guard.as_ref() {
-                let _ = weak.upgrade_in_event_loop(|win| {
-                    win.set_log_entries(slint::ModelRc::from(std::rc::Rc::new(
-                        slint::VecModel::from(Vec::<LogEntryData>::new()),
-                    )));
-                    win.set_has_error(false);
-                    win.set_error_message("".into());
-                });
-            }
-        }
+        self.dispatch_update();
     }
 }
 
@@ -147,27 +234,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for UiLogLayer {
         };
 
         if should_dispatch {
-            if let Ok(guard) = self.window.lock() {
-                if let Some(weak) = guard.as_ref() {
-                    let entries_clone = self.entries.clone();
-
-                    let _ = weak.upgrade_in_event_loop(move |win| {
-                        if let Ok(list) = entries_clone.lock() {
-                            let ui_items: Vec<LogEntryData> = list
-                                .iter()
-                                .map(|it| LogEntryData {
-                                    timestamp: it.timestamp.clone().into(),
-                                    level: it.level.clone().into(),
-                                    message: it.message.clone().into(),
-                                })
-                                .collect();
-                            win.set_log_entries(slint::ModelRc::from(std::rc::Rc::new(
-                                slint::VecModel::from(ui_items),
-                            )));
-                        }
-                    });
-                }
-            }
+            self.dispatch_update();
         }
     }
 }

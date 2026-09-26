@@ -350,8 +350,57 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
 
     let html = resp.text().await?;
 
-    // 1. Scrape title
-    let title = extract_html_title(&html)
+    let page_title = extract_html_title(&html);
+
+    // 1. Check MacCMS player_aaaa configuration (used by donghuafun, animevietsub, etc.)
+    if let Some(maccms) = extract_maccms_player(&html) {
+        info!("Found MacCMS embedded player: {:?}", maccms.video_url);
+        if is_streaming_platform(&maccms.video_url) {
+            info!("Inspecting extracted streaming platform source: {}", maccms.video_url);
+            if let Ok(mut meta) = Box::pin(inspect_video(&maccms.video_url)).await {
+                if let Some(t) = maccms.title.or(page_title.clone()) {
+                    meta.title = t;
+                }
+                return Ok(meta);
+            }
+        }
+        if maccms.video_url.contains(".m3u8") || maccms.video_url.contains(".mp4") || maccms.video_url.contains(".webm") {
+            let title = maccms.title.or(page_title.clone()).unwrap_or_else(|| "web_video".to_string());
+            let ext = if maccms.video_url.contains(".m3u8") { "mp4".to_string() } else { "mp4".to_string() };
+            return Ok(VideoMetadata {
+                url: maccms.video_url,
+                title,
+                content_length: None,
+                content_type: Some(format!("video/{}", ext)),
+                supports_ranges: true,
+                is_extractor: true,
+                duration_seconds: None,
+                resolution: Some("Web Stream".to_string()),
+                ext: Some(ext),
+                is_playlist: false,
+                playlist_count: 0,
+                playlist_entries: Vec::new(),
+                has_subtitles: false,
+                subtitles_summary: String::new(),
+            });
+        }
+    }
+
+    // 2. Check embedded iframes for known streaming platforms
+    for iframe_url in extract_iframes_from_html(&html, page_url) {
+        if is_streaming_platform(&iframe_url) {
+            info!("Inspecting embedded iframe streaming source: {}", iframe_url);
+            if let Ok(mut meta) = Box::pin(inspect_video(&iframe_url)).await {
+                if let Some(t) = page_title.clone() {
+                    meta.title = t;
+                }
+                return Ok(meta);
+            }
+        }
+    }
+
+    // 3. Check for direct <source src>, <video src>, OpenGraph video, or .m3u8/.mp4
+    let title = page_title
         .or_else(|| {
             page_url
                 .split('/')
@@ -362,9 +411,16 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
         })
         .unwrap_or_else(|| "web_video".to_string());
 
-    // 2. Scrape stream candidates
     let stream_url = extract_stream_from_html(&html, page_url)
         .ok_or_else(|| AppError::Generic("No direct video or m3u8 stream found in webpage HTML".to_string()))?;
+
+    // If stream_url itself is a streaming platform link
+    if is_streaming_platform(&stream_url) {
+        if let Ok(mut meta) = Box::pin(inspect_video(&stream_url)).await {
+            meta.title = title;
+            return Ok(meta);
+        }
+    }
 
     info!("Scraper found stream source: {}", stream_url);
 
@@ -394,15 +450,148 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
     })
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct MacCmsInfo {
+    pub video_url: String,
+    pub title: Option<String>,
+}
+
+/// Extracts video source and series title from MacCMS player_aaaa configuration
+pub fn extract_maccms_player(html: &str) -> Option<MacCmsInfo> {
+    let key = "player_aaaa";
+    let pos = html.find(key)?;
+    let rest = &html[pos + key.len()..];
+    let eq_pos = rest.find('=')?;
+    let json_start = rest[eq_pos + 1..].find('{')? + eq_pos + 1;
+    let json_slice = &rest[json_start..];
+
+    let mut depth = 0;
+    let mut end_idx = 0;
+    for (i, c) in json_slice.char_indices() {
+        if c == '{' {
+            depth += 1;
+        } else if c == '}' {
+            depth -= 1;
+            if depth == 0 {
+                end_idx = i + 1;
+                break;
+            }
+        }
+    }
+
+    if end_idx == 0 {
+        return None;
+    }
+
+    let json_str = &json_slice[..end_idx];
+    let val: serde_json::Value = serde_json::from_str(json_str).ok()?;
+
+    let raw_url = val.get("url").and_then(|v| v.as_str())?.trim();
+    if raw_url.is_empty() {
+        return None;
+    }
+
+    let from = val.get("from").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+
+    let video_url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
+        raw_url.to_string()
+    } else if raw_url.starts_with("//") {
+        format!("https:{}", raw_url)
+    } else if from == "dailymotion" {
+        format!("https://www.dailymotion.com/video/{}", raw_url)
+    } else if from == "youtube" {
+        format!("https://www.youtube.com/watch?v={}", raw_url)
+    } else if from == "vimeo" {
+        format!("https://vimeo.com/{}", raw_url)
+    } else if from == "bilibili" {
+        format!("https://www.bilibili.com/video/{}", raw_url)
+    } else {
+        raw_url.to_string()
+    };
+
+    let title = val.get("vod_data")
+        .and_then(|vd| vd.get("vod_name"))
+        .and_then(|vn| vn.as_str())
+        .map(|name| {
+            if let Some(nid) = val.get("nid").and_then(|n| {
+                n.as_i64().map(|i| i.to_string()).or_else(|| n.as_str().map(|s| s.to_string()))
+            }) {
+                format!("{} EP{}", name, nid)
+            } else {
+                name.to_string()
+            }
+        });
+
+    Some(MacCmsInfo { video_url, title })
+}
+
+/// Searches for <iframe src="..."> embedding video streams or platforms
+pub fn extract_iframes_from_html(html: &str, base_url: &str) -> Vec<String> {
+    let mut iframes = Vec::new();
+    let mut cursor = 0;
+    while let Some(pos) = html[cursor..].find("<iframe") {
+        let tag_start = cursor + pos;
+        let tag_end = html[tag_start..].find('>').map(|e| tag_start + e).unwrap_or(html.len());
+        let tag_str = &html[tag_start..tag_end];
+        for marker in &["src=\"", "src='"] {
+            if let Some(src_idx) = tag_str.find(marker) {
+                let rest = &tag_str[src_idx + marker.len()..];
+                let quote = if marker.ends_with('"') { '"' } else { '\'' };
+                if let Some(q_end) = rest.find(quote) {
+                    let candidate = &rest[..q_end];
+                    if !candidate.is_empty()
+                        && !candidate.starts_with("about:")
+                        && !candidate.contains("google")
+                        && !candidate.contains("recaptcha")
+                        && !candidate.contains("analytics")
+                    {
+                        let full = resolve_relative_url(base_url, candidate);
+                        if !iframes.contains(&full) {
+                            iframes.push(full);
+                        }
+                    }
+                }
+            }
+        }
+        cursor = tag_end + 1;
+        if cursor >= html.len() {
+            break;
+        }
+    }
+    iframes
+}
+
+fn clean_scraped_title(raw: &str) -> String {
+    let mut title = raw.trim();
+    for delim in &[
+        " - Donghua Fun",
+        " - Watch Donghua Online Free",
+        " - Watch Online",
+        " - Free Watch",
+        " Streaming Guide and Episode Details",
+        " Episode Details",
+        " | Donghua",
+        " | Anime",
+    ] {
+        if let Some(pos) = title.find(delim) {
+            title = &title[..pos];
+        }
+    }
+    title.trim().to_string()
+}
+
 /// Helper to extract <title>...</title> or OpenGraph og:title from HTML
 fn extract_html_title(html: &str) -> Option<String> {
     // Check og:title
     if let Some(idx) = html.find("property=\"og:title\"") {
-        let snippet = &html[idx.saturating_sub(60)..idx.min(html.len()) + 120];
+        let snippet = &html[idx.saturating_sub(60)..idx.min(html.len()) + 180];
         if let Some(content_idx) = snippet.find("content=\"") {
             let rest = &snippet[content_idx + 9..];
             if let Some(end) = rest.find('"') {
-                return Some(html_escape_clean(&rest[..end]));
+                let cleaned = clean_scraped_title(&html_escape_clean(&rest[..end]));
+                if !cleaned.is_empty() {
+                    return Some(cleaned);
+                }
             }
         }
     }
@@ -411,7 +600,10 @@ fn extract_html_title(html: &str) -> Option<String> {
     if let Some(start) = html.find("<title>") {
         let rest = &html[start + 7..];
         if let Some(end) = rest.find("</title>") {
-            return Some(html_escape_clean(rest[..end].trim()));
+            let cleaned = clean_scraped_title(&html_escape_clean(rest[..end].trim()));
+            if !cleaned.is_empty() {
+                return Some(cleaned);
+            }
         }
     }
 
@@ -729,4 +921,29 @@ mod tests {
         assert_eq!(html_escape_clean(r"video\u0026amp;title"), "video&title");
         assert_eq!(html_escape_clean(r"https:\/\/cdn.example.com\/file.m3u8"), "https://cdn.example.com/file.m3u8");
     }
+
+    #[test]
+    fn test_extract_maccms_player() {
+        let sample = r#"
+            <script type="text/javascript">var player_aaaa={"flag":"play","encrypt":0,"trysee":0,"points":0,"link":"\/index.php\/vod\/play\/id\/10\/sid\/1\/nid\/1.html","link_next":"\/index.php\/vod\/play\/id\/10\/sid\/1\/nid\/3.html","link_pre":"\/index.php\/vod\/play\/id\/10\/sid\/1\/nid\/1.html","vod_data":{"vod_name":"Urban Miracle Doctor","vod_actor":"","vod_director":"","vod_class":"sci-fi,action,Fantasy,Donghua"},"url":"k475zizcIwkakjJWGN4","url_next":"krSm7a6gOr3MI1JWFVY","from":"dailymotion","server":"no","note":"","id":"10","sid":1,"nid":2}</script>
+        "#;
+        let info = extract_maccms_player(sample).expect("Should extract MacCMS player");
+        assert_eq!(info.video_url, "https://www.dailymotion.com/video/k475zizcIwkakjJWGN4");
+        assert_eq!(info.title, Some("Urban Miracle Doctor EP2".to_string()));
+    }
+
+    #[test]
+    fn test_extract_iframes_from_html() {
+        let sample = r#"
+            <div>
+                <iframe src="/player/embed?id=123" width="100%"></iframe>
+                <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>
+            </div>
+        "#;
+        let iframes = extract_iframes_from_html(sample, "https://example.com/watch");
+        assert_eq!(iframes.len(), 2);
+        assert_eq!(iframes[0], "https://example.com/player/embed?id=123");
+        assert_eq!(iframes[1], "https://www.youtube.com/embed/dQw4w9WgXcQ");
+    }
 }
+

@@ -120,6 +120,12 @@ export component AppWindow inherits Window {
 
     // Real-time Logs properties
     in-out property <[LogEntryData]> log_entries: [];
+    in-out property <int> log_filter_index: 0;
+    in-out property <string> log_search_query: "";
+    in-out property <int> log_total_count: 0;
+    in-out property <int> log_info_count: 0;
+    in-out property <int> log_warn_count: 0;
+    in-out property <int> log_error_count: 0;
 
     // Batch mode & Quality selection
     in-out property <bool> batch_mode: false;
@@ -173,6 +179,9 @@ export component AppWindow inherits Window {
     callback test_notification();
 
     callback clear_logs();
+    callback copy_logs();
+    callback set_log_filter(int);
+    callback search_logs(string);
     callback dismiss_error();
 
     HorizontalLayout {
@@ -1060,48 +1069,104 @@ export component AppWindow inherits Window {
 
             // Tab 3: Logs View
             if root.active_tab == 3: VerticalLayout {
-                spacing: 14px;
+                spacing: 12px;
 
                 // Toolbar
                 HorizontalLayout {
                     alignment: space-between;
+                    spacing: 12px;
 
-                    Text {
-                        text: "Engine & Diagnostic Logs (" + root.log_entries.length + " entries)";
-                        color: #a0a7ba;
-                        font-size: 13px;
-                        font-weight: 600;
-                        vertical-alignment: center;
+                    // Filter chips: All, Info, Warn, Errors
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        QualityChip {
+                            text: "All (" + root.log_total_count + ")";
+                            selected: root.log_filter_index == 0;
+                            clicked => {
+                                root.log_filter_index = 0;
+                                root.set_log_filter(0);
+                            }
+                        }
+                        QualityChip {
+                            text: "ℹ️ Info (" + root.log_info_count + ")";
+                            selected: root.log_filter_index == 1;
+                            clicked => {
+                                root.log_filter_index = 1;
+                                root.set_log_filter(1);
+                            }
+                        }
+                        QualityChip {
+                            text: "⚠️ Warnings (" + root.log_warn_count + ")";
+                            selected: root.log_filter_index == 2;
+                            clicked => {
+                                root.log_filter_index = 2;
+                                root.set_log_filter(2);
+                            }
+                        }
+                        QualityChip {
+                            text: "❌ Errors (" + root.log_error_count + ")";
+                            selected: root.log_filter_index == 3;
+                            clicked => {
+                                root.log_filter_index = 3;
+                                root.set_log_filter(3);
+                            }
+                        }
                     }
 
-                    Button {
-                        text: "🧹 Clear Logs";
-                        height: 32px;
-                        clicked => { root.clear_logs(); }
+                    // Search & Action Buttons
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+
+                        log_search := LineEdit {
+                            width: 170px;
+                            height: 32px;
+                            placeholder_text: "🔍 Filter logs...";
+                            text <=> root.log_search_query;
+                            edited(query) => {
+                                root.search_logs(query);
+                            }
+                        }
+
+                        Button {
+                            text: "📋 Copy";
+                            height: 32px;
+                            enabled: root.log_total_count > 0;
+                            clicked => { root.copy_logs(); }
+                        }
+
+                        Button {
+                            text: "🧹 Clear";
+                            height: 32px;
+                            enabled: root.log_total_count > 0;
+                            clicked => { root.clear_logs(); }
+                        }
                     }
                 }
 
-                // If no logs recorded
+                // If no logs match filter/query
                 if root.log_entries.length == 0: Rectangle {
-                    background: #1c202d;
-                    border-radius: 12px;
+                    background: #10131d;
+                    border-radius: 10px;
                     border-width: 1px;
-                    border-color: #2b3044;
-                    height: 220px;
+                    border-color: #212638;
+                    vertical-stretch: 1;
 
                     VerticalLayout {
                         alignment: center;
                         spacing: 8px;
 
                         Text {
-                            text: "📋 No logs recorded yet";
+                            text: (root.log_filter_index != 0 || root.log_search_query != "") ? "🔍 No matching logs found" : "📋 No logs recorded yet";
                             color: #5c647a;
                             font-size: 15px;
                             font-weight: 600;
                             horizontal-alignment: center;
                         }
                         Text {
-                            text: "Engine operations, inspections, stream events, and errors will stream here live.";
+                            text: (root.log_filter_index != 0 || root.log_search_query != "") ? "Try selecting 'All' or clearing your search filter above." : "Engine operations, inspections, stream events, and diagnostics will stream here live.";
                             color: #4b5266;
                             font-size: 13px;
                             horizontal-alignment: center;
@@ -1109,376 +1174,411 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // If logs exist
-                if root.log_entries.length > 0: ScrollView {
-                    VerticalLayout {
-                        spacing: 6px;
-
-                        for entry in root.log_entries: Rectangle {
-                            background: #181b26;
-                            border-radius: 6px;
-                            border-width: 1px;
-                            border-color: entry.level == "ERROR" ? #7f1d1d :
-                                           entry.level == "WARN" ? #78350f : #232736;
-
-                            HorizontalLayout {
-                                padding: 8px;
-                                spacing: 10px;
-
-                                Text {
-                                    text: entry.timestamp;
-                                    color: #6c738a;
-                                    font-size: 12px;
-                                    vertical-alignment: center;
-                                }
-
-                                Rectangle {
-                                    width: 52px;
-                                    height: 20px;
-                                    border-radius: 4px;
-                                    background: entry.level == "ERROR" ? #ef4444 :
-                                                entry.level == "WARN" ? #f59e0b : #3b82f6;
-
-                                    Text {
-                                        text: entry.level;
-                                        color: #ffffff;
-                                        font-size: 10px;
-                                        font-weight: 700;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-
-                                Text {
-                                    text: entry.message;
-                                    color: entry.level == "ERROR" ? #fca5a5 :
-                                           entry.level == "WARN" ? #fde68a : #cbd5e1;
-                                    font-size: 12px;
-                                    vertical-alignment: center;
-                                    wrap: word-wrap;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Rectangle { }
-            }
-
-            // Tab 4: Settings
-            if root.active_tab == 4: VerticalLayout {
-                spacing: 16px;
-
-                // Download Directory Card
-                Rectangle {
-                    background: #1c202d;
-                    border-radius: 12px;
+                // Unified Terminal Log Console Card
+                if root.log_entries.length > 0: Rectangle {
+                    background: #10131d;
+                    border-radius: 10px;
                     border-width: 1px;
-                    border-color: #2b3044;
+                    border-color: #212638;
+                    vertical-stretch: 1;
+                    clip: true;
 
-                    VerticalLayout {
-                        padding: 20px;
-                        spacing: 14px;
-
+                    ScrollView {
                         VerticalLayout {
-                            spacing: 4px;
-                            Text {
-                                text: "📁 Default Download Directory";
-                                color: #ffffff;
-                                font-size: 16px;
-                                font-weight: 700;
-                            }
-                            Text {
-                                text: "All media, video series, and audio extractions will be saved into this folder";
-                                color: #8c93a8;
-                                font-size: 13px;
-                            }
-                        }
+                            padding: 8px;
+                            spacing: 2px;
 
-                        HorizontalLayout {
-                            spacing: 10px;
+                            for entry in root.log_entries: Rectangle {
+                                background: touch.has-hover ? #191e2c : (
+                                    entry.level == "ERROR" ? #241419 :
+                                    entry.level == "WARN" ? #221c12 :
+                                    transparent
+                                );
+                                border-radius: 4px;
 
-                            Rectangle {
-                                background: #131622;
-                                border-radius: 8px;
-                                border-width: 1px;
-                                border-color: #2b3044;
-                                horizontal-stretch: 1;
-                                height: 38px;
+                                touch := TouchArea { }
 
                                 HorizontalLayout {
-                                    padding-left: 12px;
-                                    padding-right: 12px;
+                                    padding-top: 6px;
+                                    padding-bottom: 6px;
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    spacing: 12px;
                                     alignment: start;
 
+                                    // Fixed-width timestamp: never pushes columns!
                                     Text {
-                                        text: root.download_dir_path;
-                                        color: #e2e8f0;
+                                        text: entry.timestamp;
+                                        color: #64748b;
+                                        font-size: 11px;
+                                        width: 68px;
+                                        vertical-alignment: top;
+                                    }
+
+                                    // Level badge
+                                    Rectangle {
+                                        width: 50px;
+                                        height: 19px;
+                                        border-radius: 4px;
+                                        background: entry.level == "ERROR" ? #ef4444 :
+                                                    entry.level == "WARN" ? #f59e0b : #3b82f6;
+
+                                        Text {
+                                            text: entry.level;
+                                            color: #ffffff;
+                                            font-size: 10px;
+                                            font-weight: 700;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    // Message: fills remaining space and wraps gracefully
+                                    Text {
+                                        text: entry.message;
+                                        color: entry.level == "ERROR" ? #fca5a5 :
+                                               entry.level == "WARN" ? #fde68a : #cbd5e1;
+                                        font-size: 12px;
+                                        horizontal-stretch: 1;
+                                        wrap: word-wrap;
+                                        vertical-alignment: top;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            // Tab 4: Settings
+            if root.active_tab == 4: ScrollView {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    spacing: 16px;
+                    padding-bottom: 16px;
+
+                    // 1. Storage & File Location
+                    Rectangle {
+                        background: #181b27;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: #272d42;
+
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 14px;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                Text {
+                                    text: "📁 Default Download Directory";
+                                    color: #ffffff;
+                                    font-size: 15px;
+                                    font-weight: 700;
+                                }
+                                Text {
+                                    text: "All media, video series, and extracted audio files are saved into this folder.";
+                                    color: #8c93a8;
+                                    font-size: 13px;
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 10px;
+
+                                Rectangle {
+                                    background: #111420;
+                                    border-radius: 8px;
+                                    border-width: 1px;
+                                    border-color: #252b3e;
+                                    horizontal-stretch: 1;
+                                    height: 38px;
+
+                                    HorizontalLayout {
+                                        padding-left: 12px;
+                                        padding-right: 12px;
+                                        alignment: start;
+
+                                        Text {
+                                            text: root.download_dir_path;
+                                            color: #e2e8f0;
+                                            font-size: 13px;
+                                            font-weight: 500;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                        }
+                                    }
+                                }
+
+                                Button {
+                                    text: "📂 Change...";
+                                    height: 38px;
+                                    clicked => { root.browse_download_dir(); }
+                                }
+
+                                Button {
+                                    text: "🖥️ Finder";
+                                    height: 38px;
+                                    clicked => { root.open_current_download_dir(); }
+                                }
+
+                                Button {
+                                    text: "↺ Reset";
+                                    height: 38px;
+                                    clicked => { root.reset_download_dir(); }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Network & Bandwidth Management
+                    Rectangle {
+                        background: #181b27;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: #272d42;
+
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 18px;
+
+                            // Speed Limiter
+                            VerticalLayout {
+                                spacing: 10px;
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text {
+                                        text: "🚀 Bandwidth Speed Limiter";
+                                        color: #ffffff;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+                                    Text {
+                                        text: "Throttle maximum download speed to avoid saturating your local network.";
+                                        color: #8c93a8;
                                         font-size: 13px;
-                                        font-weight: 500;
-                                        vertical-alignment: center;
-                                        overflow: elide;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+
+                                    QualityChip {
+                                        text: "🚀 No Limit";
+                                        selected: root.selected_speed_limit_index == 0;
+                                        clicked => {
+                                            root.selected_speed_limit_index = 0;
+                                            root.set_speed_limit(0);
+                                        }
+                                    }
+                                    QualityChip {
+                                        text: "⚡ 2 MB/s";
+                                        selected: root.selected_speed_limit_index == 1;
+                                        clicked => {
+                                            root.selected_speed_limit_index = 1;
+                                            root.set_speed_limit(1);
+                                        }
+                                    }
+                                    QualityChip {
+                                        text: "⚡ 5 MB/s";
+                                        selected: root.selected_speed_limit_index == 2;
+                                        clicked => {
+                                            root.selected_speed_limit_index = 2;
+                                            root.set_speed_limit(2);
+                                        }
+                                    }
+                                    QualityChip {
+                                        text: "⚡ 10 MB/s";
+                                        selected: root.selected_speed_limit_index == 3;
+                                        clicked => {
+                                            root.selected_speed_limit_index = 3;
+                                            root.set_speed_limit(3);
+                                        }
+                                    }
+                                    QualityChip {
+                                        text: "⚡ 20 MB/s";
+                                        selected: root.selected_speed_limit_index == 4;
+                                        clicked => {
+                                            root.selected_speed_limit_index = 4;
+                                            root.set_speed_limit(4);
+                                        }
                                     }
                                 }
                             }
 
-                            Button {
-                                text: "📂 Browse...";
-                                height: 38px;
-                                clicked => { root.browse_download_dir(); }
+                            // Divider
+                            Rectangle {
+                                height: 1px;
+                                background: #23283b;
                             }
 
-                            Button {
-                                text: "Finder";
-                                height: 38px;
-                                clicked => { root.open_current_download_dir(); }
-                            }
+                            // Concurrency
+                            VerticalLayout {
+                                spacing: 10px;
 
-                            Button {
-                                text: "Reset";
-                                height: 38px;
-                                clicked => { root.reset_download_dir(); }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text {
+                                        text: "⚡ Concurrent Queue Workers";
+                                        color: #ffffff;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+                                    Text {
+                                        text: "Number of download items actively processed at the same time.";
+                                        color: #8c93a8;
+                                        font-size: 13px;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+
+                                    QualityChip {
+                                        text: "1 (Sequential)";
+                                        selected: root.selected_concurrency == 1;
+                                        clicked => {
+                                            root.selected_concurrency = 1;
+                                            root.set_max_concurrency(1);
+                                        }
+                                    }
+                                    QualityChip {
+                                        text: "2 Parallel";
+                                        selected: root.selected_concurrency == 2;
+                                        clicked => {
+                                            root.selected_concurrency = 2;
+                                            root.set_max_concurrency(2);
+                                        }
+                                    }
+                                    QualityChip {
+                                        text: "3 Parallel (Recommended)";
+                                        selected: root.selected_concurrency == 3;
+                                        clicked => {
+                                            root.selected_concurrency = 3;
+                                            root.set_max_concurrency(3);
+                                        }
+                                    }
+                                    QualityChip {
+                                        text: "5 Parallel (Fast)";
+                                        selected: root.selected_concurrency == 5;
+                                        clicked => {
+                                            root.selected_concurrency = 5;
+                                            root.set_max_concurrency(5);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                }
 
-                // Bandwidth Speed Limiter Card
-                Rectangle {
-                    background: #1c202d;
-                    border-radius: 12px;
-                    border-width: 1px;
-                    border-color: #2b3044;
-
-                    VerticalLayout {
-                        padding: 20px;
-                        spacing: 14px;
+                    // 3. System & Desktop Notifications
+                    Rectangle {
+                        background: #181b27;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: #272d42;
 
                         VerticalLayout {
-                            spacing: 4px;
-                            Text {
-                                text: "🚀 Bandwidth Speed Limiter";
-                                color: #ffffff;
-                                font-size: 16px;
-                                font-weight: 700;
-                            }
-                            Text {
-                                text: "Throttle max download rate to prevent saturating your internet connection";
-                                color: #8c93a8;
-                                font-size: 13px;
-                            }
-                        }
+                            padding: 20px;
+                            spacing: 12px;
 
-                        HorizontalLayout {
-                            spacing: 8px;
-                            alignment: start;
+                            HorizontalLayout {
+                                alignment: space-between;
 
-                            QualityChip {
-                                text: "🚀 No Limit";
-                                selected: root.selected_speed_limit_index == 0;
-                                clicked => {
-                                    root.selected_speed_limit_index = 0;
-                                    root.set_speed_limit(0);
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text {
+                                        text: "🔔 System Notifications";
+                                        color: #ffffff;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+                                    Text {
+                                        text: "Sends native desktop alerts with audio chime when downloads finish.";
+                                        color: #8c93a8;
+                                        font-size: 13px;
+                                    }
                                 }
-                            }
-                            QualityChip {
-                                text: "⚡ 2 MB/s";
-                                selected: root.selected_speed_limit_index == 1;
-                                clicked => {
-                                    root.selected_speed_limit_index = 1;
-                                    root.set_speed_limit(1);
-                                }
-                            }
-                            QualityChip {
-                                text: "⚡ 5 MB/s";
-                                selected: root.selected_speed_limit_index == 2;
-                                clicked => {
-                                    root.selected_speed_limit_index = 2;
-                                    root.set_speed_limit(2);
-                                }
-                            }
-                            QualityChip {
-                                text: "⚡ 10 MB/s";
-                                selected: root.selected_speed_limit_index == 3;
-                                clicked => {
-                                    root.selected_speed_limit_index = 3;
-                                    root.set_speed_limit(3);
-                                }
-                            }
-                            QualityChip {
-                                text: "⚡ 20 MB/s";
-                                selected: root.selected_speed_limit_index == 4;
-                                clicked => {
-                                    root.selected_speed_limit_index = 4;
-                                    root.set_speed_limit(4);
+
+                                Button {
+                                    text: "🔔 Test Notification";
+                                    height: 34px;
+                                    clicked => { root.test_notification(); }
                                 }
                             }
                         }
                     }
-                }
 
-                // Concurrent Download Workers Card
-                Rectangle {
-                    background: #1c202d;
-                    border-radius: 12px;
-                    border-width: 1px;
-                    border-color: #2b3044;
-
-                    VerticalLayout {
-                        padding: 20px;
-                        spacing: 14px;
+                    // 4. Engine & Architecture Overview (Compact & Clean)
+                    Rectangle {
+                        background: #131622;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: #222638;
 
                         VerticalLayout {
-                            spacing: 4px;
+                            padding: 16px;
+                            spacing: 10px;
+
                             Text {
-                                text: "⚡ Concurrent Download Workers";
-                                color: #ffffff;
-                                font-size: 16px;
+                                text: "Engine & System Architecture";
+                                color: #7082ff;
+                                font-size: 13px;
                                 font-weight: 700;
                             }
-                            Text {
-                                text: "Maximum number of simultaneous downloads processed in parallel";
-                                color: #8c93a8;
-                                font-size: 13px;
-                            }
-                        }
 
-                        HorizontalLayout {
-                            spacing: 8px;
-                            alignment: start;
+                            HorizontalLayout {
+                                alignment: space-between;
+                                Text {
+                                    text: "Core Media Framework";
+                                    color: #949db2;
+                                    font-size: 12px;
+                                }
+                                Text {
+                                    text: "FFmpeg v9 + yt-dlp Native";
+                                    color: #e2e8f0;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                }
+                            }
 
-                            QualityChip {
-                                text: "1 (Sequential)";
-                                selected: root.selected_concurrency == 1;
-                                clicked => {
-                                    root.selected_concurrency = 1;
-                                    root.set_max_concurrency(1);
+                            HorizontalLayout {
+                                alignment: space-between;
+                                Text {
+                                    text: "Chunk Resumption & Partial Safety";
+                                    color: #949db2;
+                                    font-size: 12px;
+                                }
+                                Text {
+                                    text: "Atomic .part + HTTP Multi-Range";
+                                    color: #4ade80;
+                                    font-size: 12px;
+                                    font-weight: 600;
                                 }
                             }
-                            QualityChip {
-                                text: "2 Parallel";
-                                selected: root.selected_concurrency == 2;
-                                clicked => {
-                                    root.selected_concurrency = 2;
-                                    root.set_max_concurrency(2);
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                Text {
+                                    text: "Persistent Storage Engine";
+                                    color: #949db2;
+                                    font-size: 12px;
                                 }
-                            }
-                            QualityChip {
-                                text: "3 Parallel (Default)";
-                                selected: root.selected_concurrency == 3;
-                                clicked => {
-                                    root.selected_concurrency = 3;
-                                    root.set_max_concurrency(3);
-                                }
-                            }
-                            QualityChip {
-                                text: "5 Parallel (Fast)";
-                                selected: root.selected_concurrency == 5;
-                                clicked => {
-                                    root.selected_concurrency = 5;
-                                    root.set_max_concurrency(5);
+                                Text {
+                                    text: "SQLite 3 (WAL mode)";
+                                    color: #38bdf8;
+                                    font-size: 12px;
+                                    font-weight: 600;
                                 }
                             }
                         }
                     }
                 }
-
-                // Engine & Queue Defaults Card
-                Rectangle {
-                    background: #1c202d;
-                    border-radius: 12px;
-                    border-width: 1px;
-                    border-color: #2b3044;
-
-                    VerticalLayout {
-                        padding: 20px;
-                        spacing: 14px;
-
-                        Text {
-                            text: "⚡ Engine & Network Architecture";
-                            color: #ffffff;
-                            font-size: 16px;
-                            font-weight: 700;
-                        }
-
-                        HorizontalLayout {
-                            alignment: space-between;
-                            Text {
-                                text: "Concurrent Download Workers";
-                                color: #cbd5e1;
-                                font-size: 13px;
-                            }
-                            Text {
-                                text: root.selected_concurrency + " Parallel Jobs (Auto-Queued)";
-                                color: #38bdf8;
-                                font-size: 13px;
-                                font-weight: 600;
-                            }
-                        }
-
-                        HorizontalLayout {
-                            alignment: space-between;
-                            Text {
-                                text: "Auto-Retry Maximum Attempts";
-                                color: #cbd5e1;
-                                font-size: 13px;
-                            }
-                            Text {
-                                text: "3 Retries with Exponential Backoff";
-                                color: #38bdf8;
-                                font-size: 13px;
-                                font-weight: 600;
-                            }
-                        }
-
-                        HorizontalLayout {
-                            alignment: space-between;
-                            Text {
-                                text: "Crash Recovery & Chunk Resumption";
-                                color: #cbd5e1;
-                                font-size: 13px;
-                            }
-                            Text {
-                                text: "HTTP Range + .part Atomic Resume";
-                                color: #4ade80;
-                                font-size: 13px;
-                                font-weight: 600;
-                            }
-                        }
-
-                        HorizontalLayout {
-                            alignment: space-between;
-                            Text {
-                                text: "Media Multiplexer Backend";
-                                color: #cbd5e1;
-                                font-size: 13px;
-                            }
-                            Text {
-                                text: "FFmpeg v9 + yt-dlp Native";
-                                color: #a78bfa;
-                                font-size: 13px;
-                                font-weight: 600;
-                            }
-                        }
-
-                        HorizontalLayout {
-                            alignment: space-between;
-                            Text {
-                                text: "Desktop System Notifications";
-                                color: #cbd5e1;
-                                font-size: 13px;
-                                vertical-alignment: center;
-                            }
-                            Button {
-                                text: "🔔 Test Notification";
-                                height: 30px;
-                                clicked => { root.test_notification(); }
-                            }
-                        }
-                    }
-                }
-
-                Rectangle { }
             }
 
             // Status bar at bottom

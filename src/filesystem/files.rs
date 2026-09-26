@@ -101,30 +101,111 @@ pub fn validate_destination_path(dir: &Path, filename: &str) -> Result<PathBuf> 
     Ok(resolve_unique_path(dir, &sanitized))
 }
 
+/// Common media extensions produced by yt-dlp or direct downloads
+pub const MEDIA_EXTENSIONS: &[&str] = &[
+    "mp4", "mkv", "webm", "mp3", "m4a", "mov", "avi", "flv", "m4v", "wav", "aac", "opus", "ogg",
+    "ts", "wmv", "3gp",
+];
+
+/// Known file extensions recognized when parsing filename stems and extensions
+pub const KNOWN_FILE_EXTENSIONS: &[&str] = &[
+    // Video
+    "mp4", "mkv", "webm", "mov", "avi", "flv", "m4v", "ts", "wmv", "3gp", "f4v",
+    // Audio
+    "mp3", "m4a", "wav", "aac", "opus", "ogg", "flac", "wma", "alac",
+    // Archives & docs
+    "zip", "tar", "gz", "7z", "rar", "pdf", "iso", "dmg", "pkg",
+];
+
+fn split_stem_and_ext(filename: &str) -> (&str, Option<&str>) {
+    let path = Path::new(filename);
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        let ext_lower = ext.to_lowercase();
+        if KNOWN_FILE_EXTENSIONS.contains(&ext_lower.as_str()) {
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                return (stem, Some(ext));
+            }
+        }
+    }
+    (filename, None)
+}
+
+fn parse_stem_and_index(stem: &str) -> (&str, usize) {
+    if let Some(open_paren) = stem.rfind(" (") {
+        if stem.ends_with(')') {
+            let num_str = &stem[open_paren + 2..stem.len() - 1];
+            if let Ok(num) = num_str.parse::<usize>() {
+                // Avoid interpreting release years like (2024) as duplicate counters
+                if num > 0 && num < 500 {
+                    return (&stem[..open_paren], num + 1);
+                }
+            }
+        }
+    }
+    (stem, 1)
+}
+
+/// Checks whether a file with this stem and extension (or common media extensions / .part files) exists
+pub fn does_conflict_exist(dir: &Path, stem: &str, ext: Option<&str>) -> bool {
+    match ext {
+        Some(ext_str) => {
+            let clean_ext = ext_str.trim_start_matches('.');
+            // Direct file: <stem>.<clean_ext>
+            if dir.join(format!("{}.{}", stem, clean_ext)).exists() {
+                return true;
+            }
+            // Partial downloads: <stem>.<clean_ext>.part or .ytdl
+            if dir.join(format!("{}.{}.part", stem, clean_ext)).exists() {
+                return true;
+            }
+            if dir.join(format!("{}.{}.ytdl", stem, clean_ext)).exists() {
+                return true;
+            }
+        }
+        None => {
+            // Exact file match without extension
+            if dir.join(stem).exists() {
+                return true;
+            }
+            if dir.join(format!("{}.part", stem)).exists() {
+                return true;
+            }
+            if dir.join(format!("{}.ytdl", stem)).exists() {
+                return true;
+            }
+            // Extractor download without extension: check all common media extensions
+            for &media_ext in MEDIA_EXTENSIONS {
+                if dir.join(format!("{}.{}", stem, media_ext)).exists() {
+                    return true;
+                }
+                if dir.join(format!("{}.{}.part", stem, media_ext)).exists() {
+                    return true;
+                }
+                if dir.join(format!("{}.{}.ytdl", stem, media_ext)).exists() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// If a file already exists at the destination, resolves a unique non-conflicting filename (e.g. video (1).mp4)
 pub fn resolve_unique_path(dir: &Path, filename: &str) -> PathBuf {
-    let initial_path = dir.join(filename);
-    if !initial_path.exists() {
-        return initial_path;
+    let (stem, ext_opt) = split_stem_and_ext(filename);
+
+    if !does_conflict_exist(dir, stem, ext_opt) {
+        return dir.join(filename);
     }
 
-    let path_obj = Path::new(filename);
-    let stem = path_obj
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("file");
-    let ext = path_obj
-        .extension()
-        .and_then(|s| s.to_str())
-        .map(|e| format!(".{}", e))
-        .unwrap_or_default();
+    let (base_stem, mut counter) = parse_stem_and_index(stem);
+    let ext_suffix = ext_opt.map(|e| format!(".{}", e)).unwrap_or_default();
 
-    let mut counter = 1;
     loop {
-        let candidate_name = format!("{} ({}){}", stem, counter, ext);
-        let candidate_path = dir.join(candidate_name);
-        if !candidate_path.exists() {
-            return candidate_path;
+        let candidate_stem = format!("{} ({})", base_stem, counter);
+        if !does_conflict_exist(dir, &candidate_stem, ext_opt) {
+            let candidate_name = format!("{}{}", candidate_stem, ext_suffix);
+            return dir.join(candidate_name);
         }
         counter += 1;
     }
@@ -141,7 +222,7 @@ pub fn find_actual_path(path: &Path) -> PathBuf {
     if path.exists() {
         return path.to_path_buf();
     }
-    for ext in &["mp4", "mkv", "webm", "mp3", "m4a", "mov"] {
+    for ext in MEDIA_EXTENSIONS {
         let candidate = PathBuf::from(format!("{}.{}", path.display(), ext));
         if candidate.exists() {
             return candidate;
@@ -256,6 +337,62 @@ pub fn read_clipboard_text() -> Option<String> {
     None
 }
 
+/// Copies text into the native system clipboard
+pub fn write_clipboard_text(text: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use std::io::Write;
+        if let Ok(mut child) = std::process::Command::new("pbcopy")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            return child.wait().map(|s| s.success()).unwrap_or(false);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::io::Write;
+        if let Ok(mut child) = std::process::Command::new("clip")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            return child.wait().map(|s| s.success()).unwrap_or(false);
+        }
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        use std::io::Write;
+        if let Ok(mut child) = std::process::Command::new("wl-copy")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
+                return true;
+            }
+        }
+        if let Ok(mut child) = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            return child.wait().map(|s| s.success()).unwrap_or(false);
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,4 +403,47 @@ mod tests {
         assert_eq!(sanitize_filename("video: test? <1>.mp4"), "video_ test_ _1_.mp4");
         assert_eq!(sanitize_filename("..."), "downloaded_media");
     }
+
+    #[test]
+    fn test_resolve_unique_path_scenarios() {
+        let temp_dir = std::env::temp_dir().join(format!("nvd_unit_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // 1. No conflict returns original
+        let p1 = resolve_unique_path(&temp_dir, "my_video.mp4");
+        assert_eq!(p1, temp_dir.join("my_video.mp4"));
+
+        // 2. Direct extension conflict auto-increments
+        std::fs::write(temp_dir.join("my_video.mp4"), b"test").unwrap();
+        let p2 = resolve_unique_path(&temp_dir, "my_video.mp4");
+        assert_eq!(p2, temp_dir.join("my_video (1).mp4"));
+
+        // Existing (1) increments to (2)
+        std::fs::write(temp_dir.join("my_video (1).mp4"), b"test").unwrap();
+        let p3 = resolve_unique_path(&temp_dir, "my_video.mp4");
+        assert_eq!(p3, temp_dir.join("my_video (2).mp4"));
+
+        // Starting from an existing (1) advances to (2)
+        let p3_alt = resolve_unique_path(&temp_dir, "my_video (1).mp4");
+        assert_eq!(p3_alt, temp_dir.join("my_video (2).mp4"));
+
+        // 3. Extensionless extractor title detects media file on disk
+        std::fs::write(temp_dir.join("Extractor Video.webm"), b"test").unwrap();
+        let p4 = resolve_unique_path(&temp_dir, "Extractor Video");
+        assert_eq!(p4, temp_dir.join("Extractor Video (1)"));
+
+        // 4. In-progress .part file blocks collision
+        std::fs::write(temp_dir.join("track.mp3.part"), b"partial").unwrap();
+        let p5 = resolve_unique_path(&temp_dir, "track.mp3");
+        assert_eq!(p5, temp_dir.join("track (1).mp3"));
+
+        // 5. Preserves movie release years
+        std::fs::write(temp_dir.join("Inception (2010).mp4"), b"movie").unwrap();
+        let p6 = resolve_unique_path(&temp_dir, "Inception (2010).mp4");
+        assert_eq!(p6, temp_dir.join("Inception (2010) (1).mp4"));
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
 }
+
