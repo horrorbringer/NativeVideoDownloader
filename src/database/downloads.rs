@@ -10,6 +10,7 @@ use crate::error::Result;
 use crate::models::DownloadStatus;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct HistoryRecord {
     pub id: Uuid,
     pub url: String,
@@ -277,11 +278,13 @@ impl Database {
                 let total_size: Option<i64> = r.get("total_size");
                 let downloaded: i64 = r.get("downloaded_size");
 
+                let is_extractor = crate::downloader::is_streaming_platform(&url);
                 let mut job = DownloadJob::new(
                     url,
                     title,
                     PathBuf::from(path_str),
                     total_size.map(|s| s.max(0) as u64),
+                    is_extractor,
                 );
                 job.id = id;
                 job.status = DownloadStatus::Paused; // Restore in paused state

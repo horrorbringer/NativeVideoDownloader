@@ -83,6 +83,10 @@ impl NetworkClient {
             content_length,
             content_type,
             supports_ranges,
+            is_extractor: false,
+            duration_seconds: None,
+            resolution: None,
+            ext: None,
         })
     }
 

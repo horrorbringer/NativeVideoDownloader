@@ -115,4 +115,8 @@ pub struct VideoMetadata {
     pub content_length: Option<u64>,
     pub content_type: Option<String>,
     pub supports_ranges: bool,
+    pub is_extractor: bool,
+    pub duration_seconds: Option<u64>,
+    pub resolution: Option<String>,
+    pub ext: Option<String>,
 }

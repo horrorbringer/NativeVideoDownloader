@@ -20,10 +20,17 @@ pub struct DownloadJob {
     pub retry_count: u32,
     pub max_retries: u32,
     pub cancel_token: Option<CancellationToken>,
+    pub is_extractor: bool,
 }
 
 impl DownloadJob {
-    pub fn new(url: String, title: String, output_path: PathBuf, total_bytes: Option<u64>) -> Self {
+    pub fn new(
+        url: String,
+        title: String,
+        output_path: PathBuf,
+        total_bytes: Option<u64>,
+        is_extractor: bool,
+    ) -> Self {
         Self {
             id: Uuid::new_v4(),
             url,
@@ -38,6 +45,7 @@ impl DownloadJob {
             retry_count: 0,
             max_retries: 3,
             cancel_token: None,
+            is_extractor,
         }
     }
 

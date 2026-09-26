@@ -37,6 +37,7 @@ impl DownloadManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn database(&self) -> Arc<Database> {
         self.db.clone()
     }
@@ -96,9 +97,10 @@ impl DownloadManager {
         title: String,
         output_dir: &PathBuf,
         total_bytes: Option<u64>,
+        is_extractor: bool,
     ) -> Result<Uuid, AppError> {
         let destination = validate_destination_path(output_dir, &title)?;
-        let job = DownloadJob::new(url, title, destination, total_bytes);
+        let job = DownloadJob::new(url, title, destination, total_bytes, is_extractor);
         let id = job.id;
 
         // Persist to database
@@ -216,7 +218,7 @@ impl DownloadManager {
             };
 
             // Check if job is still in Queued status (it might have been cancelled while waiting)
-            let (url, destination, _total_bytes) = {
+            let (url, destination, _total_bytes, is_extractor) = {
                 let mut queue = manager.queue.lock().await;
                 let job = match queue.get_job_mut(id) {
                     Some(j) => j,
@@ -230,7 +232,7 @@ impl DownloadManager {
                 let cancel_token = CancellationToken::new();
                 job.cancel_token = Some(cancel_token.clone());
                 job.status = DownloadStatus::Downloading;
-                (job.url.clone(), job.output_path.clone(), job.total_bytes)
+                (job.url.clone(), job.output_path.clone(), job.total_bytes, job.is_extractor)
             };
 
             manager.notify_update().await;
@@ -248,13 +250,11 @@ impl DownloadManager {
                 };
 
                 let mgr_progress = manager.clone();
-                let download_res = manager
-                    .network_client
-                    .download_file(
+                let download_res = if is_extractor {
+                    crate::downloader::extractor::download_stream(
                         &url,
                         &destination,
                         cancel_token,
-                        true, // Preserve .part file on cancel/pause for resume
                         move |progress| {
                             let mgr = mgr_progress.clone();
                             tokio::spawn(async move {
@@ -269,23 +269,81 @@ impl DownloadManager {
                             });
                         },
                     )
-                    .await;
+                    .await
+                    .map(|resolved_path| {
+                        let mgr_res = manager.clone();
+                        tokio::spawn(async move {
+                            let mut queue = mgr_res.queue.lock().await;
+                            if let Some(j) = queue.get_job_mut(id) {
+                                j.output_path = resolved_path;
+                            }
+                        });
+                        ()
+                    })
+                } else {
+                    manager
+                        .network_client
+                        .download_file(
+                            &url,
+                            &destination,
+                            cancel_token,
+                            true, // Preserve .part file on cancel/pause for resume
+                            move |progress| {
+                                let mgr = mgr_progress.clone();
+                                tokio::spawn(async move {
+                                    let mut queue = mgr.queue.lock().await;
+                                    if let Some(j) = queue.get_job_mut(id) {
+                                        if j.status == DownloadStatus::Downloading {
+                                            j.update_progress(progress);
+                                        }
+                                    }
+                                    drop(queue);
+                                    mgr.notify_update().await;
+                                });
+                            },
+                        )
+                        .await
+                };
 
                 match download_res {
                     Ok(()) => {
-                        info!("Job {} completed successfully", id);
-                        let final_size = {
+                        let (final_size, out_path) = {
+                            let mut queue = manager.queue.lock().await;
+                            if let Some(j) = queue.get_job_mut(id) {
+                                (j.downloaded_bytes, j.output_path.clone())
+                            } else {
+                                (0, destination.clone())
+                            }
+                        };
+
+                        // Auto-cleaner: If downloaded file is 0 bytes, discard and fail
+                        if final_size == 0 {
+                            warn!("Job {} resulted in 0 bytes; cleaning up corrupt file {:?}", id, out_path);
+                            let _ = tokio::fs::remove_file(&out_path).await;
+                            let err_msg = "Download aborted: server returned 0 bytes of media".to_string();
+                            {
+                                let mut queue = manager.queue.lock().await;
+                                if let Some(j) = queue.get_job_mut(id) {
+                                    j.status = DownloadStatus::Failed(err_msg.clone());
+                                    j.speed_bytes_sec = 0.0;
+                                    j.eta_seconds = None;
+                                }
+                            }
+                            let _ = manager.db.mark_failed(id, &err_msg).await;
+                            manager.notify_update().await;
+                            break;
+                        }
+
+                        info!("Job {} completed successfully with size {} bytes", id, final_size);
+                        {
                             let mut queue = manager.queue.lock().await;
                             if let Some(j) = queue.get_job_mut(id) {
                                 j.status = DownloadStatus::Completed;
                                 j.progress_ratio = 1.0;
                                 j.speed_bytes_sec = 0.0;
                                 j.eta_seconds = Some(0);
-                                j.downloaded_bytes
-                            } else {
-                                0
                             }
-                        };
+                        }
                         let _ = manager.db.mark_completed(id, final_size).await;
                         manager.notify_update().await;
                         break;

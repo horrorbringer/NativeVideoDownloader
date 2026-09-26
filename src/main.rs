@@ -178,22 +178,68 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let client = client_clone.clone();
 
         tokio::spawn(async move {
-            match client.inspect_url(&url_str).await {
+            let inspect_result = if downloader::is_streaming_platform(&url_str) {
+                let _ = weak_for_async.upgrade_in_event_loop(|w| {
+                    w.set_status_message("Analyzing streaming platform media (yt-dlp)...".into());
+                });
+                downloader::inspect_video(&url_str).await
+            } else {
+                match client.inspect_url(&url_str).await {
+                    Ok(meta) if downloader::is_valid_direct_media(&meta) => Ok(meta),
+                    Ok(meta) => {
+                        info!(
+                            "Direct inspect returned non-media response (type: {:?}, length: {:?}) for {}, falling back to extractor",
+                            meta.content_type, meta.content_length, url_str
+                        );
+                        let _ = weak_for_async.upgrade_in_event_loop(|w| {
+                            w.set_status_message(
+                                "Web source detected. Extracting media stream...".into(),
+                            );
+                        });
+                        downloader::inspect_video(&url_str).await
+                    }
+                    Err(err) => {
+                        // Try extractor as fallback
+                        match downloader::inspect_video(&url_str).await {
+                            Ok(extracted) => Ok(extracted),
+                            Err(_) => Err(err),
+                        }
+                    }
+                }
+            };
+
+            match inspect_result {
                 Ok(metadata) => {
                     info!("Successfully inspected URL: {:?}", metadata);
                     let title = metadata.title.clone();
                     let size_str = metadata
                         .content_length
                         .map(DownloadProgress::format_size)
-                        .unwrap_or_else(|| "Unknown size".to_string());
-                    let type_str = metadata
-                        .content_type
+                        .unwrap_or_else(|| "Dynamic size".to_string());
+
+                    let res_str = metadata
+                        .resolution
                         .clone()
-                        .unwrap_or_else(|| "media/stream".to_string());
-                    let ranges_str = if metadata.supports_ranges {
-                        "Resumable (Range supported)"
+                        .or_else(|| metadata.content_type.clone())
+                        .unwrap_or_else(|| "Video Stream".to_string());
+
+                    let duration_str = metadata
+                        .duration_seconds
+                        .map(downloader::format_duration)
+                        .unwrap_or_default();
+
+                    let details_str = if !duration_str.is_empty() {
+                        format!("{}  •  Duration: {}", size_str, duration_str)
+                    } else if metadata.supports_ranges {
+                        format!("{}  •  Resumable", size_str)
                     } else {
-                        "Single-stream (No Range)"
+                        format!("{}  •  Single-stream", size_str)
+                    };
+
+                    let format_display = if metadata.is_extractor {
+                        format!("Stream  •  {}", res_str)
+                    } else {
+                        format!("Format: {}", res_str)
                     };
 
                     *meta_for_async.lock().await = Some(metadata);
@@ -202,9 +248,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         window.set_is_analyzing(false);
                         window.set_has_metadata(true);
                         window.set_video_title(title.into());
-                        window.set_video_resolution(format!("Format: {}", type_str).into());
-                        window.set_video_duration(format!("{} • {}", size_str, ranges_str).into());
-                        window.set_status_message("Media analyzed successfully. Ready to download.".into());
+                        window.set_video_resolution(format_display.into());
+                        window.set_video_duration(details_str.into());
+                        window.set_status_message(
+                            "Media analyzed successfully. Ready to download.".into(),
+                        );
                     });
                 }
                 Err(err) => {
@@ -245,8 +293,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             let download_dir = filesystem::default_download_dir();
+            let is_extractor = metadata.is_extractor;
             match mgr
-                .add_download(metadata.url, metadata.title, &download_dir, metadata.content_length)
+                .add_download(
+                    metadata.url,
+                    metadata.title,
+                    &download_dir,
+                    metadata.content_length,
+                    is_extractor,
+                )
                 .await
             {
                 Ok(id) => {
@@ -368,7 +423,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or("redownload")
                 .to_string();
 
-            match mgr.add_download(url, title, &download_dir, None).await {
+            let is_extractor = downloader::is_streaming_platform(&url);
+            match mgr.add_download(url, title, &download_dir, None, is_extractor).await {
                 Ok(id) => {
                     info!("Redownload queued with id: {}", id);
                     let _ = weak.upgrade_in_event_loop(move |window| {
