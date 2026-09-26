@@ -8,21 +8,23 @@ export component ActionButton inherits Rectangle {
     callback clicked();
 
     background: !root.enabled ? #161822 :
-                root.primary ? (touch.has-hover ? #5e68db : #4f58c7) :
-                root.danger ? (touch.has-hover ? #dc2626 : #b91c1c) :
-                (touch.has-hover ? #2b3044 : #1e2230);
+                root.primary ? (touch.pressed ? #434ba8 : touch.has-hover ? #5b65d6 : #4f58c7) :
+                root.danger ? (touch.pressed ? #991b1b : touch.has-hover ? #dc2626 : #b91c1c) :
+                (touch.pressed ? #181c28 : touch.has-hover ? #272d40 : #1c202e);
     animate background { duration: 120ms; }
-    border-radius: 6px;
+    border-radius: 7px;
     border-width: 1px;
-    border-color: !root.enabled ? #232736 :
-                  root.primary ? #7082ff :
-                  root.danger ? #ef4444 : #2b3044;
+    border-color: !root.enabled ? #222634 :
+                  root.primary ? (touch.has-hover ? #8292ff : #6b7af5) :
+                  root.danger ? (touch.has-hover ? #f87171 : #ef4444) :
+                  (touch.has-hover ? #3c4460 : #282d40);
+    animate border-color { duration: 120ms; }
     height: 34px;
 
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 6px;
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 7px;
         alignment: center;
 
         if root.has_icon: VerticalLayout {
@@ -34,6 +36,7 @@ export component ActionButton inherits Rectangle {
                 colorize: !root.enabled ? #52596e :
                           (root.primary || root.danger) ? #ffffff :
                           (touch.has-hover ? #ffffff : #cbd5e1);
+                animate colorize { duration: 120ms; }
             }
         }
 
@@ -45,6 +48,7 @@ export component ActionButton inherits Rectangle {
             font-size: 12px;
             font-weight: (root.primary || root.danger) ? 600 : 500;
             vertical-alignment: center;
+            animate color { duration: 120ms; }
         }
     }
 

@@ -145,23 +145,25 @@ export component DownloadsTab inherits VerticalLayout {
 
     // If no downloads in current view
     if root.download_items.length == 0: Rectangle {
-        background: #1c202d;
+        background: #141724;
         border-radius: 12px;
         border-width: 1px;
-        border-color: #2b3044;
-        height: 200px;
+        border-color: #22283a;
+        vertical-stretch: 1;
 
         VerticalLayout {
             alignment: center;
-            spacing: 12px;
+            spacing: 14px;
 
             HorizontalLayout {
                 alignment: center;
                 Rectangle {
-                    width: 44px;
-                    height: 44px;
-                    border-radius: 22px;
-                    background: #23283c;
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 24px;
+                    background: #1d2234;
+                    border-width: 1px;
+                    border-color: #2b334d;
 
                     Image {
                         source: (root.queue_filter_index != 0 || root.queue_search_query != "") ? @image-url("../icons/search.svg") : @image-url("../icons/download.svg");
@@ -175,7 +177,7 @@ export component DownloadsTab inherits VerticalLayout {
             }
 
             VerticalLayout {
-                spacing: 4px;
+                spacing: 5px;
                 Text {
                     text: (root.queue_filter_index != 0 || root.queue_search_query != "") ? "No matching downloads found" : "No active downloads";
                     color: #ffffff;
@@ -195,14 +197,21 @@ export component DownloadsTab inherits VerticalLayout {
 
     // If downloads exist in queue
     if root.download_items.length > 0: ScrollView {
+        vertical-stretch: 1;
+
         VerticalLayout {
-            spacing: 12px;
+            spacing: 10px;
+            padding-bottom: 8px;
 
             for item in root.download_items: Rectangle {
-                background: #1c202d;
+                background: touch.has-hover ? #1a1e2d : #161926;
                 border-radius: 12px;
                 border-width: 1px;
-                border-color: #2b3044;
+                border-color: touch.has-hover ? #2e3852 : #242c40;
+                animate background { duration: 150ms; }
+                animate border-color { duration: 150ms; }
+
+                touch := TouchArea { }
 
                 VerticalLayout {
                     padding: 16px;
@@ -212,21 +221,46 @@ export component DownloadsTab inherits VerticalLayout {
                         alignment: space-between;
 
                         VerticalLayout {
-                            spacing: 4px;
+                            spacing: 6px;
                             Text {
                                 text: item.title;
                                 color: #ffffff;
                                 font-size: 15px;
                                 font-weight: 600;
                             }
-                            Text {
-                                text: "Status: " + item.status;
-                                color: item.status == "Completed" ? #4ade80 :
-                                       item.status == "Paused" ? #facc15 :
-                                       item.status == "Downloading" ? #60a5fa :
-                                       item.status == "Queued" ? #c084fc : #f87171;
-                                font-size: 12px;
-                                font-weight: 600;
+
+                            HorizontalLayout {
+                                alignment: start;
+                                Rectangle {
+                                    background: item.status == "Completed" ? #0e291b :
+                                                item.status == "Paused" ? #331e08 :
+                                                item.status == "Downloading" ? #0f2142 :
+                                                item.status == "Queued" ? #25103a : #331317;
+                                    border-radius: 4px;
+                                    border-width: 1px;
+                                    border-color: item.status == "Completed" ? #166534 :
+                                                  item.status == "Paused" ? #b45309 :
+                                                  item.status == "Downloading" ? #2563eb :
+                                                  item.status == "Queued" ? #7e22ce : #991b1b;
+                                    height: 22px;
+
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        alignment: center;
+
+                                        Text {
+                                            text: item.status;
+                                            color: item.status == "Completed" ? #4ade80 :
+                                                   item.status == "Paused" ? #fcd34d :
+                                                   item.status == "Downloading" ? #60a5fa :
+                                                   item.status == "Queued" ? #c084fc : #f87171;
+                                            font-size: 11px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -287,13 +321,13 @@ export component DownloadsTab inherits VerticalLayout {
 
                         Text {
                             text: item.size_text;
-                            color: #949db2;
+                            color: #8c93a8;
                             font-size: 12px;
                         }
 
                         Text {
                             text: "Speed: " + item.speed_text + "  •  ETA: " + item.eta_text;
-                            color: #949db2;
+                            color: #8c93a8;
                             font-size: 12px;
                         }
                     }
@@ -301,6 +335,4 @@ export component DownloadsTab inherits VerticalLayout {
             }
         }
     }
-
-    Rectangle { }
 }

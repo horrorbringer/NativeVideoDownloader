@@ -316,6 +316,19 @@ pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
         "None detected".to_string()
     };
 
+    let thumbnail_url = json_val
+        .get("thumbnail")
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            json_val
+                .get("thumbnails")
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.last())
+                .and_then(|t| t.get("url"))
+                .and_then(|v| v.as_str())
+        })
+        .map(|s| s.to_string());
+
     Ok(VideoMetadata {
         url: url.to_string(),
         title,
@@ -331,6 +344,7 @@ pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
         playlist_entries,
         has_subtitles,
         subtitles_summary,
+        thumbnail_url,
     })
 }
 
@@ -351,6 +365,7 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
     let html = resp.text().await?;
 
     let page_title = extract_html_title(&html);
+    let page_thumbnail = extract_html_thumbnail(&html, page_url);
 
     // 1. Check MacCMS player_aaaa configuration (used by donghuafun, animevietsub, etc.)
     if let Some(maccms) = extract_maccms_player(&html) {
@@ -360,6 +375,9 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
             if let Ok(mut meta) = Box::pin(inspect_video(&maccms.video_url)).await {
                 if let Some(t) = maccms.title.or(page_title.clone()) {
                     meta.title = t;
+                }
+                if meta.thumbnail_url.is_none() {
+                    meta.thumbnail_url = page_thumbnail.clone();
                 }
                 return Ok(meta);
             }
@@ -382,6 +400,7 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
                 playlist_entries: Vec::new(),
                 has_subtitles: false,
                 subtitles_summary: String::new(),
+                thumbnail_url: page_thumbnail.clone(),
             });
         }
     }
@@ -394,12 +413,21 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
                 if let Some(t) = page_title.clone() {
                     meta.title = t;
                 }
+                if meta.thumbnail_url.is_none() {
+                    meta.thumbnail_url = page_thumbnail.clone();
+                }
                 return Ok(meta);
             }
         }
     }
 
-    // 3. Check for direct <source src>, <video src>, OpenGraph video, or .m3u8/.mp4
+    // 3. Check for series/playlist collection (e.g. MacCMS vod/detail pages or episode anthology lists)
+    if let Some(playlist_meta) = extract_playlist_from_detail_html(&html, page_url) {
+        info!("Successfully extracted series collection from webpage: '{}' ({} episodes)", playlist_meta.title, playlist_meta.playlist_count);
+        return Ok(playlist_meta);
+    }
+
+    // 4. Check for direct <source src>, <video src>, OpenGraph video, or .m3u8/.mp4
     let title = page_title
         .or_else(|| {
             page_url
@@ -412,12 +440,15 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
         .unwrap_or_else(|| "web_video".to_string());
 
     let stream_url = extract_stream_from_html(&html, page_url)
-        .ok_or_else(|| AppError::Generic("No direct video or m3u8 stream found in webpage HTML".to_string()))?;
+        .ok_or_else(|| AppError::Generic("No direct video, series playlist, or m3u8 stream found in webpage HTML".to_string()))?;
 
     // If stream_url itself is a streaming platform link
     if is_streaming_platform(&stream_url) {
         if let Ok(mut meta) = Box::pin(inspect_video(&stream_url)).await {
             meta.title = title;
+            if meta.thumbnail_url.is_none() {
+                meta.thumbnail_url = page_thumbnail.clone();
+            }
             return Ok(meta);
         }
     }
@@ -447,6 +478,7 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
         playlist_entries: Vec::new(),
         has_subtitles: false,
         subtitles_summary: String::new(),
+        thumbnail_url: page_thumbnail,
     })
 }
 
@@ -569,7 +601,12 @@ fn clean_scraped_title(raw: &str) -> String {
         " - Watch Online",
         " - Free Watch",
         " Streaming Guide and Episode Details",
+        " Donghua Anime Episode Guide",
+        " Anime Episode Guide",
+        " Episode Guide",
         " Episode Details",
+        " Release Info",
+        " Watch Order",
         " | Donghua",
         " | Anime",
     ] {
@@ -578,6 +615,23 @@ fn clean_scraped_title(raw: &str) -> String {
         }
     }
     title.trim().to_string()
+}
+
+/// Helper to extract JSON-LD schema.org VideoObject name
+fn extract_schema_org_title(html: &str) -> Option<String> {
+    if let Some(pos) = html.find("\"@type\":\"VideoObject\"") {
+        let snippet = &html[pos..pos.saturating_add(400).min(html.len())];
+        if let Some(n_pos) = snippet.find("\"name\":\"") {
+            let rest = &snippet[n_pos + 8..];
+            if let Some(end) = rest.find('"') {
+                let name = &rest[..end];
+                if !name.is_empty() {
+                    return Some(clean_scraped_title(&html_escape_clean(name)));
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Helper to extract <title>...</title> or OpenGraph og:title from HTML
@@ -608,6 +662,188 @@ fn extract_html_title(html: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Helper to extract thumbnail image (OpenGraph og:image, twitter:image, or video poster) from HTML
+pub fn extract_html_thumbnail(html: &str, base_url: &str) -> Option<String> {
+    for tag in &["property=\"og:image\"", "property=\"og:image:url\"", "name=\"twitter:image\"", "name=\"twitter:image:src\""] {
+        if let Some(pos) = html.find(tag) {
+            let tag_start = html[..pos].rfind('<').unwrap_or(pos);
+            let tag_end = html[pos..].find('>').map(|i| pos + i).unwrap_or(pos + 200).min(html.len());
+            let snippet = &html[tag_start..tag_end];
+            if let Some(content_idx) = snippet.find("content=\"") {
+                let rest = &snippet[content_idx + 9..];
+                if let Some(end) = rest.find('"') {
+                    let u = &rest[..end];
+                    if !u.is_empty() {
+                        return Some(resolve_relative_url(base_url, u));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(pos) = html.find("poster=\"") {
+        let rest = &html[pos + 8..];
+        if let Some(end) = rest.find('"') {
+            let u = &rest[..end];
+            if !u.is_empty() {
+                return Some(resolve_relative_url(base_url, u));
+            }
+        }
+    }
+
+    None
+}
+
+/// Extracts series playlist episodes from detail/overview pages (such as MacCMS vod/detail pages)
+pub fn extract_playlist_from_detail_html(html: &str, page_url: &str) -> Option<VideoMetadata> {
+    let mut entries = Vec::new();
+
+    // 1. Check anthology-list-play (standard MacCMS series episode list)
+    if let Some(pos) = html.find("anthology-list-play") {
+        let rest = &html[pos..];
+        let block_end = rest.find("</ul>").map(|e| pos + e).unwrap_or(html.len());
+        let block = &html[pos..block_end];
+        entries = parse_episodes_from_block(block, page_url);
+    }
+
+    // 2. Fallback: scan HTML for anchor tags pointing to vod/play or /play/id/
+    if entries.is_empty() {
+        entries = parse_episodes_from_html_scan(html, page_url);
+    }
+
+    if entries.is_empty() {
+        return None;
+    }
+
+    // Reverse if descending (e.g. EP41 down to EP01 -> change to EP01 up to EP41)
+    if entries.len() > 1 {
+        let first_text = &entries[0].title;
+        let last_text = &entries.last().unwrap().title;
+        let first_num = extract_episode_num(first_text);
+        let last_num = extract_episode_num(last_text);
+        if let (Some(f), Some(l)) = (first_num, last_num) {
+            if f > l {
+                entries.reverse();
+            }
+        }
+    }
+
+    let title = extract_schema_org_title(html)
+        .or_else(|| extract_html_title(html))
+        .unwrap_or_else(|| "Series Collection".to_string());
+
+    let thumbnail_url = extract_html_thumbnail(html, page_url);
+    let playlist_count = entries.len();
+    let primary_url = entries.first().map(|e| e.url.clone()).unwrap_or_else(|| page_url.to_string());
+
+    Some(VideoMetadata {
+        url: primary_url,
+        title,
+        content_length: None,
+        content_type: Some("video/mp4".to_string()),
+        supports_ranges: true,
+        is_extractor: true,
+        duration_seconds: None,
+        resolution: Some(format!("{} Episodes Series", playlist_count)),
+        ext: Some("mp4".to_string()),
+        is_playlist: true,
+        playlist_count,
+        playlist_entries: entries,
+        has_subtitles: false,
+        subtitles_summary: String::new(),
+        thumbnail_url,
+    })
+}
+
+fn extract_episode_num(s: &str) -> Option<u32> {
+    let digits: String = s.chars().filter(|c| c.is_ascii_digit()).collect();
+    digits.parse::<u32>().ok()
+}
+
+fn parse_episodes_from_block(block: &str, base_url: &str) -> Vec<crate::models::PlaylistEntry> {
+    let mut entries = Vec::new();
+    let mut cursor = 0;
+    while let Some(a_pos) = block[cursor..].find("<a") {
+        let a_start = cursor + a_pos;
+        let tag_close = match block[a_start..].find('>') {
+            Some(c) => a_start + c,
+            None => break,
+        };
+        let tag_attrs = &block[a_start..tag_close];
+        let href = tag_attrs.find("href=\"").and_then(|h_pos| {
+            let rest = &tag_attrs[h_pos + 6..];
+            rest.find('"').map(|end| &rest[..end])
+        });
+
+        let text_end = block[tag_close + 1..].find("</a>").map(|e| tag_close + 1 + e).unwrap_or(tag_close + 1);
+        let inner_text = html_escape_clean(block[tag_close + 1..text_end].trim());
+
+        if let Some(h) = href {
+            if !h.is_empty() && (h.contains("vod/play") || h.contains("/play/")) {
+                let full_url = resolve_relative_url(base_url, h);
+                let label = if !inner_text.is_empty() {
+                    inner_text
+                } else {
+                    format!("Episode {}", entries.len() + 1)
+                };
+                entries.push(crate::models::PlaylistEntry {
+                    title: label,
+                    url: full_url,
+                });
+            }
+        }
+        cursor = text_end + 4;
+        if cursor >= block.len() {
+            break;
+        }
+    }
+    entries
+}
+
+fn parse_episodes_from_html_scan(html: &str, base_url: &str) -> Vec<crate::models::PlaylistEntry> {
+    let mut entries = Vec::new();
+    let mut seen_urls = std::collections::HashSet::new();
+    let mut cursor = 0;
+    while let Some(a_pos) = html[cursor..].find("<a") {
+        let a_start = cursor + a_pos;
+        let tag_close = match html[a_start..].find('>') {
+            Some(c) => a_start + c,
+            None => break,
+        };
+        let tag_attrs = &html[a_start..tag_close];
+        let href = tag_attrs.find("href=\"").and_then(|h_pos| {
+            let rest = &tag_attrs[h_pos + 6..];
+            rest.find('"').map(|end| &rest[..end])
+        });
+
+        let text_end = html[tag_close + 1..].find("</a>").map(|e| tag_close + 1 + e).unwrap_or(tag_close + 1);
+        let inner_text = html_escape_clean(html[tag_close + 1..text_end].trim());
+
+        if let Some(h) = href {
+            if !h.is_empty() && (h.contains("vod/play") || h.contains("/play/id/")) {
+                let full_url = resolve_relative_url(base_url, h);
+                if !seen_urls.contains(&full_url) {
+                    seen_urls.insert(full_url.clone());
+                    let label = if !inner_text.is_empty() {
+                        inner_text
+                    } else {
+                        format!("Episode {}", entries.len() + 1)
+                    };
+                    entries.push(crate::models::PlaylistEntry {
+                        title: label,
+                        url: full_url,
+                    });
+                }
+            }
+        }
+        cursor = text_end + 4;
+        if cursor >= html.len() {
+            break;
+        }
+    }
+    entries
 }
 
 /// Helper to search HTML for embedded video links (<video src=...>, <source src=...>, og:video, or .m3u8/.mp4 URLs)
@@ -944,6 +1180,37 @@ mod tests {
         assert_eq!(iframes.len(), 2);
         assert_eq!(iframes[0], "https://example.com/player/embed?id=123");
         assert_eq!(iframes[1], "https://www.youtube.com/embed/dQw4w9WgXcQ");
+    }
+
+    #[test]
+    fn test_extract_playlist_from_detail_html() {
+        let sample_detail = r#"
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <script type="application/ld+json">[{"@context":"https://schema.org","@type":"VideoObject","name":"Beyond Time’s Gaze"}]</script>
+                <meta property="og:image" content="https://example.com/poster.webp" />
+            </head>
+            <body>
+                <ul class="anthology-list-play">
+                    <li><a href="/index.php/vod/play/id/30/sid/1/nid/1.html">EP02</a></li>
+                    <li><a href="/index.php/vod/play/id/30/sid/1/nid/2.html">EP01</a></li>
+                </ul>
+            </body>
+            </html>
+        "#;
+        let meta = extract_playlist_from_detail_html(sample_detail, "https://example.com/index.php/vod/detail/id/30.html")
+            .expect("Should extract series playlist");
+
+        assert_eq!(meta.title, "Beyond Time’s Gaze");
+        assert!(meta.is_playlist);
+        assert_eq!(meta.playlist_count, 2);
+        // EP01 should be first after natural ascending sort
+        assert_eq!(meta.playlist_entries[0].title, "EP01");
+        assert_eq!(meta.playlist_entries[0].url, "https://example.com/index.php/vod/play/id/30/sid/1/nid/2.html");
+        assert_eq!(meta.playlist_entries[1].title, "EP02");
+        assert_eq!(meta.playlist_entries[1].url, "https://example.com/index.php/vod/play/id/30/sid/1/nid/1.html");
+        assert_eq!(meta.thumbnail_url, Some("https://example.com/poster.webp".to_string()));
     }
 }
 

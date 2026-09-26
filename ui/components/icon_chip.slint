@@ -5,16 +5,18 @@ export component IconChip inherits Rectangle {
     in property <bool> selected: false;
     callback clicked();
 
-    background: selected ? #4f58c7 : touch.has-hover ? #2a2f44 : #1c202d;
+    background: root.selected ? (touch.pressed ? #3e46a6 : touch.has-hover ? #5863d6 : #4b54c2) :
+                (touch.pressed ? #141722 : touch.has-hover ? #24293c : #191c29);
     animate background { duration: 120ms; }
-    border-radius: 6px;
+    border-radius: 7px;
     border-width: 1px;
-    border-color: selected ? #7082ff : (touch.has-hover ? #3c4460 : #2b3044);
+    border-color: root.selected ? #7080ff : (touch.has-hover ? #3b4462 : #282f44);
+    animate border-color { duration: 120ms; }
     height: 32px;
 
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
+        padding-left: 11px;
+        padding-right: 11px;
         spacing: 6px;
         alignment: center;
 
@@ -24,16 +26,18 @@ export component IconChip inherits Rectangle {
                 source: root.icon;
                 width: 13px;
                 height: 13px;
-                colorize: root.selected ? #ffffff : (touch.has-hover ? #e2e8f0 : #949db2);
+                colorize: root.selected ? #ffffff : (touch.has-hover ? #f1f5f9 : #949db2);
+                animate colorize { duration: 120ms; }
             }
         }
 
         Text {
             text: root.text;
-            color: root.selected ? #ffffff : (touch.has-hover ? #e2e8f0 : #949db2);
+            color: root.selected ? #ffffff : (touch.has-hover ? #f1f5f9 : #949db2);
             font-size: 12px;
             font-weight: root.selected ? 600 : 500;
             vertical-alignment: center;
+            animate color { duration: 120ms; }
         }
     }
 

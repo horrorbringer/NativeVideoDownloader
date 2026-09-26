@@ -19,6 +19,8 @@ export component HomeTab inherits VerticalLayout {
     in-out property <bool> has_subtitles: false;
     in-out property <string> subtitles_summary: "";
     in-out property <bool> download_subtitles: true;
+    in-out property <bool> has_thumbnail: false;
+    in-out property <image> thumbnail_image;
 
     callback analyze_url(string);
     callback paste_from_clipboard();
@@ -127,10 +129,10 @@ export component HomeTab inherits VerticalLayout {
 
         // URL Input Card
         Rectangle {
-            background: #1c202d;
+            background: #161926;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #2b3044;
+            border-color: #242c40;
 
             VerticalLayout {
                 padding: 18px;
@@ -203,14 +205,14 @@ export component HomeTab inherits VerticalLayout {
 
         // Video Analysis Result Card (shown when metadata is found)
         if root.has_metadata: Rectangle {
-            background: #1c202d;
+            background: #161926;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #2b3044;
+            border-color: #242c40;
 
             VerticalLayout {
                 padding: 20px;
-                spacing: 14px;
+                spacing: 16px;
 
                 HorizontalLayout {
                     alignment: space-between;
@@ -263,14 +265,22 @@ export component HomeTab inherits VerticalLayout {
 
                     // Video preview icon/box
                     Rectangle {
-                        width: 130px;
-                        height: 85px;
-                        background: #23283b;
-                        border-radius: 8px;
+                        width: 154px;
+                        height: 96px;
+                        background: #121520;
+                        border-radius: 9px;
                         border-width: 1px;
-                        border-color: #2c3349;
+                        border-color: #2c354e;
+                        clip: true;
 
-                        VerticalLayout {
+                        if root.has_thumbnail: Image {
+                            source: root.thumbnail_image;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: cover;
+                        }
+
+                        if !root.has_thumbnail: VerticalLayout {
                             alignment: center;
                             spacing: 6px;
 
@@ -441,18 +451,16 @@ export component HomeTab inherits VerticalLayout {
                         selected: root.selected_format_index == 4;
                         clicked => { root.selected_format_index = 4; }
                     }
-                }
-
-                // Subtitle extraction & embedding option
+                         // Subtitle extraction & embedding option
                 HorizontalLayout {
                     spacing: 10px;
                     alignment: space-between;
 
                     Rectangle {
-                        background: root.download_subtitles ? #1e3a5f : #171a26;
+                        background: root.download_subtitles ? #0f2142 : #141724;
                         border-radius: 8px;
                         border-width: 1px;
-                        border-color: root.download_subtitles ? #38bdf8 : #2b3044;
+                        border-color: root.download_subtitles ? #2563eb : #22283a;
                         height: 32px;
 
                         HorizontalLayout {
@@ -467,13 +475,13 @@ export component HomeTab inherits VerticalLayout {
                                     source: @image-url("../icons/subtitles.svg");
                                     width: 14px;
                                     height: 14px;
-                                    colorize: root.download_subtitles ? #38bdf8 : #8c93a8;
+                                    colorize: root.download_subtitles ? #60a5fa : #8c93a8;
                                 }
                             }
 
                             Text {
                                 text: root.download_subtitles ? "Subtitles: Enabled (.srt/embed)" : "Subtitles: Disabled";
-                                color: root.download_subtitles ? #38bdf8 : #8c93a8;
+                                color: root.download_subtitles ? #60a5fa : #8c93a8;
                                 font-size: 12px;
                                 font-weight: 600;
                                 vertical-alignment: center;
@@ -516,15 +524,15 @@ export component HomeTab inherits VerticalLayout {
 
         // Empty / Placeholder state when no video analyzed
         if !root.has_metadata && !root.is_analyzing: Rectangle {
-            background: #171a26;
+            background: #141724;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #24293a;
-            height: 200px;
+            border-color: #22283a;
+            vertical-stretch: 1;
 
             VerticalLayout {
                 alignment: center;
-                spacing: 12px;
+                spacing: 14px;
 
                 HorizontalLayout {
                     alignment: center;
@@ -532,9 +540,9 @@ export component HomeTab inherits VerticalLayout {
                         width: 48px;
                         height: 48px;
                         border-radius: 24px;
-                        background: #22273a;
+                        background: #1d2234;
                         border-width: 1px;
-                        border-color: #2e354e;
+                        border-color: #2b334d;
 
                         Image {
                             source: @image-url("../icons/sparkles.svg");
@@ -548,7 +556,7 @@ export component HomeTab inherits VerticalLayout {
                 }
 
                 VerticalLayout {
-                    spacing: 4px;
+                    spacing: 5px;
                     Text {
                         text: "Ready to Download Media";
                         color: #ffffff;
@@ -569,8 +577,10 @@ export component HomeTab inherits VerticalLayout {
                     alignment: center;
 
                     Rectangle {
-                        background: #1c2130;
+                        background: #191e2c;
                         border-radius: 4px;
+                        border-width: 1px;
+                        border-color: #242c40;
                         height: 22px;
                         HorizontalLayout {
                             padding-left: 8px;
@@ -578,7 +588,7 @@ export component HomeTab inherits VerticalLayout {
                             alignment: center;
                             Text {
                                 text: "Up to 4K Lossless";
-                                color: #64748b;
+                                color: #8c93a8;
                                 font-size: 11px;
                                 font-weight: 500;
                                 vertical-alignment: center;
@@ -587,8 +597,10 @@ export component HomeTab inherits VerticalLayout {
                     }
 
                     Rectangle {
-                        background: #1c2130;
+                        background: #191e2c;
                         border-radius: 4px;
+                        border-width: 1px;
+                        border-color: #242c40;
                         height: 22px;
                         HorizontalLayout {
                             padding-left: 8px;
@@ -596,7 +608,7 @@ export component HomeTab inherits VerticalLayout {
                             alignment: center;
                             Text {
                                 text: "Fast Resumption";
-                                color: #64748b;
+                                color: #8c93a8;
                                 font-size: 11px;
                                 font-weight: 500;
                                 vertical-alignment: center;
@@ -605,8 +617,10 @@ export component HomeTab inherits VerticalLayout {
                     }
 
                     Rectangle {
-                        background: #1c2130;
+                        background: #191e2c;
                         border-radius: 4px;
+                        border-width: 1px;
+                        border-color: #242c40;
                         height: 22px;
                         HorizontalLayout {
                             padding-left: 8px;
@@ -614,7 +628,7 @@ export component HomeTab inherits VerticalLayout {
                             alignment: center;
                             Text {
                                 text: "Subtitles & Audio MP3";
-                                color: #64748b;
+                                color: #8c93a8;
                                 font-size: 11px;
                                 font-weight: 500;
                                 vertical-alignment: center;
@@ -631,10 +645,10 @@ export component HomeTab inherits VerticalLayout {
         spacing: 16px;
 
         Rectangle {
-            background: #1c202d;
+            background: #161926;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #2b3044;
+            border-color: #242c40;
 
             VerticalLayout {
                 padding: 20px;
@@ -662,7 +676,7 @@ export component HomeTab inherits VerticalLayout {
 
                 batch_input := TextEdit {
                     text <=> root.batch_urls_text;
-                    font-size: 13px;
+                    font_size: 13px;
                     height: 140px;
                 }
 
@@ -717,7 +731,5 @@ export component HomeTab inherits VerticalLayout {
             }
         }
     }
-
-    // Spacer
-    Rectangle { }
+}
 }

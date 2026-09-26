@@ -22,45 +22,50 @@ export component SettingsTab inherits ScrollView {
 
         // 1. Storage & File Location
         Rectangle {
-            background: #181b27;
+            background: #161926;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #272d42;
+            border-color: #242c40;
 
             VerticalLayout {
                 padding: 20px;
                 spacing: 14px;
 
-                VerticalLayout {
-                    spacing: 6px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        alignment: start;
+                    Rectangle {
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 8px;
+                        background: #1e2438;
+                        border-width: 1px;
+                        border-color: #2c3550;
 
-                        VerticalLayout {
-                            alignment: center;
-                            Image {
-                                source: @image-url("../icons/folder.svg");
-                                width: 16px;
-                                height: 16px;
-                                colorize: #7082ff;
-                            }
+                        Image {
+                            source: @image-url("../icons/folder.svg");
+                            width: 17px;
+                            height: 17px;
+                            colorize: #7082ff;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
                         }
+                    }
 
+                    VerticalLayout {
+                        spacing: 3px;
                         Text {
                             text: "Default Download Directory";
                             color: #ffffff;
                             font-size: 15px;
                             font-weight: 700;
-                            vertical-alignment: center;
                         }
-                    }
-
-                    Text {
-                        text: "All media, video series, and extracted audio files are saved into this folder.";
-                        color: #8c93a8;
-                        font-size: 13px;
+                        Text {
+                            text: "All media, video series, and extracted audio files are saved into this folder.";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
                     }
                 }
 
@@ -68,10 +73,10 @@ export component SettingsTab inherits ScrollView {
                     spacing: 10px;
 
                     Rectangle {
-                        background: #111420;
+                        background: #0f121d;
                         border-radius: 8px;
                         border-width: 1px;
-                        border-color: #252b3e;
+                        border-color: #202638;
                         horizontal-stretch: 1;
                         height: 38px;
 
@@ -120,10 +125,10 @@ export component SettingsTab inherits ScrollView {
 
         // 2. Network & Bandwidth Management
         Rectangle {
-            background: #181b27;
+            background: #161926;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #272d42;
+            border-color: #242c40;
 
             VerticalLayout {
                 padding: 20px;
@@ -131,38 +136,43 @@ export component SettingsTab inherits ScrollView {
 
                 // Speed Limiter
                 VerticalLayout {
-                    spacing: 10px;
+                    spacing: 12px;
 
-                    VerticalLayout {
-                        spacing: 6px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
 
-                        HorizontalLayout {
-                            spacing: 8px;
-                            alignment: start;
+                        Rectangle {
+                            width: 34px;
+                            height: 34px;
+                            border-radius: 8px;
+                            background: #1e2438;
+                            border-width: 1px;
+                            border-color: #2c3550;
 
-                            VerticalLayout {
-                                alignment: center;
-                                Image {
-                                    source: @image-url("../icons/bolt.svg");
-                                    width: 16px;
-                                    height: 16px;
-                                    colorize: #7082ff;
-                                }
+                            Image {
+                                source: @image-url("../icons/bolt.svg");
+                                width: 17px;
+                                height: 17px;
+                                colorize: #7082ff;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
                             }
+                        }
 
+                        VerticalLayout {
+                            spacing: 3px;
                             Text {
                                 text: "Bandwidth Speed Limiter";
                                 color: #ffffff;
                                 font-size: 15px;
                                 font-weight: 700;
-                                vertical-alignment: center;
                             }
-                        }
-
-                        Text {
-                            text: "Throttle maximum download speed to avoid saturating your local network.";
-                            color: #8c93a8;
-                            font-size: 13px;
+                            Text {
+                                text: "Throttle maximum download speed to avoid saturating your local network.";
+                                color: #8c93a8;
+                                font-size: 13px;
+                            }
                         }
                     }
 
@@ -218,43 +228,48 @@ export component SettingsTab inherits ScrollView {
                 // Divider
                 Rectangle {
                     height: 1px;
-                    background: #23283b;
+                    background: #202638;
                 }
 
                 // Concurrency
                 VerticalLayout {
-                    spacing: 10px;
+                    spacing: 12px;
 
-                    VerticalLayout {
-                        spacing: 6px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
 
-                        HorizontalLayout {
-                            spacing: 8px;
-                            alignment: start;
+                        Rectangle {
+                            width: 34px;
+                            height: 34px;
+                            border-radius: 8px;
+                            background: #1e2438;
+                            border-width: 1px;
+                            border-color: #2c3550;
 
-                            VerticalLayout {
-                                alignment: center;
-                                Image {
-                                    source: @image-url("../icons/cpu.svg");
-                                    width: 16px;
-                                    height: 16px;
-                                    colorize: #7082ff;
-                                }
+                            Image {
+                                source: @image-url("../icons/cpu.svg");
+                                width: 17px;
+                                height: 17px;
+                                colorize: #7082ff;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
                             }
+                        }
 
+                        VerticalLayout {
+                            spacing: 3px;
                             Text {
                                 text: "Concurrent Queue Workers";
                                 color: #ffffff;
                                 font-size: 15px;
                                 font-weight: 700;
-                                vertical-alignment: center;
                             }
-                        }
-
-                        Text {
-                            text: "Number of download items actively processed at the same time.";
-                            color: #8c93a8;
-                            font-size: 13px;
+                            Text {
+                                text: "Number of download items actively processed simultaneously.";
+                                color: #8c93a8;
+                                font-size: 13px;
+                            }
                         }
                     }
 
@@ -301,10 +316,10 @@ export component SettingsTab inherits ScrollView {
 
         // 3. System & Desktop Notifications
         Rectangle {
-            background: #181b27;
+            background: #161926;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #272d42;
+            border-color: #242c40;
 
             VerticalLayout {
                 padding: 20px;
@@ -313,41 +328,46 @@ export component SettingsTab inherits ScrollView {
                 HorizontalLayout {
                     alignment: space-between;
 
-                    VerticalLayout {
-                        spacing: 6px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
 
-                        HorizontalLayout {
-                            spacing: 8px;
-                            alignment: start;
+                        Rectangle {
+                            width: 34px;
+                            height: 34px;
+                            border-radius: 8px;
+                            background: #1e2438;
+                            border-width: 1px;
+                            border-color: #2c3550;
 
-                            VerticalLayout {
-                                alignment: center;
-                                Image {
-                                    source: @image-url("../icons/bell.svg");
-                                    width: 16px;
-                                    height: 16px;
-                                    colorize: #7082ff;
-                                }
+                            Image {
+                                source: @image-url("../icons/bell.svg");
+                                width: 17px;
+                                height: 17px;
+                                colorize: #7082ff;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
                             }
+                        }
 
+                        VerticalLayout {
+                            spacing: 3px;
                             Text {
                                 text: "System Notifications";
                                 color: #ffffff;
                                 font-size: 15px;
                                 font-weight: 700;
-                                vertical-alignment: center;
                             }
-                        }
-
-                        Text {
-                            text: "Sends native desktop alerts with audio chime when downloads finish.";
-                            color: #8c93a8;
-                            font-size: 13px;
+                            Text {
+                                text: "Sends native macOS alerts with audio chime when downloads finish.";
+                                color: #8c93a8;
+                                font-size: 13px;
+                            }
                         }
                     }
 
                     ActionButton {
-                        text: "Test Notification";
+                        text: "Test Alert";
                         icon: @image-url("../icons/bell.svg");
                         has_icon: true;
                         height: 34px;
@@ -359,10 +379,10 @@ export component SettingsTab inherits ScrollView {
 
         // 4. Engine & Architecture Overview (Compact & Clean)
         Rectangle {
-            background: #131622;
+            background: #121522;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #222638;
+            border-color: #202638;
 
             VerticalLayout {
                 padding: 16px;

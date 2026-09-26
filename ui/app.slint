@@ -14,7 +14,7 @@ export component AppWindow inherits Window {
     preferred-height: 640px;
     min-width: 780px;
     min-height: 520px;
-    background: #14161f;
+    background: #0f1118;
 
     in-out property <int> active_tab: 0;
     in-out property <string> status_message: "Ready to download media";
@@ -58,6 +58,8 @@ export component AppWindow inherits Window {
     in-out property <bool> has_subtitles: false;
     in-out property <string> subtitles_summary: "";
     in-out property <bool> download_subtitles: true;
+    in-out property <bool> has_thumbnail: false;
+    in-out property <image> thumbnail_image;
 
     // Input properties
     in-out property <string> input_url_text: "";
@@ -109,30 +111,35 @@ export component AppWindow inherits Window {
     HorizontalLayout {
         // Sidebar Navigation
         Rectangle {
-            width: 200px;
-            background: #181b26;
+            width: 210px;
+            background: #141724;
+            border-width: 1px;
+            border-color: #1e2436;
 
             VerticalLayout {
                 padding: 16px;
-                spacing: 10px;
+                spacing: 8px;
 
                 // App Title & Brand
                 HorizontalLayout {
                     alignment: start;
                     spacing: 10px;
-                    padding-bottom: 12px;
-                    padding-left: 4px;
+                    padding-bottom: 14px;
+                    padding-left: 2px;
+                    padding-top: 4px;
 
                     Rectangle {
-                        width: 30px;
-                        height: 30px;
+                        width: 32px;
+                        height: 32px;
                         border-radius: 8px;
-                        background: #252b45;
+                        background: #232b48;
+                        border-width: 1px;
+                        border-color: #36416b;
 
                         Image {
                             source: @image-url("icons/bolt.svg");
-                            width: 16px;
-                            height: 16px;
+                            width: 17px;
+                            height: 17px;
                             colorize: #7082ff;
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
@@ -149,7 +156,7 @@ export component AppWindow inherits Window {
                             font-weight: 700;
                         }
                         Text {
-                            text: "Native Downloader";
+                            text: "Native Pro Downloader";
                             color: #7082ff;
                             font-size: 11px;
                             font-weight: 600;
@@ -169,6 +176,7 @@ export component AppWindow inherits Window {
                     text: "Downloads";
                     icon: @image-url("icons/download.svg");
                     active: root.active_tab == 1;
+                    badge_count: root.active_downloads_count;
                     clicked => { root.active_tab = 1; }
                 }
 
@@ -195,19 +203,68 @@ export component AppWindow inherits Window {
 
                 // Spacer
                 Rectangle { }
+
+                // Sidebar System Status Widget
+                Rectangle {
+                    background: #171c2b;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: #242c42;
+                    height: 52px;
+
+                    VerticalLayout {
+                        padding: 8px;
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 4px;
+                        alignment: center;
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 6px;
+                                    height: 6px;
+                                    border-radius: 3px;
+                                    background: root.active_downloads_count > 0 ? #f59e0b : #4ade80;
+                                }
+                            }
+
+                            Text {
+                                text: root.active_downloads_count > 0 ? "Active Tasks" : "Engine Ready";
+                                color: #e2e8f0;
+                                font-size: 11px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Text {
+                            text: root.active_downloads_count > 0 ?
+                                  (root.active_downloads_count + " downloading • " + root.selected_concurrency + " workers") :
+                                  ("Workers: " + root.selected_concurrency + " • SQLite OK");
+                            color: #717d96;
+                            font-size: 10px;
+                        }
+                    }
+                }
             }
         }
 
         // Main Content Area
         VerticalLayout {
             padding: 24px;
-            spacing: 20px;
+            spacing: 18px;
 
             // Header Bar
             HorizontalLayout {
                 alignment: space-between;
 
                 VerticalLayout {
+                    spacing: 2px;
                     Text {
                         text: root.active_tab == 0 ? "Download Media" :
                               root.active_tab == 1 ? "Active Downloads" :
@@ -218,12 +275,55 @@ export component AppWindow inherits Window {
                         font-weight: 700;
                     }
                     Text {
-                        text: root.active_tab == 0 ? "Enter an authorized media URL to analyze and download" :
+                        text: root.active_tab == 0 ? "Enter any video or playlist URL to inspect and download" :
                               root.active_tab == 1 ? "Monitor ongoing queues, speeds and progress" :
                               root.active_tab == 2 ? "Past completed and archived downloads" :
                               root.active_tab == 3 ? "Real-time engine operations, streaming events, and diagnostics" : "Configure directories, concurrency, and defaults";
                         color: #8c93a8;
                         font-size: 13px;
+                    }
+                }
+
+                // Live status badge
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        background: #181c2b;
+                        border-radius: 14px;
+                        border-width: 1px;
+                        border-color: #272f44;
+                        height: 28px;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 12px;
+                            spacing: 6px;
+                            alignment: center;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 6px;
+                                    height: 6px;
+                                    border-radius: 3px;
+                                    background: root.has_error ? #ef4444 :
+                                                root.is_analyzing ? #60a5fa :
+                                                root.active_downloads_count > 0 ? #f59e0b : #4ade80;
+                                }
+                            }
+
+                            Text {
+                                text: root.has_error ? "Alert logged" :
+                                      root.is_analyzing ? "Analyzing stream..." :
+                                      root.active_downloads_count > 0 ? (root.active_downloads_count + " active tasks") :
+                                      root.status_message;
+                                color: #cbd5e1;
+                                font-size: 11px;
+                                font-weight: 500;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
                     }
                 }
             }
@@ -246,6 +346,8 @@ export component AppWindow inherits Window {
                 has_subtitles: root.has_subtitles;
                 subtitles_summary: root.subtitles_summary;
                 download_subtitles <=> root.download_subtitles;
+                has_thumbnail: root.has_thumbnail;
+                thumbnail_image: root.thumbnail_image;
 
                 analyze_url(url) => { root.analyze_url(url); }
                 paste_from_clipboard() => { root.paste_from_clipboard(); }
@@ -316,8 +418,10 @@ export component AppWindow inherits Window {
 
             // Status bar at bottom
             Rectangle {
-                background: #181a24;
+                background: #131622;
                 border-radius: 8px;
+                border-width: 1px;
+                border-color: #1e2436;
                 height: 36px;
 
                 HorizontalLayout {

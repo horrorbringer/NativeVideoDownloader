@@ -30,10 +30,10 @@ export component HistoryTab inherits VerticalLayout {
         }
 
         Rectangle {
-            background: #181b26;
-            border-radius: 6px;
+            background: #141724;
+            border-radius: 7px;
             border-width: 1px;
-            border-color: #272d42;
+            border-color: #22283a;
             height: 36px;
 
             HorizontalLayout {
@@ -63,23 +63,25 @@ export component HistoryTab inherits VerticalLayout {
 
     // If no history items
     if root.history_items.length == 0: Rectangle {
-        background: #181b27;
+        background: #141724;
         border-radius: 12px;
         border-width: 1px;
-        border-color: #272d42;
+        border-color: #22283a;
         vertical-stretch: 1;
 
         VerticalLayout {
             alignment: center;
-            spacing: 12px;
+            spacing: 14px;
 
             HorizontalLayout {
                 alignment: center;
                 Rectangle {
-                    width: 44px;
-                    height: 44px;
-                    border-radius: 22px;
-                    background: #23283c;
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 24px;
+                    background: #1d2234;
+                    border-width: 1px;
+                    border-color: #2b334d;
 
                     Image {
                         source: root.history_search_query != "" ? @image-url("../icons/search.svg") : @image-url("../icons/history.svg");
@@ -93,7 +95,7 @@ export component HistoryTab inherits VerticalLayout {
             }
 
             VerticalLayout {
-                spacing: 4px;
+                spacing: 5px;
                 Text {
                     text: root.history_search_query != "" ? "No history records match your search" : "No download history yet";
                     color: #ffffff;
@@ -120,11 +122,12 @@ export component HistoryTab inherits VerticalLayout {
             padding-bottom: 8px;
 
             for item in root.history_items: Rectangle {
-                background: touch.has-hover ? #1f2334 : #171a26;
+                background: touch.has-hover ? #1a1e2d : #161926;
                 border-radius: 12px;
                 border-width: 1px;
-                border-color: item.status == "Completed" ? #252d40 : (item.status == "Failed" ? #451b1b : #24293a);
+                border-color: touch.has-hover ? #2e3852 : #242c40;
                 animate background { duration: 150ms; }
+                animate border-color { duration: 150ms; }
 
                 touch := TouchArea { }
 
@@ -157,27 +160,29 @@ export component HistoryTab inherits VerticalLayout {
                                 Rectangle {
                                     height: 22px;
                                     border-radius: 4px;
-                                    background: item.status == "Completed" ? #14532d : (item.status == "Failed" ? #7f1d1d : #334155);
+                                    border-width: 1px;
+                                    background: item.status == "Completed" ? #0e291b : (item.status == "Failed" ? #331317 : #1a2030);
+                                    border-color: item.status == "Completed" ? #166534 : (item.status == "Failed" ? #991b1b : #2d3748);
 
                                     HorizontalLayout {
                                         padding-left: 8px;
                                         padding-right: 8px;
-                                        spacing: 4px;
+                                        spacing: 5px;
                                         alignment: center;
 
                                         VerticalLayout {
                                             alignment: center;
                                             Image {
                                                 source: item.status == "Completed" ? @image-url("../icons/check.svg") : @image-url("../icons/x.svg");
-                                                width: 12px;
-                                                height: 12px;
-                                                colorize: item.status == "Completed" ? #4ade80 : #fca5a5;
+                                                width: 11px;
+                                                height: 11px;
+                                                colorize: item.status == "Completed" ? #4ade80 : #f87171;
                                             }
                                         }
 
                                         Text {
                                             text: item.status == "Completed" ? "Completed" : item.status;
-                                            color: item.status == "Completed" ? #4ade80 : (item.status == "Failed" ? #fca5a5 : #cbd5e1);
+                                            color: item.status == "Completed" ? #4ade80 : (item.status == "Failed" ? #f87171 : #cbd5e1);
                                             font-size: 11px;
                                             font-weight: 700;
                                             vertical-alignment: center;
@@ -196,13 +201,13 @@ export component HistoryTab inherits VerticalLayout {
                                             source: @image-url("../icons/package.svg");
                                             width: 13px;
                                             height: 13px;
-                                            colorize: #949db2;
+                                            colorize: #8c93a8;
                                         }
                                     }
 
                                     Text {
                                         text: item.size_text;
-                                        color: #949db2;
+                                        color: #8c93a8;
                                         font-size: 12px;
                                         vertical-alignment: center;
                                     }
@@ -274,10 +279,10 @@ export component HistoryTab inherits VerticalLayout {
 
                     // Row 2: Recessed File Path Bezel
                     Rectangle {
-                        background: #111420;
+                        background: #0f121d;
                         border-radius: 6px;
                         border-width: 1px;
-                        border-color: #202538;
+                        border-color: #1e2436;
                         height: 28px;
 
                         HorizontalLayout {

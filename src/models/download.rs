@@ -130,4 +130,5 @@ pub struct VideoMetadata {
     pub playlist_entries: Vec<PlaylistEntry>,
     pub has_subtitles: bool,
     pub subtitles_summary: String,
+    pub thumbnail_url: Option<String>,
 }

@@ -106,23 +106,25 @@ export component LogsTab inherits VerticalLayout {
 
     // If no logs match filter/query
     if root.log_entries.length == 0: Rectangle {
-        background: #10131d;
-        border-radius: 10px;
+        background: #141724;
+        border-radius: 12px;
         border-width: 1px;
-        border-color: #212638;
+        border-color: #22283a;
         vertical-stretch: 1;
 
         VerticalLayout {
             alignment: center;
-            spacing: 12px;
+            spacing: 14px;
 
             HorizontalLayout {
                 alignment: center;
                 Rectangle {
-                    width: 44px;
-                    height: 44px;
-                    border-radius: 22px;
-                    background: #1a1e2d;
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 24px;
+                    background: #1d2234;
+                    border-width: 1px;
+                    border-color: #2b334d;
 
                     Image {
                         source: (root.log_filter_index != 0 || root.log_search_query != "") ? @image-url("../icons/search.svg") : @image-url("../icons/logs.svg");
@@ -136,7 +138,7 @@ export component LogsTab inherits VerticalLayout {
             }
 
             VerticalLayout {
-                spacing: 4px;
+                spacing: 5px;
                 Text {
                     text: (root.log_filter_index != 0 || root.log_search_query != "") ? "No matching logs found" : "No logs recorded yet";
                     color: #ffffff;
@@ -154,74 +156,144 @@ export component LogsTab inherits VerticalLayout {
         }
     }
 
-    // Unified Terminal Log Console Card
+    // Unified Developer Terminal Log Console Card
     if root.log_entries.length > 0: Rectangle {
-        background: #10131d;
+        background: #0b0e17;
         border-radius: 10px;
         border-width: 1px;
-        border-color: #212638;
+        border-color: #1e2436;
         vertical-stretch: 1;
         clip: true;
 
-        ScrollView {
-            VerticalLayout {
-                padding: 8px;
-                spacing: 2px;
+        VerticalLayout {
+            // Console Title Bar
+            Rectangle {
+                background: #111522;
+                height: 32px;
 
-                for entry in root.log_entries: Rectangle {
-                    background: touch.has-hover ? #191e2c : (
-                        entry.level == "ERROR" ? #241419 :
-                        entry.level == "WARN" ? #221c12 :
-                        transparent
-                    );
-                    border-radius: 4px;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    alignment: space-between;
 
-                    touch := TouchArea { }
-
+                    // macOS Terminal Dots
                     HorizontalLayout {
-                        padding-top: 6px;
-                        padding-bottom: 6px;
-                        padding-left: 10px;
-                        padding-right: 10px;
-                        spacing: 12px;
-                        alignment: start;
+                        spacing: 6px;
+                        alignment: center;
 
-                        // Fixed-width timestamp
+                        Rectangle {
+                            width: 9px;
+                            height: 9px;
+                            border-radius: 5px;
+                            background: #ef4444;
+                        }
+                        Rectangle {
+                            width: 9px;
+                            height: 9px;
+                            border-radius: 5px;
+                            background: #f59e0b;
+                        }
+                        Rectangle {
+                            width: 9px;
+                            height: 9px;
+                            border-radius: 5px;
+                            background: #10b981;
+                        }
+
+                        Rectangle { width: 4px; }
+
                         Text {
-                            text: entry.timestamp;
+                            text: "Console Stream • Real-time Engine Diagnostics";
                             color: #64748b;
                             font-size: 11px;
-                            width: 68px;
-                            vertical-alignment: top;
+                            font-weight: 600;
+                            vertical-alignment: center;
                         }
+                    }
 
-                        // Level badge
-                        Rectangle {
-                            width: 50px;
-                            height: 19px;
-                            border-radius: 4px;
-                            background: entry.level == "ERROR" ? #ef4444 :
-                                        entry.level == "WARN" ? #f59e0b : #3b82f6;
+                    Text {
+                        text: root.log_entries.length + " events";
+                        color: #64748b;
+                        font-size: 11px;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
+                }
+            }
 
+            Rectangle {
+                height: 1px;
+                background: #1a2030;
+            }
+
+            // Console Stream Area
+            ScrollView {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 2px;
+
+                    for entry in root.log_entries: Rectangle {
+                        background: touch.has-hover ? #171c2b : (
+                            entry.level == "ERROR" ? #221217 :
+                            entry.level == "WARN" ? #211a10 :
+                            transparent
+                        );
+                        border-radius: 4px;
+                        animate background { duration: 100ms; }
+
+                        touch := TouchArea { }
+
+                        HorizontalLayout {
+                            padding-top: 5px;
+                            padding-bottom: 5px;
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 10px;
+                            alignment: start;
+
+                            // Fixed-width timestamp
                             Text {
-                                text: entry.level;
-                                color: #ffffff;
-                                font-size: 10px;
-                                font-weight: 700;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
+                                text: entry.timestamp;
+                                color: #5a6480;
+                                font-size: 11px;
+                                width: 72px;
+                                vertical-alignment: top;
                             }
-                        }
 
-                        // Message
-                        Text {
-                            text: entry.message;
-                            color: entry.level == "ERROR" ? #fca5a5 :
-                                   entry.level == "WARN" ? #fde68a : #cbd5e1;
-                            font-size: 12px;
-                            horizontal-stretch: 1;
-                            wrap: word-wrap;
-                            vertical-alignment: top;
+                            // Level badge (pill style)
+                            Rectangle {
+                                width: 48px;
+                                height: 18px;
+                                border-radius: 3px;
+                                border-width: 1px;
+                                background: entry.level == "ERROR" ? #371216 :
+                                            entry.level == "WARN" ? #351e08 : #172554;
+                                border-color: entry.level == "ERROR" ? #b91c1c :
+                                              entry.level == "WARN" ? #b45309 : #1d4ed8;
+
+                                Text {
+                                    text: entry.level;
+                                    color: entry.level == "ERROR" ? #fca5a5 :
+                                           entry.level == "WARN" ? #fcd34d : #93c5fd;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            // Message
+                            Text {
+                                text: entry.message;
+                                color: entry.level == "ERROR" ? #fca5a5 :
+                                       entry.level == "WARN" ? #fde68a : #cbd5e1;
+                                font-size: 12px;
+                                horizontal-stretch: 1;
+                                wrap: word-wrap;
+                                vertical-alignment: top;
+                            }
                         }
                     }
                 }
