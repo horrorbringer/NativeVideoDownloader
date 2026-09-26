@@ -129,10 +129,16 @@ export component AppWindow inherits Window {
     in-out property <string> subtitles_summary: "";
     in-out property <bool> download_subtitles: true;
 
+    // Input properties
+    in-out property <string> input_url_text: "";
+    in-out property <string> batch_urls_text: "";
+
     // Settings properties
     in-out property <string> download_dir_path: "~/Downloads";
 
     callback analyze_url(string);
+    callback paste_from_clipboard();
+    callback paste_batch_from_clipboard();
     callback start_download(int, bool);
     callback start_batch_download(string, int);
     callback pause_download(string);
@@ -380,6 +386,7 @@ export component AppWindow inherits Window {
                                 spacing: 10px;
 
                                 url_input := LineEdit {
+                                    text <=> root.input_url_text;
                                     placeholder_text: "https://example.com/video/123";
                                     font_size: 14px;
                                     height: 38px;
@@ -389,11 +396,19 @@ export component AppWindow inherits Window {
                                 }
 
                                 Button {
-                                    text: root.is_analyzing ? "Analyzing..." : "Analyze URL";
-                                    enabled: !root.is_analyzing && url_input.text != "";
+                                    text: "📋 Paste";
                                     height: 38px;
                                     clicked => {
-                                        root.analyze_url(url_input.text);
+                                        root.paste_from_clipboard();
+                                    }
+                                }
+
+                                Button {
+                                    text: root.is_analyzing ? "Analyzing..." : "Analyze URL";
+                                    enabled: !root.is_analyzing && root.input_url_text != "";
+                                    height: 38px;
+                                    clicked => {
+                                        root.analyze_url(root.input_url_text);
                                     }
                                 }
                             }
@@ -611,15 +626,19 @@ export component AppWindow inherits Window {
                                     color: #c7cbd9;
                                     font-size: 14px;
                                     font-weight: 600;
+                                    vertical-alignment: center;
                                 }
-                                Text {
-                                    text: "Supports YouTube, streaming sites, direct media";
-                                    color: #6c738a;
-                                    font-size: 12px;
+                                Button {
+                                    text: "📋 Paste Clipboard";
+                                    height: 30px;
+                                    clicked => {
+                                        root.paste_batch_from_clipboard();
+                                    }
                                 }
                             }
 
                             batch_input := TextEdit {
+                                text <=> root.batch_urls_text;
                                 font-size: 13px;
                                 height: 140px;
                             }
@@ -659,7 +678,7 @@ export component AppWindow inherits Window {
                                     text: "📥 Queue All in Batch";
                                     height: 38px;
                                     clicked => {
-                                        root.start_batch_download(batch_input.text, root.selected_format_index);
+                                        root.start_batch_download(root.batch_urls_text, root.selected_format_index);
                                     }
                                 }
                             }

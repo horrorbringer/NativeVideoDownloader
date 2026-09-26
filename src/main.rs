@@ -62,6 +62,169 @@ async fn refresh_history(
     }
 }
 
+/// Helper: Execute URL analysis and stream metadata / progress into Slint UI
+fn run_url_analysis(
+    url_str: String,
+    window_weak: slint::Weak<AppWindow>,
+    meta_clone: Arc<Mutex<Option<VideoMetadata>>>,
+    client_clone: Arc<NetworkClient>,
+) {
+    let url_str = url_str.trim().to_string();
+    info!("Received URL analysis request: {}", url_str);
+
+    if url_str.is_empty() {
+        if let Some(window) = window_weak.upgrade() {
+            window.set_status_message("Please enter a valid URL".into());
+        }
+        return;
+    }
+
+    if !url_str.starts_with("http://") && !url_str.starts_with("https://") {
+        if let Some(window) = window_weak.upgrade() {
+            window.set_status_message("Invalid URL: must start with http:// or https://".into());
+        }
+        return;
+    }
+
+    if let Some(window) = window_weak.upgrade() {
+        window.set_input_url_text(url_str.clone().into());
+        window.set_is_analyzing(true);
+        window.set_has_metadata(false);
+        window.set_has_error(false);
+        window.set_error_message("".into());
+        window.set_is_playlist(false);
+        window.set_playlist_count(0);
+        window.set_status_message(format!("Inspecting media at {}...", url_str).into());
+    }
+
+    let weak_for_async = window_weak.clone();
+    let meta_for_async = meta_clone.clone();
+    let client = client_clone.clone();
+
+    tokio::spawn(async move {
+        let inspect_result = if downloader::is_streaming_platform(&url_str) {
+            let _ = weak_for_async.upgrade_in_event_loop(|w| {
+                w.set_status_message("Analyzing streaming platform media (yt-dlp)...".into());
+            });
+            downloader::inspect_video(&url_str).await
+        } else {
+            match client.inspect_url(&url_str).await {
+                Ok(meta) if downloader::is_valid_direct_media(&meta) => Ok(meta),
+                Ok(meta) => {
+                    info!(
+                        "Direct inspect returned non-media response (type: {:?}, length: {:?}) for {}, falling back to extractor",
+                        meta.content_type, meta.content_length, url_str
+                    );
+                    let _ = weak_for_async.upgrade_in_event_loop(|w| {
+                        w.set_status_message(
+                            "Web source detected. Extracting media stream...".into(),
+                        );
+                    });
+                    downloader::inspect_video(&url_str).await
+                }
+                Err(err) => {
+                    // Try extractor as fallback
+                    match downloader::inspect_video(&url_str).await {
+                        Ok(extracted) => Ok(extracted),
+                        Err(_) => Err(err),
+                    }
+                }
+            }
+        };
+
+        match inspect_result {
+            Ok(metadata) => {
+                info!("Successfully inspected URL: {:?}", metadata);
+                let is_playlist = metadata.is_playlist;
+                let playlist_count = metadata.playlist_count as i32;
+                let title = if is_playlist {
+                    format!("{} ({} Episodes)", metadata.title, playlist_count)
+                } else {
+                    metadata.title.clone()
+                };
+
+                let size_str = metadata
+                    .content_length
+                    .map(DownloadProgress::format_size)
+                    .unwrap_or_else(|| {
+                        if is_playlist {
+                            format!("{} episodes series", playlist_count)
+                        } else {
+                            "Dynamic size".to_string()
+                        }
+                    });
+
+                let res_str = metadata
+                    .resolution
+                    .clone()
+                    .or_else(|| metadata.content_type.clone())
+                    .unwrap_or_else(|| "Video Stream".to_string());
+
+                let duration_str = metadata
+                    .duration_seconds
+                    .map(downloader::format_duration)
+                    .unwrap_or_default();
+
+                let details_str = if is_playlist {
+                    format!("Series Album  •  {} Episodes", playlist_count)
+                } else if !duration_str.is_empty() {
+                    format!("{}  •  Duration: {}", size_str, duration_str)
+                } else if metadata.supports_ranges {
+                    format!("{}  •  Resumable", size_str)
+                } else {
+                    format!("{}  •  Single-stream", size_str)
+                };
+
+                let format_display = if is_playlist {
+                    format!("Album  •  {} Episodes", playlist_count)
+                } else if metadata.is_extractor {
+                    format!("Stream  •  {}", res_str)
+                } else {
+                    format!("Format: {}", res_str)
+                };
+
+                let has_subs = metadata.has_subtitles;
+                let subs_summary = metadata.subtitles_summary.clone();
+
+                *meta_for_async.lock().await = Some(metadata);
+
+                let _ = weak_for_async.upgrade_in_event_loop(move |window| {
+                    window.set_is_analyzing(false);
+                    window.set_has_metadata(true);
+                    window.set_has_error(false);
+                    window.set_error_message("".into());
+                    window.set_is_playlist(is_playlist);
+                    window.set_playlist_count(playlist_count);
+                    window.set_has_subtitles(has_subs);
+                    window.set_subtitles_summary(subs_summary.into());
+                    window.set_video_title(title.into());
+                    window.set_video_resolution(format_display.into());
+                    window.set_video_duration(details_str.into());
+                    window.set_status_message(
+                        if is_playlist {
+                            format!("Series analyzed: {} episodes found. Ready to download.", playlist_count).into()
+                        } else {
+                            "Media analyzed successfully. Ready to download.".into()
+                        },
+                    );
+                });
+            }
+            Err(err) => {
+                warn!("Failed to inspect URL {}: {}", url_str, err);
+                let err_msg = format!("Inspection failed: {}", err);
+                let err_for_box = err_msg.clone();
+                let _ = weak_for_async.upgrade_in_event_loop(move |window| {
+                    window.set_is_analyzing(false);
+                    window.set_has_metadata(false);
+                    window.set_has_error(true);
+                    window.set_error_message(err_for_box.into());
+                    window.set_status_message(err_msg.into());
+                });
+            }
+        }
+    });
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize structured logging with real-time UI streaming
@@ -181,159 +344,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client_clone = network_client.clone();
 
     main_window.on_analyze_url(move |url| {
-        let url_str = url.to_string();
-        info!("Received URL analysis request: {}", url_str);
+        run_url_analysis(
+            url.to_string(),
+            window_weak.clone(),
+            meta_clone.clone(),
+            client_clone.clone(),
+        );
+    });
 
-        if url_str.trim().is_empty() {
-            if let Some(window) = window_weak.upgrade() {
-                window.set_status_message("Please enter a valid URL".into());
-            }
-            return;
-        }
-
-        if !url_str.starts_with("http://") && !url_str.starts_with("https://") {
-            if let Some(window) = window_weak.upgrade() {
-                window.set_status_message("Invalid URL: must start with http:// or https://".into());
-            }
-            return;
-        }
-
-        if let Some(window) = window_weak.upgrade() {
-            window.set_is_analyzing(true);
-            window.set_has_metadata(false);
-            window.set_has_error(false);
-            window.set_error_message("".into());
-            window.set_is_playlist(false);
-            window.set_playlist_count(0);
-            window.set_status_message(format!("Inspecting media at {}...", url_str).into());
-        }
-
-        let weak_for_async = window_weak.clone();
-        let meta_for_async = meta_clone.clone();
-        let client = client_clone.clone();
-
-        tokio::spawn(async move {
-            let inspect_result = if downloader::is_streaming_platform(&url_str) {
-                let _ = weak_for_async.upgrade_in_event_loop(|w| {
-                    w.set_status_message("Analyzing streaming platform media (yt-dlp)...".into());
-                });
-                downloader::inspect_video(&url_str).await
+    // Callback: Paste from Clipboard into URL input & Auto-Analyze
+    let weak_paste = main_window.as_weak();
+    let meta_paste = current_metadata.clone();
+    let client_paste = network_client.clone();
+    main_window.on_paste_from_clipboard(move || {
+        if let Some(text) = filesystem::read_clipboard_text() {
+            let weak = weak_paste.clone();
+            let is_url = text.starts_with("http://") || text.starts_with("https://");
+            if is_url {
+                run_url_analysis(text, weak, meta_paste.clone(), client_paste.clone());
             } else {
-                match client.inspect_url(&url_str).await {
-                    Ok(meta) if downloader::is_valid_direct_media(&meta) => Ok(meta),
-                    Ok(meta) => {
-                        info!(
-                            "Direct inspect returned non-media response (type: {:?}, length: {:?}) for {}, falling back to extractor",
-                            meta.content_type, meta.content_length, url_str
-                        );
-                        let _ = weak_for_async.upgrade_in_event_loop(|w| {
-                            w.set_status_message(
-                                "Web source detected. Extracting media stream...".into(),
-                            );
-                        });
-                        downloader::inspect_video(&url_str).await
-                    }
-                    Err(err) => {
-                        // Try extractor as fallback
-                        match downloader::inspect_video(&url_str).await {
-                            Ok(extracted) => Ok(extracted),
-                            Err(_) => Err(err),
-                        }
-                    }
-                }
-            };
-
-            match inspect_result {
-                Ok(metadata) => {
-                    info!("Successfully inspected URL: {:?}", metadata);
-                    let is_playlist = metadata.is_playlist;
-                    let playlist_count = metadata.playlist_count as i32;
-                    let title = if is_playlist {
-                        format!("{} ({} Episodes)", metadata.title, playlist_count)
-                    } else {
-                        metadata.title.clone()
-                    };
-
-                    let size_str = metadata
-                        .content_length
-                        .map(DownloadProgress::format_size)
-                        .unwrap_or_else(|| {
-                            if is_playlist {
-                                format!("{} episodes series", playlist_count)
-                            } else {
-                                "Dynamic size".to_string()
-                            }
-                        });
-
-                    let res_str = metadata
-                        .resolution
-                        .clone()
-                        .or_else(|| metadata.content_type.clone())
-                        .unwrap_or_else(|| "Video Stream".to_string());
-
-                    let duration_str = metadata
-                        .duration_seconds
-                        .map(downloader::format_duration)
-                        .unwrap_or_default();
-
-                    let details_str = if is_playlist {
-                        format!("Series Album  •  {} Episodes", playlist_count)
-                    } else if !duration_str.is_empty() {
-                        format!("{}  •  Duration: {}", size_str, duration_str)
-                    } else if metadata.supports_ranges {
-                        format!("{}  •  Resumable", size_str)
-                    } else {
-                        format!("{}  •  Single-stream", size_str)
-                    };
-
-                    let format_display = if is_playlist {
-                        format!("Album  •  {} Episodes", playlist_count)
-                    } else if metadata.is_extractor {
-                        format!("Stream  •  {}", res_str)
-                    } else {
-                        format!("Format: {}", res_str)
-                    };
-
-                    let has_subs = metadata.has_subtitles;
-                    let subs_summary = metadata.subtitles_summary.clone();
-
-                    *meta_for_async.lock().await = Some(metadata);
-
-                    let _ = weak_for_async.upgrade_in_event_loop(move |window| {
-                        window.set_is_analyzing(false);
-                        window.set_has_metadata(true);
-                        window.set_has_error(false);
-                        window.set_error_message("".into());
-                        window.set_is_playlist(is_playlist);
-                        window.set_playlist_count(playlist_count);
-                        window.set_has_subtitles(has_subs);
-                        window.set_subtitles_summary(subs_summary.into());
-                        window.set_video_title(title.into());
-                        window.set_video_resolution(format_display.into());
-                        window.set_video_duration(details_str.into());
-                        window.set_status_message(
-                            if is_playlist {
-                                format!("Series analyzed: {} episodes found. Ready to download.", playlist_count).into()
-                            } else {
-                                "Media analyzed successfully. Ready to download.".into()
-                            },
-                        );
-                    });
-                }
-                Err(err) => {
-                    warn!("Failed to inspect URL {}: {}", url_str, err);
-                    let err_msg = format!("Inspection failed: {}", err);
-                    let err_for_box = err_msg.clone();
-                    let _ = weak_for_async.upgrade_in_event_loop(move |window| {
-                        window.set_is_analyzing(false);
-                        window.set_has_metadata(false);
-                        window.set_has_error(true);
-                        window.set_error_message(err_for_box.into());
-                        window.set_status_message(err_msg.into());
-                    });
-                }
+                let _ = weak.upgrade_in_event_loop(move |win| {
+                    win.set_input_url_text(text.into());
+                    win.set_status_message("Pasted from clipboard (please ensure it starts with http:// or https://)".into());
+                });
             }
-        });
+        } else {
+            let _ = weak_paste.upgrade_in_event_loop(|win| {
+                win.set_status_message("Clipboard is empty or does not contain text".into());
+            });
+        }
+    });
+
+    // Callback: Paste into Batch URLs input
+    let weak_paste_batch = main_window.as_weak();
+    main_window.on_paste_batch_from_clipboard(move || {
+        if let Some(text) = filesystem::read_clipboard_text() {
+            let _ = weak_paste_batch.upgrade_in_event_loop(move |win| {
+                let current = win.get_batch_urls_text().to_string();
+                let new_val = if current.trim().is_empty() {
+                    text
+                } else {
+                    format!("{}\n{}", current.trim_end(), text)
+                };
+                win.set_batch_urls_text(new_val.into());
+                win.set_status_message("Pasted links into batch input from clipboard".into());
+            });
+        }
     });
 
 /// Helper: Map UI format index to (is_audio_only, quality_spec)
@@ -773,6 +829,15 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
     tokio::spawn(async move {
         refresh_history(&db_init_hist, None, weak_init_hist).await;
     });
+
+    // Auto-detect media URL from clipboard on app launch
+    if let Some(text) = filesystem::read_clipboard_text() {
+        if text.starts_with("http://") || text.starts_with("https://") {
+            info!("Auto-detected URL in clipboard on startup: {}", text);
+            main_window.set_input_url_text(text.clone().into());
+            main_window.set_status_message(format!("Auto-detected URL in clipboard: {}", text).into());
+        }
+    }
 
     // Run Slint native event loop
     info!("Launching native Slint window");
