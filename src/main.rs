@@ -211,14 +211,13 @@ fn run_url_analysis(
             }
             Err(err) => {
                 warn!("Failed to inspect URL {}: {}", url_str, err);
-                let err_msg = format!("Inspection failed: {}", err);
-                let err_for_box = err_msg.clone();
+                let clean_msg = crate::error::clean_user_error(&err.to_string());
                 let _ = weak_for_async.upgrade_in_event_loop(move |window| {
                     window.set_is_analyzing(false);
                     window.set_has_metadata(false);
                     window.set_has_error(true);
-                    window.set_error_message(err_for_box.into());
-                    window.set_status_message(err_msg.into());
+                    window.set_error_message(clean_msg.into());
+                    window.set_status_message("Unable to analyze URL. See details above.".into());
                 });
             }
         }

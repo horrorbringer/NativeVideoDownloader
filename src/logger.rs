@@ -149,14 +149,9 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for UiLogLayer {
         if should_dispatch {
             if let Ok(guard) = self.window.lock() {
                 if let Some(weak) = guard.as_ref() {
-                    let msg = clean_msg.clone();
                     let entries_clone = self.entries.clone();
 
                     let _ = weak.upgrade_in_event_loop(move |win| {
-                        if is_error {
-                            win.set_has_error(true);
-                            win.set_error_message(msg.into());
-                        }
                         if let Ok(list) = entries_clone.lock() {
                             let ui_items: Vec<LogEntryData> = list
                                 .iter()
