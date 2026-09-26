@@ -150,6 +150,7 @@ export component AppWindow inherits Window {
     callback browse_download_dir();
     callback reset_download_dir();
     callback open_current_download_dir();
+    callback test_notification();
 
     callback clear_logs();
     callback dismiss_error();
@@ -1191,6 +1192,21 @@ export component AppWindow inherits Window {
                                 color: #a78bfa;
                                 font-size: 13px;
                                 font-weight: 600;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            alignment: space-between;
+                            Text {
+                                text: "Desktop System Notifications";
+                                color: #cbd5e1;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                            Button {
+                                text: "🔔 Test Notification";
+                                height: 30px;
+                                clicked => { root.test_notification(); }
                             }
                         }
                     }

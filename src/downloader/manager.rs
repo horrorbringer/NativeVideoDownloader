@@ -385,15 +385,24 @@ impl DownloadManager {
                         }
 
                         info!("Job {} completed successfully with size {} bytes", id, final_size);
-                        {
+                        let job_title = {
                             let mut queue = manager.queue.lock().await;
                             if let Some(j) = queue.get_job_mut(id) {
                                 j.status = DownloadStatus::Completed;
                                 j.progress_ratio = 1.0;
                                 j.speed_bytes_sec = 0.0;
                                 j.eta_seconds = Some(0);
+                                j.title.clone()
+                            } else {
+                                "Media file".to_string()
                             }
-                        }
+                        };
+                        crate::notifications::send_notification(
+                            "Native Video Downloader",
+                            "Download Complete",
+                            &format!("\"{}\" has finished downloading.", job_title),
+                            false,
+                        );
                         let _ = manager.db.mark_completed(id, final_size).await;
                         manager.notify_update().await;
                         break;
@@ -423,14 +432,23 @@ impl DownloadManager {
                         } else {
                             error!("Job {} permanently failed: {}", id, err);
                             let err_str = err.to_string();
-                            {
+                            let job_title = {
                                 let mut queue = manager.queue.lock().await;
                                 if let Some(j) = queue.get_job_mut(id) {
                                     j.status = DownloadStatus::Failed(err_str.clone());
                                     j.speed_bytes_sec = 0.0;
                                     j.eta_seconds = None;
+                                    j.title.clone()
+                                } else {
+                                    "Media download".to_string()
                                 }
-                            }
+                            };
+                            crate::notifications::send_notification(
+                                "Native Video Downloader",
+                                "Download Failed",
+                                &format!("\"{}\" failed: {}", job_title, err_str),
+                                true,
+                            );
                             let _ = manager.db.mark_failed(id, &err_str).await;
                             manager.notify_update().await;
                             break;

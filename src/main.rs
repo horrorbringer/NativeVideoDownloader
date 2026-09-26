@@ -5,6 +5,7 @@ mod filesystem;
 mod logger;
 mod models;
 mod network;
+pub mod notifications;
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -732,6 +733,20 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
         tokio::spawn(async move {
             let current = dir_lock.read().await.clone();
             let _ = filesystem::reveal_in_file_manager(&current);
+        });
+    });
+
+    // Callback: Test Desktop Notification
+    let weak_test_notif = main_window.as_weak();
+    main_window.on_test_notification(move || {
+        notifications::send_notification(
+            "Native Video Downloader",
+            "Notification Test",
+            "System notifications and audio alerts are functioning perfectly!",
+            false,
+        );
+        let _ = weak_test_notif.upgrade_in_event_loop(|win| {
+            win.set_status_message("Sent test desktop notification".into());
         });
     });
 
