@@ -1,0 +1,55 @@
+export component ActionButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has_icon: false;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    background: !root.enabled ? #161822 :
+                root.primary ? (touch.has-hover ? #5e68db : #4f58c7) :
+                root.danger ? (touch.has-hover ? #dc2626 : #b91c1c) :
+                (touch.has-hover ? #2b3044 : #1e2230);
+    animate background { duration: 120ms; }
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: !root.enabled ? #232736 :
+                  root.primary ? #7082ff :
+                  root.danger ? #ef4444 : #2b3044;
+    height: 34px;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        alignment: center;
+
+        if root.has_icon: VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.icon;
+                width: 14px;
+                height: 14px;
+                colorize: !root.enabled ? #52596e :
+                          (root.primary || root.danger) ? #ffffff :
+                          (touch.has-hover ? #ffffff : #cbd5e1);
+            }
+        }
+
+        if root.text != "": Text {
+            text: root.text;
+            color: !root.enabled ? #52596e :
+                   (root.primary || root.danger) ? #ffffff :
+                   (touch.has-hover ? #ffffff : #cbd5e1);
+            font-size: 12px;
+            font-weight: (root.primary || root.danger) ? 600 : 500;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}

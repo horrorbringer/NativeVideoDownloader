@@ -1,0 +1,723 @@
+import { LineEdit, ProgressIndicator, TextEdit } from "std-widgets.slint";
+import { ActionButton } from "../components/action_button.slint";
+import { IconChip } from "../components/icon_chip.slint";
+
+export component HomeTab inherits VerticalLayout {
+    in-out property <bool> has_error: false;
+    in-out property <string> error_message: "";
+    in-out property <bool> batch_mode: false;
+    in-out property <string> input_url_text: "";
+    in-out property <string> batch_urls_text: "";
+    in-out property <bool> is_analyzing: false;
+    in-out property <bool> has_metadata: false;
+    in-out property <string> video_title: "";
+    in-out property <string> video_duration: "";
+    in-out property <string> video_resolution: "";
+    in-out property <bool> is_playlist: false;
+    in-out property <int> playlist_count: 0;
+    in-out property <int> selected_format_index: 0;
+    in-out property <bool> has_subtitles: false;
+    in-out property <string> subtitles_summary: "";
+    in-out property <bool> download_subtitles: true;
+
+    callback analyze_url(string);
+    callback paste_from_clipboard();
+    callback paste_batch_from_clipboard();
+    callback start_download(int, bool);
+    callback start_batch_download(string, int);
+    callback dismiss_error();
+    callback open_logs();
+
+    spacing: 16px;
+
+    // Error / Alert Banner
+    if root.has_error: Rectangle {
+        background: #2a151b;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: #ef4444;
+
+        HorizontalLayout {
+            padding: 12px;
+            spacing: 12px;
+            alignment: space-between;
+
+            HorizontalLayout {
+                horizontal-stretch: 1;
+                spacing: 12px;
+
+                VerticalLayout {
+                    alignment: center;
+                    Image {
+                        source: @image-url("../icons/alert.svg");
+                        width: 20px;
+                        height: 20px;
+                        colorize: #ef4444;
+                    }
+                }
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    alignment: center;
+
+                    Text {
+                        text: "Analysis / Download Alert";
+                        color: #ef4444;
+                        font-size: 13px;
+                        font-weight: 700;
+                    }
+                    Text {
+                        text: root.error_message;
+                        color: #fca5a5;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+
+                ActionButton {
+                    text: "Logs";
+                    icon: @image-url("../icons/logs.svg");
+                    has_icon: true;
+                    height: 28px;
+                    clicked => { root.open_logs(); }
+                }
+
+                ActionButton {
+                    text: "Dismiss";
+                    icon: @image-url("../icons/x.svg");
+                    has_icon: true;
+                    height: 28px;
+                    clicked => { root.dismiss_error(); }
+                }
+            }
+        }
+    }
+
+    // Mode switcher: Single URL vs Batch URLs
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+
+        IconChip {
+            text: "Single URL";
+            icon: @image-url("../icons/link.svg");
+            has_icon: true;
+            selected: !root.batch_mode;
+            clicked => { root.batch_mode = false; }
+        }
+
+        IconChip {
+            text: "Batch URLs (Bulk)";
+            icon: @image-url("../icons/layers.svg");
+            has_icon: true;
+            selected: root.batch_mode;
+            clicked => { root.batch_mode = true; }
+        }
+    }
+
+    // --- SINGLE URL MODE ---
+    if !root.batch_mode: VerticalLayout {
+        spacing: 16px;
+
+        // URL Input Card
+        Rectangle {
+            background: #1c202d;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #2b3044;
+
+            VerticalLayout {
+                padding: 18px;
+                spacing: 12px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    Text {
+                        text: "Source Media URL";
+                        color: #c7cbd9;
+                        font-size: 13px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: "YouTube • Bilibili • Dailymotion • Vimeo • Direct HLS";
+                        color: #64748b;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    url_input := LineEdit {
+                        horizontal-stretch: 1;
+                        text <=> root.input_url_text;
+                        placeholder_text: "Paste video or audio stream URL here...";
+                        font_size: 13px;
+                        height: 38px;
+                        accepted => {
+                            root.analyze_url(self.text);
+                        }
+                    }
+
+                    ActionButton {
+                        text: "Paste";
+                        icon: @image-url("../icons/clipboard.svg");
+                        has_icon: true;
+                        height: 38px;
+                        clicked => {
+                            root.paste_from_clipboard();
+                        }
+                    }
+
+                    ActionButton {
+                        text: root.is_analyzing ? "Analyzing..." : "Analyze";
+                        icon: @image-url("../icons/search.svg");
+                        has_icon: true;
+                        primary: true;
+                        enabled: !root.is_analyzing && root.input_url_text != "";
+                        height: 38px;
+                        clicked => {
+                            root.analyze_url(root.input_url_text);
+                        }
+                    }
+                }
+
+                if root.is_analyzing: HorizontalLayout {
+                    ProgressIndicator {
+                        indeterminate: true;
+                        height: 6px;
+                    }
+                }
+            }
+        }
+
+        // Video Analysis Result Card (shown when metadata is found)
+        if root.has_metadata: Rectangle {
+            background: #1c202d;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #2b3044;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: @image-url("../icons/check.svg");
+                                width: 16px;
+                                height: 16px;
+                                colorize: #4ade80;
+                            }
+                        }
+
+                        Text {
+                            text: "Media Stream Detected";
+                            color: #7082ff;
+                            font-size: 14px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        background: #163625;
+                        border-radius: 4px;
+                        height: 22px;
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: center;
+                            Text {
+                                text: "Ready to Download";
+                                color: #4ade80;
+                                font-size: 11px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 16px;
+
+                    // Video preview icon/box
+                    Rectangle {
+                        width: 130px;
+                        height: 85px;
+                        background: #23283b;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: #2c3349;
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 6px;
+
+                            Image {
+                                source: root.is_playlist ? @image-url("../icons/tv.svg") :
+                                        root.selected_format_index == 4 ? @image-url("../icons/music.svg") : @image-url("../icons/video.svg");
+                                width: 26px;
+                                height: 26px;
+                                colorize: #7082ff;
+                                horizontal-alignment: center;
+                            }
+
+                            Text {
+                                text: root.is_playlist ? "Series" :
+                                      root.selected_format_index == 4 ? "Audio" : "Video";
+                                color: #8c93a8;
+                                font-size: 11px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 8px;
+                        alignment: center;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: root.video_title != "" ? root.video_title : "Title unknown";
+                            color: #ffffff;
+                            font-size: 16px;
+                            font-weight: 600;
+                            overflow: elide;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            if root.is_playlist: Rectangle {
+                                background: #252a3d;
+                                border-radius: 4px;
+                                height: 22px;
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    alignment: center;
+                                    Text {
+                                        text: "Series • " + root.playlist_count + " Episodes Available";
+                                        color: #cbd5e1;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            if !root.is_playlist && root.video_resolution != "": Rectangle {
+                                background: #252a3d;
+                                border-radius: 4px;
+                                height: 22px;
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 4px;
+                                    alignment: center;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/monitor.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            colorize: #949db2;
+                                        }
+                                    }
+
+                                    Text {
+                                        text: root.video_resolution;
+                                        color: #cbd5e1;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            if !root.is_playlist && root.video_duration != "": Rectangle {
+                                background: #252a3d;
+                                border-radius: 4px;
+                                height: 22px;
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 4px;
+                                    alignment: center;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/history.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            colorize: #949db2;
+                                        }
+                                    }
+
+                                    Text {
+                                        text: root.video_duration;
+                                        color: #cbd5e1;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Format & Quality Selection Chips
+                Text {
+                    text: root.is_playlist ? "Select Quality for All Episodes:" : "Select Format & Quality:";
+                    color: #c7cbd9;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    IconChip {
+                        text: "Best Quality";
+                        icon: @image-url("../icons/video.svg");
+                        has_icon: true;
+                        selected: root.selected_format_index == 0;
+                        clicked => { root.selected_format_index = 0; }
+                    }
+                    IconChip {
+                        text: "1080p FHD";
+                        icon: @image-url("../icons/video.svg");
+                        has_icon: true;
+                        selected: root.selected_format_index == 1;
+                        clicked => { root.selected_format_index = 1; }
+                    }
+                    IconChip {
+                        text: "720p HD";
+                        icon: @image-url("../icons/video.svg");
+                        has_icon: true;
+                        selected: root.selected_format_index == 2;
+                        clicked => { root.selected_format_index = 2; }
+                    }
+                    IconChip {
+                        text: "480p SD";
+                        icon: @image-url("../icons/video.svg");
+                        has_icon: true;
+                        selected: root.selected_format_index == 3;
+                        clicked => { root.selected_format_index = 3; }
+                    }
+                    IconChip {
+                        text: "Audio (MP3)";
+                        icon: @image-url("../icons/music.svg");
+                        has_icon: true;
+                        selected: root.selected_format_index == 4;
+                        clicked => { root.selected_format_index = 4; }
+                    }
+                }
+
+                // Subtitle extraction & embedding option
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: space-between;
+
+                    Rectangle {
+                        background: root.download_subtitles ? #1e3a5f : #171a26;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: root.download_subtitles ? #38bdf8 : #2b3044;
+                        height: 32px;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 6px;
+                            alignment: center;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../icons/subtitles.svg");
+                                    width: 14px;
+                                    height: 14px;
+                                    colorize: root.download_subtitles ? #38bdf8 : #8c93a8;
+                                }
+                            }
+
+                            Text {
+                                text: root.download_subtitles ? "Subtitles: Enabled (.srt/embed)" : "Subtitles: Disabled";
+                                color: root.download_subtitles ? #38bdf8 : #8c93a8;
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.download_subtitles = !root.download_subtitles; }
+                        }
+                    }
+
+                    if root.has_subtitles: VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: "Detected: " + root.subtitles_summary;
+                            color: #64748b;
+                            font-size: 11px;
+                            overflow: elide;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 10px;
+
+                    ActionButton {
+                        text: root.is_playlist ? ("Download All " + root.playlist_count + " Episodes") : "Start Download";
+                        icon: @image-url("../icons/download.svg");
+                        has_icon: true;
+                        primary: true;
+                        height: 38px;
+                        clicked => {
+                            root.start_download(root.selected_format_index, root.download_subtitles);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Empty / Placeholder state when no video analyzed
+        if !root.has_metadata && !root.is_analyzing: Rectangle {
+            background: #171a26;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #24293a;
+            height: 200px;
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 12px;
+
+                HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 48px;
+                        height: 48px;
+                        border-radius: 24px;
+                        background: #22273a;
+                        border-width: 1px;
+                        border-color: #2e354e;
+
+                        Image {
+                            source: @image-url("../icons/sparkles.svg");
+                            width: 24px;
+                            height: 24px;
+                            colorize: #7082ff;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 4px;
+                    Text {
+                        text: "Ready to Download Media";
+                        color: #ffffff;
+                        font-size: 15px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: "Paste any video, playlist, or streaming audio link above to inspect available qualities";
+                        color: #8c93a8;
+                        font-size: 13px;
+                        horizontal-alignment: center;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: center;
+
+                    Rectangle {
+                        background: #1c2130;
+                        border-radius: 4px;
+                        height: 22px;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: center;
+                            Text {
+                                text: "Up to 4K Lossless";
+                                color: #64748b;
+                                font-size: 11px;
+                                font-weight: 500;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        background: #1c2130;
+                        border-radius: 4px;
+                        height: 22px;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: center;
+                            Text {
+                                text: "Fast Resumption";
+                                color: #64748b;
+                                font-size: 11px;
+                                font-weight: 500;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        background: #1c2130;
+                        border-radius: 4px;
+                        height: 22px;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: center;
+                            Text {
+                                text: "Subtitles & Audio MP3";
+                                color: #64748b;
+                                font-size: 11px;
+                                font-weight: 500;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // --- BATCH URLS MODE ---
+    if root.batch_mode: VerticalLayout {
+        spacing: 16px;
+
+        Rectangle {
+            background: #1c202d;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #2b3044;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "Batch Download Queue (one link per line)";
+                        color: #c7cbd9;
+                        font-size: 14px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    ActionButton {
+                        text: "Paste Clipboard";
+                        icon: @image-url("../icons/clipboard.svg");
+                        has_icon: true;
+                        height: 30px;
+                        clicked => {
+                            root.paste_batch_from_clipboard();
+                        }
+                    }
+                }
+
+                batch_input := TextEdit {
+                    text <=> root.batch_urls_text;
+                    font-size: 13px;
+                    height: 140px;
+                }
+
+                Text {
+                    text: "Select Default Format for Batch:";
+                    color: #c7cbd9;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    IconChip {
+                        text: "Best Quality";
+                        icon: @image-url("../icons/video.svg");
+                        has_icon: true;
+                        selected: root.selected_format_index == 0;
+                        clicked => { root.selected_format_index = 0; }
+                    }
+                    IconChip {
+                        text: "720p HD";
+                        icon: @image-url("../icons/video.svg");
+                        has_icon: true;
+                        selected: root.selected_format_index == 2;
+                        clicked => { root.selected_format_index = 2; }
+                    }
+                    IconChip {
+                        text: "Audio (MP3)";
+                        icon: @image-url("../icons/music.svg");
+                        has_icon: true;
+                        selected: root.selected_format_index == 4;
+                        clicked => { root.selected_format_index = 4; }
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 10px;
+
+                    ActionButton {
+                        text: "Queue All in Batch";
+                        icon: @image-url("../icons/download.svg");
+                        has_icon: true;
+                        primary: true;
+                        height: 38px;
+                        clicked => {
+                            root.start_batch_download(root.batch_urls_text, root.selected_format_index);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Spacer
+    Rectangle { }
+}

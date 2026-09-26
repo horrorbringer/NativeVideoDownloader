@@ -1,0 +1,441 @@
+import { ScrollView } from "std-widgets.slint";
+import { ActionButton } from "../components/action_button.slint";
+import { IconChip } from "../components/icon_chip.slint";
+
+export component SettingsTab inherits ScrollView {
+    in-out property <string> download_dir_path: "~/Downloads";
+    in-out property <int> selected_speed_limit_index: 0;
+    in-out property <int> selected_concurrency: 3;
+
+    callback browse_download_dir();
+    callback open_current_download_dir();
+    callback reset_download_dir();
+    callback set_speed_limit(int);
+    callback set_max_concurrency(int);
+    callback test_notification();
+
+    vertical-stretch: 1;
+
+    VerticalLayout {
+        spacing: 16px;
+        padding-bottom: 16px;
+
+        // 1. Storage & File Location
+        Rectangle {
+            background: #181b27;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #272d42;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                VerticalLayout {
+                    spacing: 6px;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: @image-url("../icons/folder.svg");
+                                width: 16px;
+                                height: 16px;
+                                colorize: #7082ff;
+                            }
+                        }
+
+                        Text {
+                            text: "Default Download Directory";
+                            color: #ffffff;
+                            font-size: 15px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Text {
+                        text: "All media, video series, and extracted audio files are saved into this folder.";
+                        color: #8c93a8;
+                        font-size: 13px;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    Rectangle {
+                        background: #111420;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: #252b3e;
+                        horizontal-stretch: 1;
+                        height: 38px;
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            alignment: start;
+
+                            Text {
+                                text: root.download_dir_path;
+                                color: #e2e8f0;
+                                font-size: 13px;
+                                font-weight: 500;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    ActionButton {
+                        text: "Change...";
+                        icon: @image-url("../icons/folder.svg");
+                        has_icon: true;
+                        height: 38px;
+                        clicked => { root.browse_download_dir(); }
+                    }
+
+                    ActionButton {
+                        text: "Finder";
+                        icon: @image-url("../icons/monitor.svg");
+                        has_icon: true;
+                        height: 38px;
+                        clicked => { root.open_current_download_dir(); }
+                    }
+
+                    ActionButton {
+                        text: "Reset";
+                        icon: @image-url("../icons/refresh.svg");
+                        has_icon: true;
+                        height: 38px;
+                        clicked => { root.reset_download_dir(); }
+                    }
+                }
+            }
+        }
+
+        // 2. Network & Bandwidth Management
+        Rectangle {
+            background: #181b27;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #272d42;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 18px;
+
+                // Speed Limiter
+                VerticalLayout {
+                    spacing: 10px;
+
+                    VerticalLayout {
+                        spacing: 6px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../icons/bolt.svg");
+                                    width: 16px;
+                                    height: 16px;
+                                    colorize: #7082ff;
+                                }
+                            }
+
+                            Text {
+                                text: "Bandwidth Speed Limiter";
+                                color: #ffffff;
+                                font-size: 15px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Text {
+                            text: "Throttle maximum download speed to avoid saturating your local network.";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        IconChip {
+                            text: "No Limit";
+                            icon: @image-url("../icons/bolt.svg");
+                            has_icon: true;
+                            selected: root.selected_speed_limit_index == 0;
+                            clicked => {
+                                root.selected_speed_limit_index = 0;
+                                root.set_speed_limit(0);
+                            }
+                        }
+                        IconChip {
+                            text: "2 MB/s";
+                            selected: root.selected_speed_limit_index == 1;
+                            clicked => {
+                                root.selected_speed_limit_index = 1;
+                                root.set_speed_limit(1);
+                            }
+                        }
+                        IconChip {
+                            text: "5 MB/s";
+                            selected: root.selected_speed_limit_index == 2;
+                            clicked => {
+                                root.selected_speed_limit_index = 2;
+                                root.set_speed_limit(2);
+                            }
+                        }
+                        IconChip {
+                            text: "10 MB/s";
+                            selected: root.selected_speed_limit_index == 3;
+                            clicked => {
+                                root.selected_speed_limit_index = 3;
+                                root.set_speed_limit(3);
+                            }
+                        }
+                        IconChip {
+                            text: "20 MB/s";
+                            selected: root.selected_speed_limit_index == 4;
+                            clicked => {
+                                root.selected_speed_limit_index = 4;
+                                root.set_speed_limit(4);
+                            }
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    height: 1px;
+                    background: #23283b;
+                }
+
+                // Concurrency
+                VerticalLayout {
+                    spacing: 10px;
+
+                    VerticalLayout {
+                        spacing: 6px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../icons/cpu.svg");
+                                    width: 16px;
+                                    height: 16px;
+                                    colorize: #7082ff;
+                                }
+                            }
+
+                            Text {
+                                text: "Concurrent Queue Workers";
+                                color: #ffffff;
+                                font-size: 15px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Text {
+                            text: "Number of download items actively processed at the same time.";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        IconChip {
+                            text: "1 (Sequential)";
+                            selected: root.selected_concurrency == 1;
+                            clicked => {
+                                root.selected_concurrency = 1;
+                                root.set_max_concurrency(1);
+                            }
+                        }
+                        IconChip {
+                            text: "2 Parallel";
+                            selected: root.selected_concurrency == 2;
+                            clicked => {
+                                root.selected_concurrency = 2;
+                                root.set_max_concurrency(2);
+                            }
+                        }
+                        IconChip {
+                            text: "3 Parallel (Recommended)";
+                            selected: root.selected_concurrency == 3;
+                            clicked => {
+                                root.selected_concurrency = 3;
+                                root.set_max_concurrency(3);
+                            }
+                        }
+                        IconChip {
+                            text: "5 Parallel (Fast)";
+                            selected: root.selected_concurrency == 5;
+                            clicked => {
+                                root.selected_concurrency = 5;
+                                root.set_max_concurrency(5);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. System & Desktop Notifications
+        Rectangle {
+            background: #181b27;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #272d42;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    VerticalLayout {
+                        spacing: 6px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../icons/bell.svg");
+                                    width: 16px;
+                                    height: 16px;
+                                    colorize: #7082ff;
+                                }
+                            }
+
+                            Text {
+                                text: "System Notifications";
+                                color: #ffffff;
+                                font-size: 15px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Text {
+                            text: "Sends native desktop alerts with audio chime when downloads finish.";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
+                    }
+
+                    ActionButton {
+                        text: "Test Notification";
+                        icon: @image-url("../icons/bell.svg");
+                        has_icon: true;
+                        height: 34px;
+                        clicked => { root.test_notification(); }
+                    }
+                }
+            }
+        }
+
+        // 4. Engine & Architecture Overview (Compact & Clean)
+        Rectangle {
+            background: #131622;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #222638;
+
+            VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    VerticalLayout {
+                        alignment: center;
+                        Image {
+                            source: @image-url("../icons/cpu.svg");
+                            width: 15px;
+                            height: 15px;
+                            colorize: #7082ff;
+                        }
+                    }
+
+                    Text {
+                        text: "Engine & System Architecture";
+                        color: #7082ff;
+                        font-size: 13px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "Core Media Framework";
+                        color: #949db2;
+                        font-size: 12px;
+                    }
+                    Text {
+                        text: "FFmpeg v9 + yt-dlp Native";
+                        color: #e2e8f0;
+                        font-size: 12px;
+                        font-weight: 600;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "Chunk Resumption & Partial Safety";
+                        color: #949db2;
+                        font-size: 12px;
+                    }
+                    Text {
+                        text: "Atomic .part + HTTP Multi-Range";
+                        color: #4ade80;
+                        font-size: 12px;
+                        font-weight: 600;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "Persistent Storage Engine";
+                        color: #949db2;
+                        font-size: 12px;
+                    }
+                    Text {
+                        text: "SQLite 3 (WAL mode)";
+                        color: #38bdf8;
+                        font-size: 12px;
+                        font-weight: 600;
+                    }
+                }
+            }
+        }
+    }
+}

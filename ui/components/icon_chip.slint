@@ -1,0 +1,43 @@
+export component IconChip inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has_icon: false;
+    in property <bool> selected: false;
+    callback clicked();
+
+    background: selected ? #4f58c7 : touch.has-hover ? #2a2f44 : #1c202d;
+    animate background { duration: 120ms; }
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: selected ? #7082ff : (touch.has-hover ? #3c4460 : #2b3044);
+    height: 32px;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        alignment: center;
+
+        if root.has_icon: VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.icon;
+                width: 13px;
+                height: 13px;
+                colorize: root.selected ? #ffffff : (touch.has-hover ? #e2e8f0 : #949db2);
+            }
+        }
+
+        Text {
+            text: root.text;
+            color: root.selected ? #ffffff : (touch.has-hover ? #e2e8f0 : #949db2);
+            font-size: 12px;
+            font-weight: root.selected ? 600 : 500;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}

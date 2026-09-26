@@ -1,0 +1,40 @@
+export component NavButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> active: false;
+    callback clicked();
+
+    background: active ? #2b314c : touch.has-hover ? #202436 : transparent;
+    animate background { duration: 120ms; }
+    border-radius: 8px;
+    height: 42px;
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 12px;
+        alignment: start;
+
+        VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.icon;
+                width: 17px;
+                height: 17px;
+                colorize: root.active ? #7082ff : (touch.has-hover ? #ffffff : #8c93a8);
+            }
+        }
+
+        Text {
+            text: root.text;
+            color: root.active ? #ffffff : (touch.has-hover ? #e2e8f0 : #8c93a8);
+            font-size: 13px;
+            font-weight: root.active ? 600 : 500;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}

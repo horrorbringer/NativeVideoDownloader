@@ -1,0 +1,30 @@
+export struct DownloadItemData {
+    id: string,
+    title: string,
+    status: string,
+    progress: float,
+    size_text: string,
+    speed_text: string,
+    eta_text: string,
+    output_path: string,
+    is_completed: bool,
+    can_pause: bool,
+    can_resume: bool,
+    can_cancel: bool,
+}
+
+export struct HistoryItemData {
+    id: string,
+    title: string,
+    status: string,
+    size_text: string,
+    date_text: string,
+    url: string,
+    output_path: string,
+}
+
+export struct LogEntryData {
+    timestamp: string,
+    level: string,
+    message: string,
+}
