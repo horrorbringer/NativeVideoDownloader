@@ -102,6 +102,7 @@ impl NetworkClient {
         destination_path: &Path,
         cancel_token: CancellationToken,
         preserve_part_on_cancel: bool,
+        speed_limit_bytes: Option<u64>,
         mut on_progress: F,
     ) -> Result<()>
     where
@@ -184,6 +185,13 @@ impl NetworkClient {
                             if last_prog_instant.elapsed() >= std::time::Duration::from_millis(60) {
                                 last_prog_instant = std::time::Instant::now();
                                 on_progress(prog);
+                            }
+
+                            if let Some(limit) = speed_limit_bytes {
+                                if limit > 0 {
+                                    let delay_secs = len as f64 / limit as f64;
+                                    tokio::time::sleep(std::time::Duration::from_secs_f64(delay_secs)).await;
+                                }
                             }
                         }
                         Ok(None) => {

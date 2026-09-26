@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -16,12 +16,30 @@ use crate::network::NetworkClient;
 
 pub type StatusUpdateCallback = Arc<dyn Fn() + Send + Sync + 'static>;
 
+pub fn parse_speed_limit_bytes(limit_str: Option<&str>) -> Option<u64> {
+    let s = limit_str?;
+    let s = s.trim().to_uppercase();
+    if s.is_empty() || s == "UNLIMITED" {
+        return None;
+    }
+    if s.ends_with('M') {
+        let mb: u64 = s.trim_end_matches('M').parse().ok()?;
+        Some(mb * 1024 * 1024)
+    } else if s.ends_with('K') {
+        let kb: u64 = s.trim_end_matches('K').parse().ok()?;
+        Some(kb * 1024)
+    } else {
+        s.parse::<u64>().ok()
+    }
+}
+
 pub struct DownloadManager {
     queue: Arc<Mutex<DownloadQueue>>,
     semaphore: Arc<Semaphore>,
     network_client: Arc<NetworkClient>,
     retry_policy: RetryPolicy,
     db: Arc<Database>,
+    speed_limit: Arc<RwLock<Option<String>>>,
     on_update: Mutex<Option<StatusUpdateCallback>>,
 }
 
@@ -33,6 +51,7 @@ impl DownloadManager {
             network_client: Arc::new(NetworkClient::new()),
             retry_policy: RetryPolicy::default(),
             db,
+            speed_limit: Arc::new(RwLock::new(None)),
             on_update: Mutex::new(None),
         }
     }
@@ -52,6 +71,16 @@ impl DownloadManager {
         if let Some(cb) = guard.as_ref() {
             cb();
         }
+    }
+
+    pub async fn set_speed_limit(&self, limit: Option<String>) {
+        let mut guard = self.speed_limit.write().await;
+        *guard = limit;
+    }
+
+    pub async fn get_speed_limit(&self) -> Option<String> {
+        let guard = self.speed_limit.read().await;
+        guard.clone()
     }
 
     pub async fn get_jobs_snapshot(&self) -> Vec<DownloadJob> {
@@ -272,6 +301,9 @@ impl DownloadManager {
                 let last_notify_stream = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
                 let last_notify_net = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
 
+                let active_speed_limit = manager.get_speed_limit().await;
+                let active_speed_limit_bytes = parse_speed_limit_bytes(active_speed_limit.as_deref());
+
                 let mgr_progress = manager.clone();
                 let download_res = if is_extractor {
                     let last_time = last_notify_stream.clone();
@@ -281,6 +313,7 @@ impl DownloadManager {
                         is_audio_only,
                         quality.as_deref(),
                         download_subtitles,
+                        active_speed_limit.as_deref(),
                         cancel_token,
                         move |progress| {
                             let mgr = mgr_progress.clone();
@@ -329,6 +362,7 @@ impl DownloadManager {
                             &destination,
                             cancel_token,
                             true, // Preserve .part file on cancel/pause for resume
+                            active_speed_limit_bytes,
                             move |progress| {
                                 let mgr = mgr_progress.clone();
                                 let last_t = last_time.clone();
@@ -461,5 +495,22 @@ impl DownloadManager {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_speed_limit_bytes() {
+        assert_eq!(parse_speed_limit_bytes(None), None);
+        assert_eq!(parse_speed_limit_bytes(Some("")), None);
+        assert_eq!(parse_speed_limit_bytes(Some("unlimited")), None);
+        assert_eq!(parse_speed_limit_bytes(Some("2M")), Some(2 * 1024 * 1024));
+        assert_eq!(parse_speed_limit_bytes(Some("5M")), Some(5 * 1024 * 1024));
+        assert_eq!(parse_speed_limit_bytes(Some("10M")), Some(10 * 1024 * 1024));
+        assert_eq!(parse_speed_limit_bytes(Some("20m")), Some(20 * 1024 * 1024));
+        assert_eq!(parse_speed_limit_bytes(Some("500K")), Some(500 * 1024));
     }
 }

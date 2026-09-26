@@ -261,6 +261,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.set_download_dir_path(initial_download_dir.to_string_lossy().to_string().into());
     let current_download_dir = Arc::new(tokio::sync::RwLock::new(initial_download_dir));
 
+    // Restore speed limit preference
+    let initial_speed_limit = if let Ok(Some(saved)) = db.get_setting("speed_limit").await {
+        saved
+    } else {
+        String::new()
+    };
+    let initial_limit_idx = match initial_speed_limit.as_str() {
+        "2M" => 1,
+        "5M" => 2,
+        "10M" => 3,
+        "20M" => 4,
+        _ => 0,
+    };
+    main_window.set_selected_speed_limit_index(initial_limit_idx);
+    let manager_limit = match initial_limit_idx {
+        1 => Some("2M".to_string()),
+        2 => Some("5M".to_string()),
+        3 => Some("10M".to_string()),
+        4 => Some("20M".to_string()),
+        _ => None,
+    };
+    download_manager.set_speed_limit(manager_limit).await;
+
     // Crash Recovery: restore unfinished downloads from previous session
     match download_manager.restore_unfinished_jobs().await {
         Ok(count) if count > 0 => {
@@ -797,6 +820,31 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
         tokio::spawn(async move {
             let current = dir_lock.read().await.clone();
             let _ = filesystem::reveal_in_file_manager(&current);
+        });
+    });
+
+    // Callback: Set Bandwidth Speed Limit
+    let db_speed = db.clone();
+    let mgr_speed = download_manager.clone();
+    let weak_speed = main_window.as_weak();
+    main_window.on_set_speed_limit(move |idx| {
+        let db = db_speed.clone();
+        let mgr = mgr_speed.clone();
+        let weak = weak_speed.clone();
+        tokio::spawn(async move {
+            let (limit_str, limit_opt, label) = match idx {
+                1 => ("2M", Some("2M".to_string()), "2 MB/s"),
+                2 => ("5M", Some("5M".to_string()), "5 MB/s"),
+                3 => ("10M", Some("10M".to_string()), "10 MB/s"),
+                4 => ("20M", Some("20M".to_string()), "20 MB/s"),
+                _ => ("", None, "No Limit (Unlimited)"),
+            };
+            mgr.set_speed_limit(limit_opt).await;
+            let _ = db.set_setting("speed_limit", limit_str).await;
+            info!("Updated bandwidth speed limit: {}", label);
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                window.set_status_message(format!("Download speed limit set to: {}", label).into());
+            });
         });
     });
 

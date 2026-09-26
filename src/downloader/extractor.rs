@@ -521,6 +521,7 @@ pub async fn download_stream<F>(
     is_audio_only: bool,
     quality: Option<&str>,
     download_subtitles: bool,
+    speed_limit: Option<&str>,
     cancel_token: CancellationToken,
     mut on_progress: F,
 ) -> Result<PathBuf>
@@ -554,6 +555,12 @@ where
     cmd.arg("--newline")
         .arg("--progress-template")
         .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s");
+
+    if let Some(limit) = speed_limit {
+        if !limit.is_empty() && limit != "unlimited" {
+            cmd.arg("--limit-rate").arg(limit);
+        }
+    }
 
     if is_audio_only {
         cmd.arg("-x").arg("--audio-format").arg("mp3");
