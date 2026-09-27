@@ -1766,6 +1766,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                             continue;
                         }
                     }
+                    let entry_referer = entry.referer.or_else(|| metadata.referer.clone());
                     if mgr
                         .add_download_with_context(
                             entry.url,
@@ -1784,6 +1785,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                             embed_meta,
                             Some(&series_title),
                             Some(idx + 1),
+                            entry_referer,
                         )
                         .await
                         .is_ok()
@@ -1801,7 +1803,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
 
             let is_extractor = metadata.is_extractor;
             match mgr
-                .add_download(
+                .add_download_with_context(
                     metadata.url,
                     metadata.title,
                     &download_dir,
@@ -1816,6 +1818,9 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                     audio_fmt_clone,
                     audio_br_clone,
                     embed_meta,
+                    None,
+                    None,
+                    metadata.referer.clone(),
                 )
                 .await
             {

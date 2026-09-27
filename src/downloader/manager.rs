@@ -229,6 +229,7 @@ impl DownloadManager {
             embed_artwork,
             None,
             None,
+            None,
         )
         .await
     }
@@ -252,6 +253,7 @@ impl DownloadManager {
         embed_artwork: bool,
         series: Option<&str>,
         index: Option<usize>,
+        referer: Option<String>,
     ) -> Result<Uuid, AppError> {
         let ext = if is_audio_only {
             audio_format.as_deref().unwrap_or("mp3")
@@ -276,7 +278,7 @@ impl DownloadManager {
         )?;
         let final_title = destination.file_name().and_then(|s| s.to_str()).unwrap_or(&title).to_string();
 
-        let job = DownloadJob::new(
+        let mut job = DownloadJob::new(
             url,
             final_title,
             destination,
@@ -292,6 +294,7 @@ impl DownloadManager {
             audio_bitrate,
             embed_artwork,
         );
+        job.referer = referer;
         let id = job.id;
 
         // Persist to database asynchronously so worker starts immediately
@@ -505,6 +508,7 @@ impl DownloadManager {
                 audio_format,
                 audio_bitrate,
                 embed_artwork,
+                referer,
             ) = {
                 let mut queue = manager.queue.lock().await;
                 let job = match queue.get_job_mut(id) {
@@ -529,6 +533,7 @@ impl DownloadManager {
                     job.audio_format.clone(),
                     job.audio_bitrate.clone(),
                     job.embed_artwork,
+                    job.referer.clone(),
                 )
             };
 
@@ -574,6 +579,7 @@ impl DownloadManager {
                         active_cookies_browser.as_deref(),
                         active_proxy.as_deref(),
                         active_concurrent_fragments,
+                        referer.as_deref(),
                         cancel_token,
                         move |progress| {
                             let mgr = mgr_progress.clone();
@@ -623,6 +629,7 @@ impl DownloadManager {
                             cancel_token,
                             true, // Preserve .part file on cancel/pause for resume
                             active_speed_limit_bytes,
+                            referer.as_deref(),
                             move |progress| {
                                 let mgr = mgr_progress.clone();
                                 let last_t = last_time.clone();

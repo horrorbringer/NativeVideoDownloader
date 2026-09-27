@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use reqwest::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_TYPE, RANGE};
+use reqwest::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_TYPE, RANGE, REFERER};
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -198,6 +198,7 @@ impl NetworkClient {
         cancel_token: CancellationToken,
         preserve_part_on_cancel: bool,
         speed_limit_bytes: Option<u64>,
+        referer: Option<&str>,
         mut on_progress: F,
     ) -> Result<()>
     where
@@ -222,7 +223,20 @@ impl NetworkClient {
         };
 
         let client = self.client.read().unwrap().clone();
-        let request_builder = client.get(url);
+        let mut request_builder = client.get(url);
+
+        if let Some(ref_url) = referer {
+            let trimmed = ref_url.trim();
+            if !trimmed.is_empty() {
+                info!("Auto-forwarding Referer to native download: {}", trimmed);
+                request_builder = request_builder.header(REFERER, trimmed);
+                if let Ok(parsed) = reqwest::Url::parse(trimmed) {
+                    let origin = format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""));
+                    request_builder = request_builder.header("Origin", origin);
+                }
+            }
+        }
+
         let request_builder = if existing_bytes > 0 {
             info!("Attempting resume for {:?} from byte offset {}", destination_path, existing_bytes);
             request_builder.header(RANGE, format!("bytes={}-", existing_bytes))

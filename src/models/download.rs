@@ -129,6 +129,8 @@ pub struct DownloadJob {
 pub struct PlaylistEntry {
     pub title: String,
     pub url: String,
+    #[serde(default)]
+    pub referer: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +167,8 @@ pub struct VideoMetadata {
     pub size_480p: Option<u64>,
     #[serde(default)]
     pub size_audio: Option<u64>,
+    #[serde(default)]
+    pub referer: Option<String>,
 }
 
 impl Default for VideoMetadata {
@@ -193,6 +197,7 @@ impl Default for VideoMetadata {
             size_720p: None,
             size_480p: None,
             size_audio: None,
+            referer: None,
         }
     }
 }

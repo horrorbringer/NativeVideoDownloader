@@ -610,6 +610,7 @@ pub async fn inspect_video_with_options(
                     playlist_entries.push(crate::models::PlaylistEntry {
                         title: item_title.to_string(),
                         url: u.to_string(),
+                        referer: Some(url.to_string()),
                     });
                 }
             }
@@ -709,6 +710,7 @@ pub async fn inspect_video_with_options(
         size_720p,
         size_480p,
         size_audio,
+        referer: Some(url.to_string()),
     })
 }
 
@@ -1057,6 +1059,7 @@ pub fn extract_playlist_from_detail_html(html: &str, page_url: &str) -> Option<V
         has_subtitles: false,
         subtitles_summary: String::new(),
         thumbnail_url,
+        referer: Some(page_url.to_string()),
         ..Default::default()
     })
 }
@@ -1095,6 +1098,7 @@ fn parse_episodes_from_block(block: &str, base_url: &str) -> Vec<crate::models::
                 entries.push(crate::models::PlaylistEntry {
                     title: label,
                     url: full_url,
+                    referer: Some(base_url.to_string()),
                 });
             }
         }
@@ -1138,6 +1142,7 @@ fn parse_episodes_from_html_scan(html: &str, base_url: &str) -> Vec<crate::model
                     entries.push(crate::models::PlaylistEntry {
                         title: label,
                         url: full_url,
+                        referer: Some(base_url.to_string()),
                     });
                 }
             }
@@ -1372,6 +1377,7 @@ pub fn sniff_embedded_json_streams(html: &str, base_url: &str) -> Option<VideoMe
                         .map(|(i, u)| crate::models::PlaylistEntry {
                             title: format!("{} - Episode {}", title, i + 1),
                             url: u,
+                            referer: Some(base_url.to_string()),
                         })
                         .collect();
 
@@ -1394,6 +1400,7 @@ pub fn sniff_embedded_json_streams(html: &str, base_url: &str) -> Option<VideoMe
                         fps: Some(30.0),
                         vcodec: Some("H.264".to_string()),
                         acodec: Some("AAC".to_string()),
+                        referer: Some(base_url.to_string()),
                         ..Default::default()
                     });
                 }
@@ -1448,6 +1455,7 @@ pub fn universal_sniff_media_from_html(html: &str, page_url: &str) -> Option<Vid
             fps: Some(30.0),
             vcodec: Some("H.264".to_string()),
             acodec: Some("AAC".to_string()),
+            referer: Some(page_url.to_string()),
             ..Default::default()
         });
     }
@@ -1476,6 +1484,7 @@ pub fn universal_sniff_media_from_html(html: &str, page_url: &str) -> Option<Vid
             fps: Some(30.0),
             vcodec: Some("H.264".to_string()),
             acodec: Some("AAC".to_string()),
+            referer: Some(page_url.to_string()),
             ..Default::default()
         });
     }
@@ -1549,6 +1558,7 @@ pub fn extract_next_data_drama(html: &str, page_url: &str) -> Option<VideoMetada
             entries.push(crate::models::PlaylistEntry {
                 title: ep_title,
                 url: stream,
+                referer: Some(page_url.to_string()),
             });
         }
     }
@@ -1581,6 +1591,7 @@ pub fn extract_next_data_drama(html: &str, page_url: &str) -> Option<VideoMetada
         fps: Some(30.0),
         vcodec: Some("H.264".to_string()),
         acodec: Some("AAC".to_string()),
+        referer: Some(page_url.to_string()),
         ..Default::default()
     })
 }
@@ -1788,6 +1799,7 @@ pub async fn download_stream<F>(
     cookies_browser: Option<&str>,
     proxy: Option<&str>,
     concurrent_fragments: u8,
+    referer: Option<&str>,
     cancel_token: CancellationToken,
     mut on_progress: F,
 ) -> Result<PathBuf>
@@ -1826,8 +1838,21 @@ where
         .arg("--no-cache-dir")
         .arg("--extractor-retries").arg("1")
         .arg("--compat-options").arg("no-live-chat")
+        .arg("--user-agent").arg("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .arg("--progress-template")
         .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress._percent)s|%(info.ext)s|%(progress.filename)s");
+
+    if let Some(ref_url) = referer {
+        let trimmed = ref_url.trim();
+        if !trimmed.is_empty() {
+            info!("Auto-forwarding Referer & Origin to yt-dlp: {}", trimmed);
+            cmd.arg("--referer").arg(trimmed);
+            if let Ok(parsed) = reqwest::Url::parse(trimmed) {
+                let origin = format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""));
+                cmd.arg("--add-header").arg(format!("Origin: {}", origin));
+            }
+        }
+    }
 
     if let Some(limit) = speed_limit {
         if !limit.is_empty() && limit != "unlimited" {

@@ -30,6 +30,7 @@ pub struct DownloadJob {
     pub audio_format: Option<String>,
     pub audio_bitrate: Option<String>,
     pub embed_artwork: bool,
+    pub referer: Option<String>,
 }
 
 impl DownloadJob {
@@ -74,7 +75,14 @@ impl DownloadJob {
             audio_format,
             audio_bitrate,
             embed_artwork,
+            referer: None,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn with_referer(mut self, referer: Option<String>) -> Self {
+        self.referer = referer;
+        self
     }
 
     pub fn update_progress(&mut self, progress: DownloadProgress) {
@@ -217,5 +225,27 @@ mod tests {
         });
         // Total remains 60 MB because 60 MB >= 20 MB
         assert_eq!(job.total_bytes, Some(62_914_560));
+    }
+
+    #[test]
+    fn test_job_referer() {
+        let job = DownloadJob::new(
+            "https://cdn.example.com/video.mp4".to_string(),
+            "Sample Video".to_string(),
+            PathBuf::from("/tmp/video.mp4"),
+            None,
+            false,
+            false,
+            None,
+            false,
+            None,
+            false,
+            None,
+            None,
+            None,
+            false,
+        ).with_referer(Some("https://example.com/watch/123".to_string()));
+
+        assert_eq!(job.referer, Some("https://example.com/watch/123".to_string()));
     }
 }
