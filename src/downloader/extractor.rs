@@ -1400,7 +1400,8 @@ where
     let output_template = parent.join(format!("{}.%(ext)s", filename_stem));
 
     let mut cmd = create_ytdlp_cmd(&ytdlp_bin);
-    cmd.arg("--newline")
+    cmd.arg("--no-playlist")
+        .arg("--newline")
         .arg("--progress-template")
         .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress._percent)s|%(info.ext)s|%(progress.filename)s");
 
