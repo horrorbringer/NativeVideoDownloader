@@ -41,12 +41,15 @@ async fn refresh_history(
                         .map(DownloadProgress::format_size)
                         .unwrap_or_else(|| DownloadProgress::format_size(r.downloaded_size));
 
+                    let raw_date = r.completed_at.unwrap_or(r.created_at);
+                    let date_display = database::format_history_date(&raw_date);
+
                     HistoryItemData {
                         id: r.id.to_string().into(),
                         title: r.title.into(),
                         status: r.status.into(),
                         size_text: size_text.into(),
-                        date_text: r.completed_at.unwrap_or(r.created_at).into(),
+                        date_text: date_display.into(),
                         url: r.url.into(),
                         output_path: r.output_path.into(),
                     }
@@ -563,7 +566,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(true);
     main_window.set_is_dark_mode(saved_dark_mode);
 
-    // Initialize speed samples for the graph with 30 idle points
+    // Initialize speed samples for the graph with 30 idle points (30s rolling window)
     let initial_samples: Vec<SpeedSampleData> = (0..30)
         .map(|_| SpeedSampleData {
             ratio: 0.0,
@@ -590,7 +593,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let queue_filter_idx: Arc<tokio::sync::RwLock<i32>> = Arc::new(tokio::sync::RwLock::new(0));
     let queue_search_term: Arc<tokio::sync::RwLock<String>> = Arc::new(tokio::sync::RwLock::new(String::new()));
 
-    // Speed history, peak tracking, and session bytes
+    // Speed history (30 seconds rolling timeline @ 1 Hz), peak tracking, and session bytes
     let speed_history = Arc::new(tokio::sync::Mutex::new(VecDeque::from(vec![0.0f64; 30])));
     let peak_speed_bytes = Arc::new(AtomicU64::new(0));
     let session_downloaded_bytes = Arc::new(AtomicU64::new(0));
@@ -649,8 +652,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if completed_count > 0 && completed_count != prev_completed {
                     let db_clone = db_sync.clone();
                     let weak_clone = weak.clone();
+                    let mgr_autoclear = mgr.clone();
                     tokio::spawn(async move {
                         refresh_history(&db_clone, None, weak_clone).await;
+                        // Auto-clear completed jobs from in-memory queue after a brief delay
+                        // so they disappear from Queue and only live in History.
+                        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                        mgr_autoclear.clear_completed().await;
                     });
                 }
 
@@ -832,8 +840,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if has_active {
                 zero_speed_ticks = 0;
                 ticker_mgr.notify_update().await;
-            } else if zero_speed_ticks < 32 {
-                // Decay the 30-sample speed graph cleanly to zero, then enter low-power sleep
+            } else if zero_speed_ticks < 62 {
+                // Decay the 60-sample speed graph cleanly to zero, then enter low-power sleep
                 zero_speed_ticks += 1;
                 ticker_mgr.notify_update().await;
             }

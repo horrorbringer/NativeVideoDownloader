@@ -649,7 +649,9 @@ impl DownloadManager {
                             &format!("\"{}\" has finished downloading.", job_title),
                             false,
                         );
-                        let _ = manager.db.mark_completed(id, final_size, Some(&final_out_path)).await;
+                        if let Err(e) = manager.db.mark_completed(id, final_size, Some(&final_out_path)).await {
+                            error!("Failed to mark job {} as completed in database: {}", id, e);
+                        }
                         manager.notify_update().await;
                         break;
                     }

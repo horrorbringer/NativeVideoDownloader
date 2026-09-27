@@ -74,6 +74,37 @@ impl Database {
         .await?;
 
         info!("SQLite database initialized at: {:?}", db_path);
+
+        // Auto-reconcile existing files on disk that may have failed to mark completed due to past schema mismatch
+        if let Ok(rows) = sqlx::query("SELECT id, output_path FROM downloads WHERE status != 'Completed'")
+            .fetch_all(&pool)
+            .await
+        {
+            for row in rows {
+                let id_raw: String = row.get("id");
+                let path_raw: String = row.get("output_path");
+                let p = Path::new(&path_raw);
+                if p.exists() {
+                    if let Ok(meta) = std::fs::metadata(p) {
+                        let len = meta.len();
+                        if len > 0 {
+                            info!("Auto-reconciling completed file in history: {:?}", p);
+                            let now_str = chrono_or_now();
+                            let _ = sqlx::query(
+                                "UPDATE downloads SET status = 'Completed', downloaded_size = ?, total_size = ?, completed_at = coalesce(completed_at, ?) WHERE id = ?"
+                            )
+                            .bind(len as i64)
+                            .bind(len as i64)
+                            .bind(&now_str)
+                            .bind(&id_raw)
+                            .execute(&pool)
+                            .await;
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(Self { pool })
     }
 
@@ -139,7 +170,7 @@ impl Database {
                     downloaded_size = ?,
                     total_size = ?,
                     completed_at = ?,
-                    destination_path = ?
+                    output_path = ?
                 WHERE id = ?
                 "#,
             )
@@ -359,11 +390,21 @@ impl Database {
     }
 }
 
-fn chrono_or_now() -> String {
-    // Generate ISO timestamp without external crate dependencies
-    use std::time::SystemTime;
-    let duration = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}.{:03}Z", duration.as_secs(), duration.subsec_millis())
+pub fn chrono_or_now() -> String {
+    chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()
+}
+
+pub fn format_history_date(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Some(sec_str) = trimmed.split('.').next() {
+        if let Ok(secs) = sec_str.parse::<i64>() {
+            if secs > 100_000_000 {
+                if let Some(dt) = chrono::DateTime::from_timestamp(secs, 0) {
+                    let local: chrono::DateTime<chrono::Local> = chrono::DateTime::from(dt);
+                    return local.format("%Y-%m-%d %H:%M").to_string();
+                }
+            }
+        }
+    }
+    trimmed.to_string()
 }

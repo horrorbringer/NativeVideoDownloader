@@ -201,9 +201,9 @@ export component DownloadsTab inherits VerticalLayout {
                         padding-right: 8px;
                         padding-top: 4px;
                         padding-bottom: 4px;
-                        spacing: 2px;
+                        spacing: 3px;
 
-                        for sample in root.speed_samples: HorizontalLayout {
+                        for sample in root.speed_samples: sample_col := HorizontalLayout {
                             horizontal-stretch: 1;
                             alignment: center;
 
@@ -211,7 +211,7 @@ export component DownloadsTab inherits VerticalLayout {
                                 alignment: end;
 
                                 Rectangle {
-                                    width: 3px;
+                                    width: 4px;
                                     height: Math.max(3px, sample.ratio * 44px);
                                     border-top-left-radius: 1.5px;
                                     border-top-right-radius: 1.5px;
@@ -228,7 +228,7 @@ export component DownloadsTab inherits VerticalLayout {
                                     // Glowing active cap
                                     if sample.ratio > 0.05: Rectangle {
                                         y: 0;
-                                        width: 3px;
+                                        width: parent.width;
                                         height: 2px;
                                         border-top-left-radius: 1.5px;
                                         border-top-right-radius: 1.5px;
@@ -240,7 +240,7 @@ export component DownloadsTab inherits VerticalLayout {
                     }
                 }
 
-                // Timeline markers
+                // Timeline markers (30-second rolling window)
                 HorizontalLayout {
                     alignment: space-between;
                     padding-left: 10px;
