@@ -1543,12 +1543,20 @@ where
         }
     } else {
         if download_subtitles {
-            let sub_langs = subtitle_language.unwrap_or("all,-live_chat");
+            let raw_sub_langs = subtitle_language.unwrap_or("all,-live_chat");
+            let is_all = raw_sub_langs.contains("all");
+
             cmd.arg("--write-subs")
-                .arg("--sub-langs")
-                .arg(sub_langs)
-                .arg("--embed-subs");
-            if sub_langs.contains("all") {
+                .arg("--embed-subs")
+                .arg("-i"); // Ignore non-fatal auxiliary subtitle errors so video download succeeds
+
+            if is_all {
+                // When "All Languages" is selected, constrain auto-subs to the app's supported languages.
+                // Requesting all 140+ auto-sub languages at once triggers YouTube's HTTP 429 rate limit on 'ab' (Abkhazian).
+                cmd.arg("--sub-langs").arg("en.*,km.*,th.*,vi.*,id.*,ms.*,my.*,zh.*,ja.*,ko.*,es.*,fr.*,de.*,ru.*,pt.*,ar.*,all,-live_chat");
+                cmd.arg("--write-auto-subs");
+            } else {
+                cmd.arg("--sub-langs").arg(raw_sub_langs);
                 cmd.arg("--write-auto-subs");
             }
         }
@@ -1650,6 +1658,20 @@ where
     let status = child.wait().await?;
     let stderr_output = stderr_task.await.unwrap_or_default();
 
+    // Check if the media file was actually downloaded successfully on disk
+    let candidate_extensions = ["mp3", "mp4", "webm", "mkv", "m4a", "opus"];
+    for ext in &candidate_extensions {
+        let p = parent.join(format!("{}.{}", filename_stem, ext));
+        if p.exists() && std::fs::metadata(&p).map(|m| m.len() > 1024).unwrap_or(false) {
+            if !status.success() {
+                warn!("Extractor process exited with code {:?}, but media file was downloaded successfully: {:?}", status.code(), p);
+            } else {
+                info!("Extractor completed output resolved to: {:?}", p);
+            }
+            return Ok(p);
+        }
+    }
+
     if !status.success() {
         let err_detail = if !stderr_output.trim().is_empty() {
             clean_extractor_error(&stderr_output)
@@ -1657,16 +1679,6 @@ where
             format!("Extractor process finished with exit code {:?}", status.code())
         };
         return Err(AppError::Generic(err_detail));
-    }
-
-    // Determine the actual downloaded file on disk
-    let candidate_extensions = ["mp3", "mp4", "webm", "mkv", "m4a", "opus"];
-    for ext in &candidate_extensions {
-        let p = parent.join(format!("{}.{}", filename_stem, ext));
-        if p.exists() {
-            info!("Extractor completed output resolved to: {:?}", p);
-            return Ok(p);
-        }
     }
 
     Ok(destination_path.to_path_buf())
