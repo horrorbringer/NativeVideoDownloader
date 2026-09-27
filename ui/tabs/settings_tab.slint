@@ -44,7 +44,9 @@ export component SettingsTab inherits ScrollView {
     in-out property <bool> sub_lang_ar: false;
     in-out property <string> selected_sub_langs_summary: "All Languages";
     in-out property <int> selected_concurrent_fragments: 4;
+    in-out property <int> theme_mode: 2;
 
+    callback set_theme_mode(int);
     callback set_theme_dark(bool);
     callback browse_download_dir();
     callback open_current_download_dir();
@@ -98,7 +100,7 @@ export component SettingsTab inherits ScrollView {
                         border-color: Theme.sidebar_brand_border;
 
                         Image {
-                            source: Theme.is_dark ? @image-url("../icons/moon.svg") : @image-url("../icons/sun.svg");
+                            source: root.theme_mode == 2 ? @image-url("../icons/monitor.svg") : (Theme.is_dark ? @image-url("../icons/moon.svg") : @image-url("../icons/sun.svg"));
                             width: 17px;
                             height: 17px;
                             colorize: Theme.brand_purple;
@@ -116,7 +118,7 @@ export component SettingsTab inherits ScrollView {
                             font-weight: 700;
                         }
                         Text {
-                            text: "Choose between deep obsidian dark mode and crisp high-contrast light mode.";
+                            text: "Choose between System Auto (matches macOS / OS appearance dynamically), Dark mode, and Light mode.";
                             color: Theme.text_secondary;
                             font-size: 13px;
                         }
@@ -126,14 +128,77 @@ export component SettingsTab inherits ScrollView {
                 HorizontalLayout {
                     spacing: 12px;
 
+                    // Auto / System Default Mode Option Card
+                    system_mode_card := Rectangle {
+                        horizontal-stretch: 1;
+                        height: 60px;
+                        border-radius: 8px;
+                        background: root.theme_mode == 2 ? Theme.sidebar_status_bg : (system_touch.has-hover ? Theme.inner_bg : transparent);
+                        border-width: root.theme_mode == 2 ? 2px : 1px;
+                        border-color: root.theme_mode == 2 ? Theme.brand_purple : Theme.card_border;
+                        animate border-color { duration: 120ms; }
+                        animate background { duration: 120ms; }
+
+                        HorizontalLayout {
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            spacing: 10px;
+                            alignment: start;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 32px;
+                                    height: 32px;
+                                    border-radius: 6px;
+                                    background: Theme.sidebar_brand_bg;
+                                    border-width: 1px;
+                                    border-color: Theme.sidebar_brand_border;
+
+                                    Image {
+                                        source: @image-url("../icons/monitor.svg");
+                                        width: 16px;
+                                        height: 16px;
+                                        colorize: #38bdf8;
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: "Auto (System)";
+                                    color: Theme.text_primary;
+                                    font-size: 13px;
+                                    font-weight: root.theme_mode == 2 ? 700 : 500;
+                                }
+                                Text {
+                                    text: "Matches macOS / OS theme";
+                                    color: Theme.text_secondary;
+                                    font-size: 11px;
+                                }
+                            }
+                        }
+
+                        system_touch := TouchArea {
+                            clicked => {
+                                root.theme_mode = 2;
+                                root.set_theme_mode(2);
+                            }
+                        }
+                    }
+
                     // Dark Mode Option Card
                     dark_mode_card := Rectangle {
                         horizontal-stretch: 1;
                         height: 60px;
                         border-radius: 8px;
-                        background: Theme.is_dark ? Theme.sidebar_status_bg : (dark_touch.has-hover ? Theme.inner_bg : transparent);
-                        border-width: Theme.is_dark ? 2px : 1px;
-                        border-color: Theme.is_dark ? Theme.brand_purple : Theme.card_border;
+                        background: root.theme_mode == 1 ? Theme.sidebar_status_bg : (dark_touch.has-hover ? Theme.inner_bg : transparent);
+                        border-width: root.theme_mode == 1 ? 2px : 1px;
+                        border-color: root.theme_mode == 1 ? Theme.brand_purple : Theme.card_border;
                         animate border-color { duration: 120ms; }
                         animate background { duration: 120ms; }
 
@@ -168,13 +233,13 @@ export component SettingsTab inherits ScrollView {
                                 alignment: center;
                                 spacing: 2px;
                                 Text {
-                                    text: "Dark Mode (Deep Slate)";
+                                    text: "Dark Mode";
                                     color: Theme.text_primary;
                                     font-size: 13px;
-                                    font-weight: Theme.is_dark ? 700 : 500;
+                                    font-weight: root.theme_mode == 1 ? 700 : 500;
                                 }
                                 Text {
-                                    text: "Low-glare obsidian palette for evening and night sessions";
+                                    text: "Low-glare obsidian palette";
                                     color: Theme.text_secondary;
                                     font-size: 11px;
                                 }
@@ -183,10 +248,8 @@ export component SettingsTab inherits ScrollView {
 
                         dark_touch := TouchArea {
                             clicked => {
-                                if !Theme.is_dark {
-                                    Theme.is_dark = true;
-                                    root.set_theme_dark(true);
-                                }
+                                root.theme_mode = 1;
+                                root.set_theme_mode(1);
                             }
                         }
                     }
@@ -196,9 +259,9 @@ export component SettingsTab inherits ScrollView {
                         horizontal-stretch: 1;
                         height: 60px;
                         border-radius: 8px;
-                        background: !Theme.is_dark ? Theme.sidebar_status_bg : (light_touch.has-hover ? Theme.inner_bg : transparent);
-                        border-width: !Theme.is_dark ? 2px : 1px;
-                        border-color: !Theme.is_dark ? Theme.brand_purple : Theme.card_border;
+                        background: root.theme_mode == 0 ? Theme.sidebar_status_bg : (light_touch.has-hover ? Theme.inner_bg : transparent);
+                        border-width: root.theme_mode == 0 ? 2px : 1px;
+                        border-color: root.theme_mode == 0 ? Theme.brand_purple : Theme.card_border;
                         animate border-color { duration: 120ms; }
                         animate background { duration: 120ms; }
 
@@ -233,13 +296,13 @@ export component SettingsTab inherits ScrollView {
                                 alignment: center;
                                 spacing: 2px;
                                 Text {
-                                    text: "Light Mode (Modern Clean)";
+                                    text: "Light Mode";
                                     color: Theme.text_primary;
                                     font-size: 13px;
-                                    font-weight: !Theme.is_dark ? 700 : 500;
+                                    font-weight: root.theme_mode == 0 ? 700 : 500;
                                 }
                                 Text {
-                                    text: "Crisp daylight contrast with refined slate accents";
+                                    text: "Crisp daylight contrast";
                                     color: Theme.text_secondary;
                                     font-size: 11px;
                                 }
@@ -248,10 +311,8 @@ export component SettingsTab inherits ScrollView {
 
                         light_touch := TouchArea {
                             clicked => {
-                                if Theme.is_dark {
-                                    Theme.is_dark = false;
-                                    root.set_theme_dark(false);
-                                }
+                                root.theme_mode = 0;
+                                root.set_theme_mode(0);
                             }
                         }
                     }

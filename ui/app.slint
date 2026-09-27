@@ -18,7 +18,9 @@ export component AppWindow inherits Window {
     background: Theme.app_bg;
 
     in-out property <bool> is_dark_mode <=> Theme.is_dark;
+    in-out property <int> theme_mode: 2; // 0 = Light, 1 = Dark, 2 = Auto / System
     callback toggle_theme();
+    callback set_theme_mode(int);
 
     in-out property <int> active_tab: 0;
     in-out property <string> status_message: "Ready to download media";
@@ -267,7 +269,7 @@ export component AppWindow inherits Window {
                             border-color: theme_touch.has-hover ? Theme.nav_hover_border : transparent;
 
                             Image {
-                                source: Theme.is_dark ? @image-url("icons/sun.svg") : @image-url("icons/moon.svg");
+                                source: root.theme_mode == 2 ? @image-url("icons/monitor.svg") : (Theme.is_dark ? @image-url("icons/moon.svg") : @image-url("icons/sun.svg"));
                                 width: 15px;
                                 height: 15px;
                                 colorize: theme_touch.has-hover ? Theme.brand_purple : Theme.icon_default;
@@ -277,8 +279,13 @@ export component AppWindow inherits Window {
 
                             theme_touch := TouchArea {
                                 clicked => {
-                                    Theme.is_dark = !Theme.is_dark;
-                                    root.toggle_theme();
+                                    if root.theme_mode == 2 {
+                                        root.set_theme_mode(1);
+                                    } else if root.theme_mode == 1 {
+                                        root.set_theme_mode(0);
+                                    } else {
+                                        root.set_theme_mode(2);
+                                    }
                                 }
                             }
                         }
@@ -633,7 +640,9 @@ export component AppWindow inherits Window {
                 update_extractor() => { root.update_extractor(); }
                 clear_cache() => { root.clear_cache(); }
                 set_concurrent_fragments(n) => { root.set_concurrent_fragments(n); }
-                set_theme_dark(d) => { root.toggle_theme(); }
+                theme_mode: root.theme_mode;
+                set_theme_mode(m) => { root.set_theme_mode(m); }
+                set_theme_dark(d) => { root.set_theme_mode(d ? 1 : 0); }
             }
 
             // Status bar at bottom

@@ -6,6 +6,9 @@ mod logger;
 mod models;
 mod network;
 pub mod notifications;
+pub mod theme;
+
+use theme::{ThemeMode, is_system_dark_mode, resolve_is_dark};
 
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
@@ -582,14 +585,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
     apply_sub_langs_state(&main_window, &saved_sub_indices);
 
-    // Restore saved theme preference (defaults to true / dark mode)
-    let saved_dark_mode: bool = db
-        .get_setting("dark_mode")
-        .await
-        .unwrap_or(None)
-        .map(|v| v != "false")
-        .unwrap_or(true);
-    main_window.set_is_dark_mode(saved_dark_mode);
+    // Restore saved theme preference (0 = Light, 1 = Dark, 2 = Auto / System Default)
+    let saved_theme_mode = if let Ok(Some(mode_str)) = db.get_setting("theme_mode").await {
+        mode_str.parse::<ThemeMode>().unwrap_or_default()
+    } else if let Ok(Some(dark_str)) = db.get_setting("dark_mode").await {
+        if dark_str == "false" {
+            ThemeMode::Light
+        } else {
+            ThemeMode::Dark
+        }
+    } else {
+        ThemeMode::Auto
+    };
+    let initial_is_dark = resolve_is_dark(saved_theme_mode);
+    main_window.set_theme_mode(saved_theme_mode.to_i32());
+    main_window.set_is_dark_mode(initial_is_dark);
 
     // Initialize speed samples for the graph with 60 idle points (30s rolling window @ 2 Hz)
     let initial_samples: Vec<SpeedSampleData> = (0..60)
@@ -1239,19 +1249,66 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Callback: Toggle Theme (Dark / Light) & persist
+    // Callback: Set Theme Mode (0 = Light, 1 = Dark, 2 = Auto / System) & persist
     let db_theme = db.clone();
     let weak_theme = main_window.as_weak();
-    main_window.on_toggle_theme(move || {
+    main_window.on_set_theme_mode(move |mode_val| {
         let db = db_theme.clone();
         if let Some(win) = weak_theme.upgrade() {
-            let is_dark = win.get_is_dark_mode();
-            let mode_str = if is_dark { "Dark mode enabled" } else { "Light mode enabled" };
-            win.set_status_message(mode_str.into());
+            let mode = ThemeMode::from_i32(mode_val);
+            let is_dark = resolve_is_dark(mode);
+            win.set_theme_mode(mode.to_i32());
+            win.set_is_dark_mode(is_dark);
+
+            let status = match mode {
+                ThemeMode::Auto => format!(
+                    "Theme: System Default ({}) - dynamic OS appearance",
+                    if is_dark { "Dark" } else { "Light" }
+                ),
+                ThemeMode::Dark => "Theme: Dark Mode enabled".to_string(),
+                ThemeMode::Light => "Theme: Light Mode enabled".to_string(),
+            };
+            win.set_status_message(status.into());
+
             tokio::spawn(async move {
+                let _ = db.set_setting("theme_mode", mode.as_str()).await;
                 let _ = db.set_setting("dark_mode", if is_dark { "true" } else { "false" }).await;
-                info!("Saved theme preference: {}", if is_dark { "dark" } else { "light" });
+                info!("Saved theme mode preference: {:?} (is_dark={})", mode, is_dark);
             });
+        }
+    });
+
+    // Callback: Toggle Theme (cycles through Auto -> Dark -> Light -> Auto)
+    let weak_toggle = main_window.as_weak();
+    main_window.on_toggle_theme(move || {
+        if let Some(win) = weak_toggle.upgrade() {
+            let current = ThemeMode::from_i32(win.get_theme_mode());
+            let next_mode = match current {
+                ThemeMode::Auto => ThemeMode::Dark,
+                ThemeMode::Dark => ThemeMode::Light,
+                ThemeMode::Light => ThemeMode::Auto,
+            };
+            win.invoke_set_theme_mode(next_mode.to_i32());
+        }
+    });
+
+    // Background watcher for OS appearance changes (active when in Auto / System mode)
+    let weak_auto_watcher = main_window.as_weak();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(1500));
+        loop {
+            interval.tick().await;
+            if let Some(win) = weak_auto_watcher.upgrade() {
+                if ThemeMode::from_i32(win.get_theme_mode()) == ThemeMode::Auto {
+                    let sys_dark = is_system_dark_mode();
+                    if win.get_is_dark_mode() != sys_dark {
+                        info!("System appearance change detected! Updating app theme to is_dark={}", sys_dark);
+                        win.set_is_dark_mode(sys_dark);
+                    }
+                }
+            } else {
+                break;
+            }
         }
     });
 
