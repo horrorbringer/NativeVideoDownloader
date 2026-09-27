@@ -477,6 +477,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.set_filename_template(saved_template.clone().into());
     download_manager.set_filename_template(saved_template).await;
 
+    // Restore saved asset organization mode (defaults to 0 / DedicatedVideoFolder / Approach 1)
+    let saved_asset_org_mode: u8 = db
+        .get_setting("asset_org_mode")
+        .await
+        .unwrap_or(None)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    main_window.set_selected_asset_org_mode(saved_asset_org_mode as i32);
+    download_manager.set_asset_organization_mode(saved_asset_org_mode).await;
+
     // Restore saved theme preference (defaults to true / dark mode)
     let saved_dark_mode: bool = db
         .get_setting("dark_mode")
@@ -1014,6 +1024,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Saved filename template: {}", tpl);
             let _ = weak.upgrade_in_event_loop(move |win| {
                 win.set_status_message(format!("Filename template saved: {}", tpl).into());
+            });
+        });
+    });
+
+    // Callback: Set Subtitle & Asset Organization Mode
+    let db_asset_org = db.clone();
+    let mgr_asset_org = download_manager.clone();
+    let weak_asset_org = main_window.as_weak();
+    main_window.on_set_asset_organization_mode(move |mode_idx| {
+        let db = db_asset_org.clone();
+        let mgr = mgr_asset_org.clone();
+        let weak = weak_asset_org.clone();
+        tokio::spawn(async move {
+            let mode = mode_idx.clamp(0, 2) as u8;
+            let _ = db.set_setting("asset_org_mode", &mode.to_string()).await;
+            mgr.set_asset_organization_mode(mode).await;
+            info!("Saved asset organization mode: {}", mode);
+            let msg = match mode {
+                0 => "Asset Organization: Dedicated folder per video (<Title>/...)",
+                1 => "Asset Organization: Grouped subtitles subfolder (Subtitles/<Title>/...)",
+                _ => "Asset Organization: Flat subtitles folder (Subtitles/...)",
+            };
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_selected_asset_org_mode(mode as i32);
+                win.set_status_message(msg.into());
             });
         });
     });

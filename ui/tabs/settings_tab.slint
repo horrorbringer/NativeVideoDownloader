@@ -22,14 +22,16 @@ export component SettingsTab inherits ScrollView {
     in-out property <int> default_audio_bitrate_index: 0;
     in-out property <bool> default_embed_audio_metadata: true;
 
-    // Filename Template
+    // Filename Template & Organization
     in-out property <string> filename_template: "{title}.{ext}";
+    in-out property <int> selected_asset_org_mode: 0;
 
     callback set_theme_dark(bool);
     callback browse_download_dir();
     callback open_current_download_dir();
     callback reset_download_dir();
     callback set_filename_template(string);
+    callback set_asset_organization_mode(int);
     callback set_speed_limit(int);
     callback set_max_concurrency(int);
     callback set_cookies_browser(int);
@@ -429,6 +431,88 @@ export component SettingsTab inherits ScrollView {
                             clicked => {
                                 root.filename_template = "[{date}] {title}.{ext}";
                                 root.set_filename_template(root.filename_template);
+                            }
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    height: 1px;
+                    background: Theme.card_border;
+                }
+
+                // Subtitle & Multi-Asset Hierarchy Organization (Approach 1)
+                VerticalLayout {
+                    spacing: 10px;
+
+                    VerticalLayout {
+                        spacing: 3px;
+                        Text {
+                            text: "Media, Subtitles & Multi-Asset Organization";
+                            color: Theme.text_primary;
+                            font-size: 14px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Automatically organize multi-language subtitles, posters/thumbnails, and extra audio into clean hierarchies.";
+                            color: Theme.text_secondary;
+                            font-size: 12px;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        IconChip {
+                            text: "Dedicated Video Folder (Approach 1)";
+                            icon: @image-url("../icons/folder.svg");
+                            has_icon: true;
+                            selected: root.selected_asset_org_mode == 0;
+                            clicked => {
+                                root.selected_asset_org_mode = 0;
+                                root.set_asset_organization_mode(0);
+                            }
+                        }
+                        IconChip {
+                            text: "Grouped Subs (Subtitles/Video/)";
+                            selected: root.selected_asset_org_mode == 1;
+                            clicked => {
+                                root.selected_asset_org_mode = 1;
+                                root.set_asset_organization_mode(1);
+                            }
+                        }
+                        IconChip {
+                            text: "Flat Subs (Subtitles/)";
+                            selected: root.selected_asset_org_mode == 2;
+                            clicked => {
+                                root.selected_asset_org_mode = 2;
+                                root.set_asset_organization_mode(2);
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            padding-top: 7px;
+                            padding-bottom: 7px;
+                            alignment: start;
+
+                            Text {
+                                text: root.selected_asset_org_mode == 0 ? "Structure: <Video Name>/ [ Video.mp4 + Subtitles/ (all languages) + Thumbnails/ ] — 100% VLC, IINA, Plex & Jellyfin compatible" :
+                                      (root.selected_asset_org_mode == 1 ? "Structure: Video.mp4 + Subtitles/<Video Name>/ [ all language subtitles organized per video ]" :
+                                       "Structure: Video.mp4 + Subtitles/ [ all subtitle files together in one shared folder ]");
+                                color: Theme.brand_purple;
+                                font-size: 11px;
+                                font-weight: 500;
                             }
                         }
                     }

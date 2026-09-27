@@ -786,18 +786,47 @@ pub fn write_clipboard_text(text: &str) -> bool {
     false
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssetOrganizationMode {
+    /// Dedicated folder per video: `<parent>/<stem>/[ <stem>.<ext>, Subtitles/, Thumbnails/, Audio/ ]`
+    /// 100% compatible with VLC, IINA, MPV, Plex, Jellyfin, and Infuse out-of-the-box.
+    DedicatedVideoFolder = 0,
+    /// Per-video subtitles subfolder: `<parent>/Subtitles/<stem>/[ <stem>.<lang>.<ext> ]`
+    PerVideoSubtitles = 1,
+    /// Shared flat subtitles folder: `<parent>/Subtitles/[ <stem>.<lang>.<ext> ]`
+    SharedSubtitles = 2,
+}
+
+impl From<u8> for AssetOrganizationMode {
+    fn from(val: u8) -> Self {
+        match val {
+            1 => AssetOrganizationMode::PerVideoSubtitles,
+            2 => AssetOrganizationMode::SharedSubtitles,
+            _ => AssetOrganizationMode::DedicatedVideoFolder,
+        }
+    }
+}
+
 /// Organizes auxiliary media assets (subtitles, thumbnails/posters, and extra audio tracks)
-/// associated with a video into clean, dedicated subfolders ("Subtitles", "Thumbnails", "Audio").
-/// Fully compatible with standard media players (VLC, IINA, MPV, Plex, Jellyfin, Infuse).
-pub async fn organize_media_assets(media_path: &Path) -> Result<usize> {
+/// associated with a video according to the selected `AssetOrganizationMode`.
+/// Returns `(number_of_assets_moved, final_media_file_path)`.
+pub async fn organize_media_assets_with_mode(
+    media_path: &Path,
+    mode: AssetOrganizationMode,
+) -> Result<(usize, PathBuf)> {
     let parent = match media_path.parent() {
         Some(p) if p.is_dir() => p,
-        _ => return Ok(0),
+        _ => return Ok((0, media_path.to_path_buf())),
     };
 
     let file_stem = match media_path.file_stem().and_then(|s| s.to_str()) {
         Some(s) if !s.is_empty() => s,
-        _ => return Ok(0),
+        _ => return Ok((0, media_path.to_path_buf())),
+    };
+
+    let file_name = match media_path.file_name() {
+        Some(n) => n,
+        _ => return Ok((0, media_path.to_path_buf())),
     };
 
     let is_video = media_path
@@ -816,7 +845,7 @@ pub async fn organize_media_assets(media_path: &Path) -> Result<usize> {
 
     let mut read_dir = match tokio::fs::read_dir(parent).await {
         Ok(rd) => rd,
-        Err(_) => return Ok(0),
+        Err(_) => return Ok((0, media_path.to_path_buf())),
     };
 
     while let Ok(Some(entry)) = read_dir.next_entry().await {
@@ -858,54 +887,189 @@ pub async fn organize_media_assets(media_path: &Path) -> Result<usize> {
         }
     }
 
+    if matching_subs.is_empty() && matching_thumbs.is_empty() && matching_audio.is_empty() {
+        return Ok((0, media_path.to_path_buf()));
+    }
+
     let mut total_moved = 0;
+    let mut final_media_path = media_path.to_path_buf();
 
-    // Move Subtitles
-    if !matching_subs.is_empty() {
-        let subs_dir = parent.join("Subtitles");
-        tokio::fs::create_dir_all(&subs_dir).await?;
-        for sub in matching_subs {
-            if let Some(file_name) = sub.file_name() {
-                let target = subs_dir.join(file_name);
-                if tokio::fs::rename(&sub, &target).await.is_ok() {
-                    total_moved += 1;
-                } else if tokio::fs::copy(&sub, &target).await.is_ok() {
-                    let _ = tokio::fs::remove_file(&sub).await;
-                    total_moved += 1;
+    match mode {
+        AssetOrganizationMode::DedicatedVideoFolder => {
+            let is_already_in_dedicated_folder = parent
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(|name| name == file_stem)
+                .unwrap_or(false);
+
+            let (target_root, media_dest) = if is_already_in_dedicated_folder {
+                (parent.to_path_buf(), media_path.to_path_buf())
+            } else {
+                let video_dir = parent.join(file_stem);
+                tokio::fs::create_dir_all(&video_dir).await?;
+                let target_media = video_dir.join(file_name);
+                if media_path.exists() && media_path != target_media {
+                    if tokio::fs::rename(media_path, &target_media).await.is_err() {
+                        tokio::fs::copy(media_path, &target_media).await?;
+                        let _ = tokio::fs::remove_file(media_path).await;
+                    }
+                }
+                (video_dir, target_media)
+            };
+            final_media_path = media_dest;
+
+            // Move Subtitles into <target_root>/Subtitles/
+            if !matching_subs.is_empty() {
+                let subs_dir = target_root.join("Subtitles");
+                tokio::fs::create_dir_all(&subs_dir).await?;
+                for sub in matching_subs {
+                    if let Some(name) = sub.file_name() {
+                        let target = subs_dir.join(name);
+                        if tokio::fs::rename(&sub, &target).await.is_ok() {
+                            total_moved += 1;
+                        } else if tokio::fs::copy(&sub, &target).await.is_ok() {
+                            let _ = tokio::fs::remove_file(&sub).await;
+                            total_moved += 1;
+                        }
+                    }
+                }
+            }
+
+            // Move Thumbnails into <target_root>/Thumbnails/
+            if !matching_thumbs.is_empty() {
+                let thumbs_dir = target_root.join("Thumbnails");
+                tokio::fs::create_dir_all(&thumbs_dir).await?;
+                for thumb in matching_thumbs {
+                    if let Some(name) = thumb.file_name() {
+                        let target = thumbs_dir.join(name);
+                        if tokio::fs::rename(&thumb, &target).await.is_ok() {
+                            total_moved += 1;
+                        } else if tokio::fs::copy(&thumb, &target).await.is_ok() {
+                            let _ = tokio::fs::remove_file(&thumb).await;
+                            total_moved += 1;
+                        }
+                    }
+                }
+            }
+
+            // Move Audio into <target_root>/Audio/
+            if !matching_audio.is_empty() {
+                let audio_dir = target_root.join("Audio");
+                tokio::fs::create_dir_all(&audio_dir).await?;
+                for audio in matching_audio {
+                    if let Some(name) = audio.file_name() {
+                        let target = audio_dir.join(name);
+                        if tokio::fs::rename(&audio, &target).await.is_ok() {
+                            total_moved += 1;
+                        } else if tokio::fs::copy(&audio, &target).await.is_ok() {
+                            let _ = tokio::fs::remove_file(&audio).await;
+                            total_moved += 1;
+                        }
+                    }
                 }
             }
         }
-    }
+        AssetOrganizationMode::PerVideoSubtitles => {
+            // Move Subtitles into <parent>/Subtitles/<file_stem>/
+            if !matching_subs.is_empty() {
+                let subs_dir = parent.join("Subtitles").join(file_stem);
+                tokio::fs::create_dir_all(&subs_dir).await?;
+                for sub in matching_subs {
+                    if let Some(name) = sub.file_name() {
+                        let target = subs_dir.join(name);
+                        if tokio::fs::rename(&sub, &target).await.is_ok() {
+                            total_moved += 1;
+                        } else if tokio::fs::copy(&sub, &target).await.is_ok() {
+                            let _ = tokio::fs::remove_file(&sub).await;
+                            total_moved += 1;
+                        }
+                    }
+                }
+            }
 
-    // Move Thumbnails
-    if !matching_thumbs.is_empty() {
-        let thumbs_dir = parent.join("Thumbnails");
-        tokio::fs::create_dir_all(&thumbs_dir).await?;
-        for thumb in matching_thumbs {
-            if let Some(file_name) = thumb.file_name() {
-                let target = thumbs_dir.join(file_name);
-                if tokio::fs::rename(&thumb, &target).await.is_ok() {
-                    total_moved += 1;
-                } else if tokio::fs::copy(&thumb, &target).await.is_ok() {
-                    let _ = tokio::fs::remove_file(&thumb).await;
-                    total_moved += 1;
+            // Move Thumbnails into <parent>/Thumbnails/
+            if !matching_thumbs.is_empty() {
+                let thumbs_dir = parent.join("Thumbnails");
+                tokio::fs::create_dir_all(&thumbs_dir).await?;
+                for thumb in matching_thumbs {
+                    if let Some(name) = thumb.file_name() {
+                        let target = thumbs_dir.join(name);
+                        if tokio::fs::rename(&thumb, &target).await.is_ok() {
+                            total_moved += 1;
+                        } else if tokio::fs::copy(&thumb, &target).await.is_ok() {
+                            let _ = tokio::fs::remove_file(&thumb).await;
+                            total_moved += 1;
+                        }
+                    }
+                }
+            }
+
+            // Move Audio into <parent>/Audio/
+            if !matching_audio.is_empty() {
+                let audio_dir = parent.join("Audio");
+                tokio::fs::create_dir_all(&audio_dir).await?;
+                for audio in matching_audio {
+                    if let Some(name) = audio.file_name() {
+                        let target = audio_dir.join(name);
+                        if tokio::fs::rename(&audio, &target).await.is_ok() {
+                            total_moved += 1;
+                        } else if tokio::fs::copy(&audio, &target).await.is_ok() {
+                            let _ = tokio::fs::remove_file(&audio).await;
+                            total_moved += 1;
+                        }
+                    }
                 }
             }
         }
-    }
+        AssetOrganizationMode::SharedSubtitles => {
+            // Move Subtitles into <parent>/Subtitles/
+            if !matching_subs.is_empty() {
+                let subs_dir = parent.join("Subtitles");
+                tokio::fs::create_dir_all(&subs_dir).await?;
+                for sub in matching_subs {
+                    if let Some(name) = sub.file_name() {
+                        let target = subs_dir.join(name);
+                        if tokio::fs::rename(&sub, &target).await.is_ok() {
+                            total_moved += 1;
+                        } else if tokio::fs::copy(&sub, &target).await.is_ok() {
+                            let _ = tokio::fs::remove_file(&sub).await;
+                            total_moved += 1;
+                        }
+                    }
+                }
+            }
 
-    // Move Extra Audio Tracks
-    if !matching_audio.is_empty() {
-        let audio_dir = parent.join("Audio");
-        tokio::fs::create_dir_all(&audio_dir).await?;
-        for audio in matching_audio {
-            if let Some(file_name) = audio.file_name() {
-                let target = audio_dir.join(file_name);
-                if tokio::fs::rename(&audio, &target).await.is_ok() {
-                    total_moved += 1;
-                } else if tokio::fs::copy(&audio, &target).await.is_ok() {
-                    let _ = tokio::fs::remove_file(&audio).await;
-                    total_moved += 1;
+            // Move Thumbnails into <parent>/Thumbnails/
+            if !matching_thumbs.is_empty() {
+                let thumbs_dir = parent.join("Thumbnails");
+                tokio::fs::create_dir_all(&thumbs_dir).await?;
+                for thumb in matching_thumbs {
+                    if let Some(name) = thumb.file_name() {
+                        let target = thumbs_dir.join(name);
+                        if tokio::fs::rename(&thumb, &target).await.is_ok() {
+                            total_moved += 1;
+                        } else if tokio::fs::copy(&thumb, &target).await.is_ok() {
+                            let _ = tokio::fs::remove_file(&thumb).await;
+                            total_moved += 1;
+                        }
+                    }
+                }
+            }
+
+            // Move Audio into <parent>/Audio/
+            if !matching_audio.is_empty() {
+                let audio_dir = parent.join("Audio");
+                tokio::fs::create_dir_all(&audio_dir).await?;
+                for audio in matching_audio {
+                    if let Some(name) = audio.file_name() {
+                        let target = audio_dir.join(name);
+                        if tokio::fs::rename(&audio, &target).await.is_ok() {
+                            total_moved += 1;
+                        } else if tokio::fs::copy(&audio, &target).await.is_ok() {
+                            let _ = tokio::fs::remove_file(&audio).await;
+                            total_moved += 1;
+                        }
+                    }
                 }
             }
         }
@@ -913,15 +1077,23 @@ pub async fn organize_media_assets(media_path: &Path) -> Result<usize> {
 
     if total_moved > 0 {
         info!(
-            "Organized {} media assets (subs/thumbs/audio) for '{}' in {:?}",
-            total_moved, file_stem, parent
+            "Organized {} media assets for '{}' (mode: {:?}) -> {:?}",
+            total_moved, file_stem, mode, final_media_path
         );
     }
 
-    Ok(total_moved)
+    Ok((total_moved, final_media_path))
+}
+
+/// Compatibility wrapper for `organize_media_assets_with_mode` using the default dedicated folder mode
+#[allow(dead_code)]
+pub async fn organize_media_assets(media_path: &Path) -> Result<usize> {
+    let (count, _) = organize_media_assets_with_mode(media_path, AssetOrganizationMode::DedicatedVideoFolder).await?;
+    Ok(count)
 }
 
 /// Compatibility alias for `organize_media_assets`
+#[allow(dead_code)]
 pub async fn organize_subtitles(media_path: &Path) -> Result<usize> {
     organize_media_assets(media_path).await
 }
@@ -991,6 +1163,7 @@ mod tests {
         let temp_dir = std::env::temp_dir().join(format!("nvd_sub_test_{}", uuid::Uuid::new_v4()));
         tokio::fs::create_dir_all(&temp_dir).await.unwrap();
 
+        // --- 1. Test Mode 0: DedicatedVideoFolder (Approach 1) ---
         let video = temp_dir.join("My Movie.mp4");
         tokio::fs::write(&video, b"video content").await.unwrap();
 
@@ -1006,29 +1179,54 @@ mod tests {
         tokio::fs::write(&audio, b"AUDIODATA").await.unwrap();
         tokio::fs::write(&other_sub, b"WEBVTT").await.unwrap();
 
-        // Organize assets for "My Movie.mp4"
-        let count = organize_media_assets(&video).await.unwrap();
+        let (count, new_video_path) = organize_media_assets_with_mode(&video, AssetOrganizationMode::DedicatedVideoFolder).await.unwrap();
         assert_eq!(count, 4); // 2 subs + 1 thumb + 1 audio
 
-        let subs_dir = temp_dir.join("Subtitles");
-        let thumbs_dir = temp_dir.join("Thumbnails");
-        let audio_dir = temp_dir.join("Audio");
+        let movie_folder = temp_dir.join("My Movie");
+        assert_eq!(new_video_path, movie_folder.join("My Movie.mp4"));
+        assert!(new_video_path.exists());
+
+        let subs_dir = movie_folder.join("Subtitles");
+        let thumbs_dir = movie_folder.join("Thumbnails");
+        let audio_dir = movie_folder.join("Audio");
 
         assert!(subs_dir.join("My Movie.en.vtt").exists());
         assert!(subs_dir.join("My Movie.es.srt").exists());
         assert!(thumbs_dir.join("My Movie.webp").exists());
         assert!(audio_dir.join("My Movie.en.m4a").exists());
 
+        assert!(!temp_dir.join("My Movie.mp4").exists());
         assert!(!temp_dir.join("My Movie.en.vtt").exists());
         assert!(!temp_dir.join("My Movie.webp").exists());
         assert!(!temp_dir.join("My Movie.en.m4a").exists());
-        assert!(video.exists()); // Video remains untouched
         assert!(other_sub.exists()); // Other video's asset untouched
+
+        // --- 2. Test Mode 1: PerVideoSubtitles ---
+        let v2 = temp_dir.join("Show S01E02.mp4");
+        let v2_sub = temp_dir.join("Show S01E02.ja.vtt");
+        tokio::fs::write(&v2, b"v2 content").await.unwrap();
+        tokio::fs::write(&v2_sub, b"WEBVTT").await.unwrap();
+
+        let (c2, v2_path) = organize_media_assets_with_mode(&v2, AssetOrganizationMode::PerVideoSubtitles).await.unwrap();
+        assert_eq!(c2, 1);
+        assert_eq!(v2_path, v2);
+        assert!(temp_dir.join("Subtitles").join("Show S01E02").join("Show S01E02.ja.vtt").exists());
+
+        // --- 3. Test Mode 2: SharedSubtitles ---
+        let v3 = temp_dir.join("Show S01E03.mp4");
+        let v3_sub = temp_dir.join("Show S01E03.zh.vtt");
+        tokio::fs::write(&v3, b"v3 content").await.unwrap();
+        tokio::fs::write(&v3_sub, b"WEBVTT").await.unwrap();
+
+        let (c3, v3_path) = organize_media_assets_with_mode(&v3, AssetOrganizationMode::SharedSubtitles).await.unwrap();
+        assert_eq!(c3, 1);
+        assert_eq!(v3_path, v3);
+        assert!(temp_dir.join("Subtitles").join("Show S01E03.zh.vtt").exists());
 
         // Organize all remaining
         let all_count = organize_all_subtitles_in_dir(&temp_dir).await.unwrap();
         assert_eq!(all_count, 1);
-        assert!(subs_dir.join("Other Video.fr.vtt").exists());
+        assert!(temp_dir.join("Subtitles").join("Other Video.fr.vtt").exists());
 
         let _ = tokio::fs::remove_dir_all(&temp_dir).await;
     }

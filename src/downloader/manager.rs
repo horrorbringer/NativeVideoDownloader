@@ -43,6 +43,7 @@ pub struct DownloadManager {
     cookies_browser: Arc<RwLock<Option<String>>>,
     proxy: Arc<RwLock<Option<String>>>,
     filename_template: Arc<RwLock<String>>,
+    asset_org_mode: Arc<RwLock<u8>>,
     on_update: Mutex<Option<StatusUpdateCallback>>,
 }
 
@@ -58,6 +59,7 @@ impl DownloadManager {
             cookies_browser: Arc::new(RwLock::new(None)),
             proxy: Arc::new(RwLock::new(None)),
             filename_template: Arc::new(RwLock::new("{title}.{ext}".to_string())),
+            asset_org_mode: Arc::new(RwLock::new(0)),
             on_update: Mutex::new(None),
         }
     }
@@ -117,6 +119,16 @@ impl DownloadManager {
     pub async fn get_filename_template(&self) -> String {
         let guard = self.filename_template.read().await;
         guard.clone()
+    }
+
+    pub async fn set_asset_organization_mode(&self, mode: u8) {
+        let mut guard = self.asset_org_mode.write().await;
+        *guard = mode;
+    }
+
+    pub async fn get_asset_organization_mode(&self) -> u8 {
+        let guard = self.asset_org_mode.read().await;
+        *guard
     }
 
     pub async fn set_max_concurrency(self: &Arc<Self>, count: usize) {
@@ -578,7 +590,12 @@ impl DownloadManager {
                         }
 
                         info!("Job {} completed successfully with size {} bytes", id, final_size);
-                        let _ = crate::filesystem::organize_subtitles(&out_path).await;
+                        let org_mode = manager.get_asset_organization_mode().await;
+                        let final_out_path = match crate::filesystem::organize_media_assets_with_mode(&out_path, org_mode.into()).await {
+                            Ok((_, new_p)) => new_p,
+                            Err(_) => out_path.clone(),
+                        };
+
                         let job_title = {
                             let mut queue = manager.queue.lock().await;
                             if let Some(j) = queue.get_job_mut(id) {
@@ -586,6 +603,7 @@ impl DownloadManager {
                                 j.progress_ratio = 1.0;
                                 j.speed_bytes_sec = 0.0;
                                 j.eta_seconds = Some(0);
+                                j.output_path = final_out_path.clone();
                                 j.title.clone()
                             } else {
                                 "Media file".to_string()
@@ -597,7 +615,7 @@ impl DownloadManager {
                             &format!("\"{}\" has finished downloading.", job_title),
                             false,
                         );
-                        let _ = manager.db.mark_completed(id, final_size).await;
+                        let _ = manager.db.mark_completed(id, final_size, Some(&final_out_path)).await;
                         manager.notify_update().await;
                         break;
                     }

@@ -126,26 +126,48 @@ impl Database {
         Ok(())
     }
 
-    pub async fn mark_completed(&self, id: Uuid, final_size: u64) -> Result<()> {
+    pub async fn mark_completed(&self, id: Uuid, final_size: u64, final_path: Option<&std::path::Path>) -> Result<()> {
         let id_str = id.to_string();
         let now_str = chrono_or_now();
 
-        sqlx::query(
-            r#"
-            UPDATE downloads
-            SET status = 'Completed',
-                downloaded_size = ?,
-                total_size = ?,
-                completed_at = ?
-            WHERE id = ?
-            "#,
-        )
-        .bind(final_size as i64)
-        .bind(final_size as i64)
-        .bind(now_str)
-        .bind(id_str)
-        .execute(&self.pool)
-        .await?;
+        if let Some(path) = final_path {
+            let path_str = path.to_string_lossy().to_string();
+            sqlx::query(
+                r#"
+                UPDATE downloads
+                SET status = 'Completed',
+                    downloaded_size = ?,
+                    total_size = ?,
+                    completed_at = ?,
+                    destination_path = ?
+                WHERE id = ?
+                "#,
+            )
+            .bind(final_size as i64)
+            .bind(final_size as i64)
+            .bind(now_str)
+            .bind(path_str)
+            .bind(id_str)
+            .execute(&self.pool)
+            .await?;
+        } else {
+            sqlx::query(
+                r#"
+                UPDATE downloads
+                SET status = 'Completed',
+                    downloaded_size = ?,
+                    total_size = ?,
+                    completed_at = ?
+                WHERE id = ?
+                "#,
+            )
+            .bind(final_size as i64)
+            .bind(final_size as i64)
+            .bind(now_str)
+            .bind(id_str)
+            .execute(&self.pool)
+            .await?;
+        }
 
         Ok(())
     }
