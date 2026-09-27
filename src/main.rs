@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use slint::{ComponentHandle, LogicalSize, Model, ModelRc, VecModel, WindowSize};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -434,8 +434,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db_path = Database::default_db_path();
     let db = Arc::new(Database::init(&db_path).await?);
 
-    // Initialize Slint UI window
+    // Initialize Slint UI window with increased width
     let main_window = AppWindow::new()?;
+    main_window.window().set_size(WindowSize::Logical(LogicalSize::new(1180.0, 760.0)));
     ui_log_layer.set_window(main_window.as_weak());
 
     // Shared state between UI callbacks and background tasks
