@@ -1,0 +1,443 @@
+import { Theme } from "../theme.slint";
+import { EpisodeItemData } from "../models.slint";
+import { ActionButton } from "action_button.slint";
+import { ScrollView, LineEdit } from "std-widgets.slint";
+
+export component EpisodeModal inherits Rectangle {
+    in property <bool> is_open: false;
+    in property <string> series_title: "Series Episodes";
+    in property <[EpisodeItemData]> episodes: [];
+    in property <int> selected_count: 0;
+    in-out property <string> range_input: "";
+    in-out property <string> search_filter: "";
+
+    callback close();
+    callback toggle_episode(int);
+    callback select_all(bool);
+    callback select_invert();
+    callback select_first_n(int);
+    callback apply_range(string);
+
+    width: 100%;
+    height: 100%;
+    visible: root.is_open;
+    z: 100;
+
+    // Dark backdrop overlay
+    Rectangle {
+        background: Theme.is_dark ? #000000a6 : #00000066;
+        animate background { duration: 150ms; }
+
+        TouchArea {
+            // Clicking backdrop closes modal
+            clicked => { root.close(); }
+        }
+    }
+
+    // Modal Card Dialog
+    dialog_card := Rectangle {
+        width: min(720px, parent.width - 48px);
+        height: min(580px, parent.height - 48px);
+        background: Theme.card_bg;
+        border-radius: 14px;
+        border-width: 1px;
+        border-color: Theme.card_border;
+        clip: true;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000077;
+        drop-shadow-offset-y: 8px;
+
+        // Prevent clicking inside card from closing modal
+        TouchArea {}
+
+        VerticalLayout {
+            padding: 0px;
+            spacing: 0px;
+
+            // Modal Header
+            Rectangle {
+                height: 64px;
+                background: Theme.card_alt_bg;
+
+                HorizontalLayout {
+                    padding-left: 20px;
+                    padding-right: 20px;
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
+
+                        // Header Icon Badge
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 36px;
+                                height: 36px;
+                                border-radius: 8px;
+                                background: Theme.is_dark ? #1e293b : #e0e7ff;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #334155 : #c7d2fe;
+
+                                Image {
+                                    source: @image-url("../icons/layers.svg");
+                                    width: 18px;
+                                    height: 18px;
+                                    colorize: Theme.brand_purple;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                }
+                            }
+                        }
+
+                        // Title & Subtitle
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 2px;
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+
+                                Text {
+                                    text: "Episode Selection Grid";
+                                    color: Theme.text_primary;
+                                    font-size: 15px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
+
+                                // Counter Badge
+                                Rectangle {
+                                    background: root.selected_count > 0 ? (Theme.is_dark ? #172554 : #dbeafe) : Theme.error_bg;
+                                    border-radius: 4px;
+                                    border-width: 1px;
+                                    border-color: root.selected_count > 0 ? (Theme.is_dark ? #2563eb : #93c5fd) : Theme.error_border;
+                                    height: 20px;
+
+                                    HorizontalLayout {
+                                        padding-left: 7px;
+                                        padding-right: 7px;
+                                        alignment: center;
+                                        Text {
+                                            text: root.selected_count + " of " + root.episodes.length + " Selected";
+                                            color: root.selected_count > 0 ? (Theme.is_dark ? #60a5fa : #1d4ed8) : Theme.error_text;
+                                            font-size: 11px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: root.series_title != "" ? root.series_title : "Select specific episodes to download";
+                                color: Theme.text_muted;
+                                font-size: 12px;
+                                overflow: elide;
+                                max-width: 440px;
+                            }
+                        }
+                    }
+
+                    // Close Button
+                    VerticalLayout {
+                        alignment: center;
+                        ActionButton {
+                            icon: @image-url("../icons/x.svg");
+                            has_icon: true;
+                            height: 32px;
+                            clicked => { root.close(); }
+                        }
+                    }
+                }
+            }
+
+            // Header Divider
+            Rectangle {
+                height: 1px;
+                background: Theme.card_border;
+            }
+
+            // Quick Preset Actions & Range Toolbar
+            Rectangle {
+                height: 52px;
+                background: Theme.inner_bg;
+
+                HorizontalLayout {
+                    padding-left: 20px;
+                    padding-right: 20px;
+                    alignment: space-between;
+
+                    // Preset Quick Action Chips
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            ActionButton {
+                                text: "Select All";
+                                height: 28px;
+                                clicked => { root.select_all(true); }
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            ActionButton {
+                                text: "Clear";
+                                height: 28px;
+                                clicked => { root.select_all(false); }
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            ActionButton {
+                                text: "Invert";
+                                height: 28px;
+                                clicked => { root.select_invert(); }
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            ActionButton {
+                                text: "First 5 Free ✨";
+                                height: 28px;
+                                clicked => { root.select_first_n(5); }
+                            }
+                        }
+                    }
+
+                    // Range Input & Apply
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: end;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: "Range:";
+                                color: Theme.text_secondary;
+                                font-size: 12px;
+                                font-weight: 500;
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            modal_range_box := LineEdit {
+                                width: 100px;
+                                height: 28px;
+                                font_size: 11px;
+                                placeholder_text: "1-10, 15";
+                                text <=> root.range_input;
+                                accepted => { root.apply_range(self.text); }
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            ActionButton {
+                                text: "Apply";
+                                primary: true;
+                                height: 28px;
+                                clicked => { root.apply_range(modal_range_box.text); }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Toolbar Divider
+            Rectangle {
+                height: 1px;
+                background: Theme.inner_border;
+            }
+
+            // Scrollable Episode Item List
+            Rectangle {
+                background: Theme.card_bg;
+
+                ScrollView {
+                    VerticalLayout {
+                        padding-left: 20px;
+                        padding-right: 20px;
+                        padding-top: 12px;
+                        padding-bottom: 12px;
+                        spacing: 6px;
+
+                        for ep in root.episodes: Rectangle {
+                            background: ep.selected ? (item_touch.has-hover ? Theme.nav_active_bg : Theme.chip_bg) :
+                                        (item_touch.has-hover ? Theme.inner_alt : Theme.inner_bg);
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: ep.selected ? Theme.primary_border : Theme.inner_border;
+                            height: 42px;
+                            animate background { duration: 100ms; }
+                            animate border-color { duration: 100ms; }
+
+                            item_touch := TouchArea {
+                                clicked => { root.toggle_episode(ep.index); }
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                alignment: space-between;
+
+                                HorizontalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+
+                                    // Checkbox indicator
+                                    Rectangle {
+                                        width: 18px;
+                                        height: 18px;
+                                        border-radius: 4px;
+                                        border-width: 1px;
+                                        background: ep.selected ? Theme.primary_accent : Theme.card_bg;
+                                        border-color: ep.selected ? Theme.primary_border : Theme.card_border;
+                                        y: (parent.height - self.height) / 2;
+                                        animate background { duration: 100ms; }
+
+                                        if ep.selected: Image {
+                                            source: @image-url("../icons/check.svg");
+                                            width: 11px;
+                                            height: 11px;
+                                            colorize: #ffffff;
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                        }
+                                    }
+
+                                    // Episode Index Tag
+                                    Rectangle {
+                                        height: 22px;
+                                        border-radius: 4px;
+                                        background: ep.selected ? Theme.sidebar_brand_bg : Theme.sidebar_status_bg;
+                                        border-width: 1px;
+                                        border-color: ep.selected ? Theme.sidebar_brand_border : Theme.sidebar_status_border;
+                                        y: (parent.height - self.height) / 2;
+
+                                        HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 8px;
+                                            alignment: center;
+                                            Text {
+                                                text: "EP " + (ep.index + 1);
+                                                color: ep.selected ? Theme.brand_purple : Theme.text_secondary;
+                                                font-size: 11px;
+                                                font-weight: 700;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Episode Title
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text {
+                                            text: ep.title;
+                                            color: ep.selected ? Theme.text_primary : Theme.text_secondary;
+                                            font-size: 13px;
+                                            font-weight: ep.selected ? 600 : 500;
+                                            overflow: elide;
+                                            max-width: 440px;
+                                        }
+                                    }
+                                }
+
+                                // Right status pill
+                                VerticalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        height: 22px;
+                                        border-radius: 4px;
+                                        background: ep.selected ? (Theme.is_dark ? #064e3b : #d1fae5) : transparent;
+                                        border-width: 1px;
+                                        border-color: ep.selected ? (Theme.is_dark ? #059669 : #34d399) : transparent;
+
+                                        HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 8px;
+                                            alignment: center;
+                                            Text {
+                                                text: ep.selected ? "Ready to Queue" : "Excluded";
+                                                color: ep.selected ? (Theme.is_dark ? #34d399 : #047857) : Theme.text_dimmed;
+                                                font-size: 11px;
+                                                font-weight: 600;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Footer Divider
+            Rectangle {
+                height: 1px;
+                background: Theme.card_border;
+            }
+
+            // Modal Footer Bar
+            Rectangle {
+                height: 56px;
+                background: Theme.card_alt_bg;
+
+                HorizontalLayout {
+                    padding-left: 20px;
+                    padding-right: 20px;
+                    alignment: space-between;
+
+                    // Summary Info
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: root.selected_count == 0 ? "No episodes selected (click rows or use presets above)" :
+                                  root.selected_count == 1 ? "1 episode will be queued for download" :
+                                  (root.selected_count + " episodes will be queued for download");
+                            color: root.selected_count > 0 ? Theme.text_primary : Theme.text_muted;
+                            font-size: 12px;
+                            font-weight: 500;
+                        }
+                    }
+
+                    // Action Buttons
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: end;
+
+                        VerticalLayout {
+                            alignment: center;
+                            ActionButton {
+                                text: "Close";
+                                height: 34px;
+                                clicked => { root.close(); }
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            ActionButton {
+                                text: "Done & Apply (" + root.selected_count + ")";
+                                primary: true;
+                                enabled: root.selected_count > 0;
+                                icon: @image-url("../icons/check.svg");
+                                has_icon: true;
+                                height: 34px;
+                                clicked => { root.close(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

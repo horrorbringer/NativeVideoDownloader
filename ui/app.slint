@@ -1,6 +1,7 @@
 import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData } from "models.slint";
 import { ActionButton } from "components/action_button.slint";
 import { NavButton } from "components/nav_button.slint";
+import { EpisodeModal } from "components/episode_modal.slint";
 import { HomeTab } from "tabs/home_tab.slint";
 import { DownloadsTab } from "tabs/downloads_tab.slint";
 import { HistoryTab } from "tabs/history_tab.slint";
@@ -69,6 +70,7 @@ export component AppWindow inherits Window {
     in-out property <[EpisodeItemData]> playlist_episodes: [];
     in-out property <int> selected_episodes_count: 0;
     in-out property <string> episode_range_input: "";
+    in-out property <bool> show_episode_modal: false;
 
     // Subtitles properties
     in-out property <bool> has_subtitles: false;
@@ -205,6 +207,8 @@ export component AppWindow inherits Window {
     callback toggle_episode(int);
     callback select_all_episodes(bool);
     callback apply_episode_range(string);
+    callback invert_episode_selection();
+    callback select_first_n_episodes(int);
 
     HorizontalLayout {
         // Sidebar Navigation
@@ -617,6 +621,7 @@ export component AppWindow inherits Window {
                 toggle_episode(idx) => { root.toggle_episode(idx); }
                 select_all_episodes(all) => { root.select_all_episodes(all); }
                 apply_episode_range(range) => { root.apply_episode_range(range); }
+                open_episode_modal => { root.show_episode_modal = true; }
                 paste_from_clipboard() => { root.paste_from_clipboard(); }
                 paste_batch_from_clipboard() => { root.paste_batch_from_clipboard(); }
                 import_links_file() => { root.import_links_file(); }
@@ -783,5 +788,20 @@ export component AppWindow inherits Window {
                 }
             }
         }
+    }
+
+    // Interactive Visual Episode Selector Modal Dialog
+    EpisodeModal {
+        is_open: root.show_episode_modal;
+        series_title: root.video_title;
+        episodes: root.playlist_episodes;
+        selected_count: root.selected_episodes_count;
+        range_input <=> root.episode_range_input;
+        close => { root.show_episode_modal = false; }
+        toggle_episode(idx) => { root.toggle_episode(idx); }
+        select_all(all) => { root.select_all_episodes(all); }
+        select_invert => { root.invert_episode_selection(); }
+        select_first_n(n) => { root.select_first_n_episodes(n); }
+        apply_range(range) => { root.apply_episode_range(range); }
     }
 }

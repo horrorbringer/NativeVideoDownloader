@@ -71,6 +71,7 @@ export component HomeTab inherits ScrollView {
     callback toggle_episode(int);
     callback select_all_episodes(bool);
     callback apply_episode_range(string);
+    callback open_episode_modal();
     callback paste_from_clipboard();
     callback paste_batch_from_clipboard();
     callback import_links_file();
@@ -663,6 +664,15 @@ export component HomeTab inherits ScrollView {
                         HorizontalLayout {
                             spacing: 6px;
                             alignment: end;
+
+                            ActionButton {
+                                text: "Grid Picker";
+                                icon: @image-url("../icons/layers.svg");
+                                has_icon: true;
+                                primary: true;
+                                height: 26px;
+                                clicked => { root.open_episode_modal(); }
+                            }
 
                             ActionButton {
                                 text: "All";

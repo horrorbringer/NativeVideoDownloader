@@ -1019,6 +1019,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // Callback: Invert episode selection
+    let weak_invert = main_window.as_weak();
+    main_window.on_invert_episode_selection(move || {
+        if let Some(window) = weak_invert.upgrade() {
+            let model = window.get_playlist_episodes();
+            let mut items: Vec<EpisodeItemData> = (0..model.row_count())
+                .filter_map(|i| model.row_data(i))
+                .collect();
+            for item in &mut items {
+                item.selected = !item.selected;
+            }
+            let selected_count = items.iter().filter(|e| e.selected).count() as i32;
+            window.set_playlist_episodes(ModelRc::from(Rc::new(VecModel::from(items))));
+            window.set_selected_episodes_count(selected_count);
+        }
+    });
+
+    // Callback: Select first N episodes (e.g. 5)
+    let weak_first_n = main_window.as_weak();
+    main_window.on_select_first_n_episodes(move |n| {
+        if let Some(window) = weak_first_n.upgrade() {
+            let model = window.get_playlist_episodes();
+            let mut items: Vec<EpisodeItemData> = (0..model.row_count())
+                .filter_map(|i| model.row_data(i))
+                .collect();
+            for (idx, item) in items.iter_mut().enumerate() {
+                item.selected = (idx as i32) < n;
+            }
+            let selected_count = items.iter().filter(|e| e.selected).count() as i32;
+            window.set_playlist_episodes(ModelRc::from(Rc::new(VecModel::from(items))));
+            window.set_selected_episodes_count(selected_count);
+        }
+    });
+
     let clipboard_monitor_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let last_clipboard = Arc::new(std::sync::Mutex::new(
         filesystem::read_clipboard_text().unwrap_or_default(),
