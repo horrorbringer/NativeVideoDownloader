@@ -522,6 +522,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window_weak_sync = main_window.as_weak();
     let mgr_for_sync = download_manager.clone();
     let is_rendering = Arc::new(AtomicBool::new(false));
+    let needs_rerender = Arc::new(AtomicBool::new(false));
+    let last_speed_shift = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
     let filter_sync = queue_filter_idx.clone();
     let search_sync = queue_search_term.clone();
     let speed_hist_sync = speed_history.clone();
@@ -533,14 +535,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let weak = window_weak_sync.clone();
             let mgr = mgr_for_sync.clone();
             let rendering_flag = is_rendering.clone();
+            let rerender_flag = needs_rerender.clone();
+            let last_shift_lock = last_speed_shift.clone();
             let filter_lock = filter_sync.clone();
             let search_lock = search_sync.clone();
             let speed_hist_lock = speed_hist_sync.clone();
             let peak_lock = peak_speed_sync.clone();
             let session_lock = session_bytes_sync.clone();
 
-            // Skip queuing redundant frames if a frame render is already pending
+            // Skip queuing redundant frames if a frame render is already pending, but flag for follow-up
             if rendering_flag.swap(true, Ordering::SeqCst) {
+                rerender_flag.store(true, Ordering::SeqCst);
                 return;
             }
 
@@ -577,10 +582,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 let session_val = session_lock.load(Ordering::Relaxed);
 
-                // History shift
+                // History shift with true 1-second cadence (1 Hz) for smooth, accurate 30s timeline
+                let should_shift = {
+                    let mut guard = last_shift_lock.lock().unwrap();
+                    if guard.elapsed() >= std::time::Duration::from_millis(950) {
+                        *guard = std::time::Instant::now();
+                        true
+                    } else {
+                        false
+                    }
+                };
+
                 let mut hist = speed_hist_lock.lock().await;
-                hist.pop_front();
-                hist.push_back(total_current_speed);
+                if should_shift {
+                    hist.pop_front();
+                    hist.push_back(total_current_speed);
+                } else if let Some(last) = hist.back_mut() {
+                    *last = total_current_speed;
+                }
 
                 let max_in_window = hist.iter().copied().fold(0.0f64, f64::max).max(200.0 * 1024.0);
                 let speed_samples: Vec<SpeedSampleData> = hist
@@ -659,6 +678,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .collect();
 
                 let reset_flag = rendering_flag.clone();
+                let rerender_check = rerender_flag.clone();
+                let mgr_followup = mgr.clone();
                 let _ = weak.upgrade_in_event_loop(move |window| {
                     let model = Rc::new(VecModel::from(items));
                     window.set_download_items(ModelRc::from(model));
@@ -667,12 +688,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     let speed_model = Rc::new(VecModel::from(speed_samples));
                     window.set_speed_samples(ModelRc::from(speed_model));
-                    window.set_current_total_speed_text(cur_speed_text.into());
-                    window.set_peak_speed_text(peak_speed_text.into());
+                    window.set_current_total_speed_text(cur_speed_text.clone().into());
+                    window.set_peak_speed_text(peak_speed_text.clone().into());
                     window.set_session_downloaded_text(session_text.into());
                     window.set_is_downloading_active(is_active);
 
+                    if active_count > 0 {
+                        let live_status = format!(
+                            "Downloading {} item{} • {} • Peak: {}",
+                            active_count,
+                            if active_count > 1 { "s" } else { "" },
+                            cur_speed_text,
+                            peak_speed_text
+                        );
+                        window.set_status_message(live_status.into());
+                    }
+
                     reset_flag.store(false, Ordering::SeqCst);
+                    if rerender_check.swap(false, Ordering::SeqCst) {
+                        tokio::spawn(async move {
+                            mgr_followup.notify_update().await;
+                        });
+                    }
                 });
             });
         })
