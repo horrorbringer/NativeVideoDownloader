@@ -1711,6 +1711,15 @@ fn map_subtitle_lang_index(idx: i32) -> &'static str {
         });
     });
 
+    // Callback: Clear failed
+    let mgr_clear_failed = download_manager.clone();
+    main_window.on_clear_failed(move || {
+        let mgr = mgr_clear_failed.clone();
+        tokio::spawn(async move {
+            mgr.clear_failed().await;
+        });
+    });
+
     // Callback: Set Queue Status Filter
     let filter_set = queue_filter_idx.clone();
     let mgr_set_filter = download_manager.clone();

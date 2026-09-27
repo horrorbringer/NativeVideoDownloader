@@ -20,6 +20,7 @@ export component DownloadsTab inherits VerticalLayout {
     callback pause_all();
     callback resume_all();
     callback clear_completed();
+    callback clear_failed();
     callback set_queue_filter(int);
     callback search_queue(string);
     callback open_download_file(string);
@@ -311,6 +312,14 @@ export component DownloadsTab inherits VerticalLayout {
                 has_icon: true;
                 height: 32px;
                 clicked => { root.clear_completed(); }
+            }
+
+            ActionButton {
+                text: "Clear Failed";
+                icon: @image-url("../icons/trash.svg");
+                has_icon: true;
+                height: 32px;
+                clicked => { root.clear_failed(); }
             }
         }
     }

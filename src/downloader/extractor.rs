@@ -1440,13 +1440,16 @@ where
         if let Some(q) = quality {
             match q {
                 "1080p" => {
-                    cmd.arg("-f").arg("bestvideo[height<=1080]+bestaudio/best[height<=1080]/best");
+                    cmd.arg("-S").arg("res:1080");
+                    cmd.arg("-f").arg("bestvideo[height<=1080]+bestaudio/best[height<=1080]/best[format_note*='1080']/600/best[height<=?1080]");
                 }
                 "720p" => {
-                    cmd.arg("-f").arg("bestvideo[height<=720]+bestaudio/best[height<=720]/best");
+                    cmd.arg("-S").arg("res:720");
+                    cmd.arg("-f").arg("bestvideo[height<=720]+bestaudio/best[height<=720]/best[format_note*='720']/500/best[height<=?720]");
                 }
                 "480p" => {
-                    cmd.arg("-f").arg("bestvideo[height<=480]+bestaudio/best[height<=480]/best");
+                    cmd.arg("-S").arg("res:480");
+                    cmd.arg("-f").arg("bestvideo[height<=480]+bestaudio/best[height<=480]/best[format_note*='480']/300/best[height<=?480]");
                 }
                 _ => {}
             }

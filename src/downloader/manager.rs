@@ -399,6 +399,13 @@ impl DownloadManager {
         self.notify_update().await;
     }
 
+    pub async fn clear_failed(&self) {
+        let mut queue = self.queue.lock().await;
+        queue.clear_failed();
+        drop(queue);
+        self.notify_update().await;
+    }
+
     pub async fn process_queue(self: &Arc<Self>) {
         let max = *self.max_concurrency.read().await;
         loop {

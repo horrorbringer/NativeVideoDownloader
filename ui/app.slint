@@ -138,6 +138,7 @@ export component AppWindow inherits Window {
     callback pause_all();
     callback resume_all();
     callback clear_completed();
+    callback clear_failed();
     callback set_queue_filter(int);
     callback search_queue(string);
 
@@ -501,6 +502,7 @@ export component AppWindow inherits Window {
                 pause_all() => { root.pause_all(); }
                 resume_all() => { root.resume_all(); }
                 clear_completed() => { root.clear_completed(); }
+                clear_failed() => { root.clear_failed(); }
                 set_queue_filter(idx) => { root.set_queue_filter(idx); }
                 search_queue(q) => { root.search_queue(q); }
                 open_download_file(p) => { root.open_download_file(p); }

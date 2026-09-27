@@ -63,4 +63,63 @@ impl DownloadQueue {
         self.jobs
             .retain(|j| j.status != DownloadStatus::Completed);
     }
+
+    pub fn clear_failed(&mut self) {
+        self.jobs
+            .retain(|j| !matches!(j.status, DownloadStatus::Failed(_) | DownloadStatus::Cancelled));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_clear_completed_and_failed() {
+        let mut queue = DownloadQueue::new();
+        let make_job = |url: &str, title: &str| {
+            DownloadJob::new(
+                url.to_string(),
+                title.to_string(),
+                PathBuf::from(format!("{}.mp4", title)),
+                None,
+                true,
+                false,
+                None,
+                false,
+                None,
+                false,
+                None,
+                None,
+                None,
+                false,
+            )
+        };
+
+        let mut j1 = make_job("https://example.com/1", "Vid 1");
+        j1.status = DownloadStatus::Completed;
+        let id1 = queue.add_job(j1);
+
+        let mut j2 = make_job("https://example.com/2", "Vid 2");
+        j2.status = DownloadStatus::Failed("Network error".to_string());
+        let id2 = queue.add_job(j2);
+
+        let mut j3 = make_job("https://example.com/3", "Vid 3");
+        j3.status = DownloadStatus::Downloading;
+        let id3 = queue.add_job(j3);
+
+        assert_eq!(queue.all_jobs().len(), 3);
+
+        queue.clear_failed();
+        assert_eq!(queue.all_jobs().len(), 2);
+        assert!(queue.get_job(id2).is_none());
+        assert!(queue.get_job(id1).is_some());
+        assert!(queue.get_job(id3).is_some());
+
+        queue.clear_completed();
+        assert_eq!(queue.all_jobs().len(), 1);
+        assert!(queue.get_job(id1).is_none());
+        assert!(queue.get_job(id3).is_some());
+    }
 }
