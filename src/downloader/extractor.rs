@@ -1270,6 +1270,7 @@ pub async fn download_stream<F>(
     speed_limit: Option<&str>,
     cookies_browser: Option<&str>,
     proxy: Option<&str>,
+    concurrent_fragments: u8,
     cancel_token: CancellationToken,
     mut on_progress: F,
 ) -> Result<PathBuf>
@@ -1380,6 +1381,13 @@ where
     } else if bin_dir.join("ffmpeg").exists() {
         cmd.arg("--ffmpeg-location").arg(&bin_dir);
     }
+
+    // Parallel fragment download: configurable concurrent HLS/DASH segments for max speed
+    let frag_count = concurrent_fragments.clamp(1, 16);
+    cmd.arg("--concurrent-fragments").arg(frag_count.to_string());
+    // Retry on transient errors (network hiccups on segment downloads)
+    cmd.arg("--retries").arg("3");
+    cmd.arg("--fragment-retries").arg("3");
 
     let target_url = resolve_playable_stream_url(url, proxy).await;
     info!("Target URL for extractor download resolved: {}", target_url);

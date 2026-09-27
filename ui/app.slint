@@ -102,6 +102,7 @@ export component AppWindow inherits Window {
     in-out property <bool> clipboard_monitor_enabled: true;
     in-out property <string> filename_template: "{title}.{ext}";
     in-out property <int> selected_asset_org_mode: 0;
+    in-out property <int> selected_concurrent_fragments: 4;
 
     // Network & Custom Proxy properties
     in-out property <bool> proxy_enabled: false;
@@ -160,6 +161,7 @@ export component AppWindow inherits Window {
     callback set_cookies_browser(int);
     callback test_notification();
     callback update_extractor();
+    callback set_concurrent_fragments(int);
 
     callback clear_logs();
     callback copy_logs();
@@ -549,6 +551,7 @@ export component AppWindow inherits Window {
                 default_embed_audio_metadata <=> root.embed_audio_metadata;
                 filename_template <=> root.filename_template;
                 selected_asset_org_mode <=> root.selected_asset_org_mode;
+                selected_concurrent_fragments <=> root.selected_concurrent_fragments;
 
                 browse_download_dir() => { root.browse_download_dir(); }
                 open_current_download_dir() => { root.open_current_download_dir(); }
@@ -566,6 +569,7 @@ export component AppWindow inherits Window {
                 test_proxy(p) => { root.test_proxy(p); }
                 test_notification() => { root.test_notification(); }
                 update_extractor() => { root.update_extractor(); }
+                set_concurrent_fragments(n) => { root.set_concurrent_fragments(n); }
                 set_theme_dark(d) => { root.toggle_theme(); }
             }
 

@@ -557,6 +557,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.set_selected_asset_org_mode(saved_asset_org_mode as i32);
     download_manager.set_asset_organization_mode(saved_asset_org_mode).await;
 
+    // Restore saved concurrent fragments preference (default: 4)
+    let saved_concurrent_fragments: u8 = db
+        .get_setting("concurrent_fragments")
+        .await
+        .unwrap_or(None)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(4);
+    main_window.set_selected_concurrent_fragments(saved_concurrent_fragments as i32);
+    download_manager.set_concurrent_fragments(saved_concurrent_fragments).await;
+
     // Restore saved theme preference (defaults to true / dark mode)
     let saved_dark_mode: bool = db
         .get_setting("dark_mode")
@@ -1160,6 +1170,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = weak.upgrade_in_event_loop(move |win| {
                 win.set_selected_asset_org_mode(mode as i32);
                 win.set_status_message(msg.into());
+            });
+        });
+    });
+
+    // Callback: Set concurrent fragments per video (yt-dlp --concurrent-fragments)
+    let db_fragments = db.clone();
+    let mgr_fragments = download_manager.clone();
+    let weak_fragments = main_window.as_weak();
+    main_window.on_set_concurrent_fragments(move |n| {
+        let db = db_fragments.clone();
+        let mgr = mgr_fragments.clone();
+        let weak = weak_fragments.clone();
+        tokio::spawn(async move {
+            let count = (n as u8).clamp(1, 16);
+            let _ = db.set_setting("concurrent_fragments", &count.to_string()).await;
+            mgr.set_concurrent_fragments(count).await;
+            info!("Saved concurrent fragments per video: {}", count);
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_selected_concurrent_fragments(count as i32);
+                win.set_status_message(format!("Download speed: {} parallel fragments per video", count).into());
             });
         });
     });

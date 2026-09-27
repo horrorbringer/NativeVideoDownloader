@@ -44,6 +44,7 @@ pub struct DownloadManager {
     proxy: Arc<RwLock<Option<String>>>,
     filename_template: Arc<RwLock<String>>,
     asset_org_mode: Arc<RwLock<u8>>,
+    concurrent_fragments: Arc<RwLock<u8>>,
     on_update: Mutex<Option<StatusUpdateCallback>>,
 }
 
@@ -60,6 +61,7 @@ impl DownloadManager {
             proxy: Arc::new(RwLock::new(None)),
             filename_template: Arc::new(RwLock::new("{title}.{ext}".to_string())),
             asset_org_mode: Arc::new(RwLock::new(0)),
+            concurrent_fragments: Arc::new(RwLock::new(4)),
             on_update: Mutex::new(None),
         }
     }
@@ -128,6 +130,16 @@ impl DownloadManager {
 
     pub async fn get_asset_organization_mode(&self) -> u8 {
         let guard = self.asset_org_mode.read().await;
+        *guard
+    }
+
+    pub async fn set_concurrent_fragments(&self, count: u8) {
+        let mut guard = self.concurrent_fragments.write().await;
+        *guard = count.clamp(1, 16);
+    }
+
+    pub async fn get_concurrent_fragments(&self) -> u8 {
+        let guard = self.concurrent_fragments.read().await;
         *guard
     }
 
@@ -477,6 +489,7 @@ impl DownloadManager {
                 let active_speed_limit_bytes = parse_speed_limit_bytes(active_speed_limit.as_deref());
                 let active_cookies_browser = manager.get_cookies_browser().await;
                 let active_proxy = manager.get_proxy().await;
+                let active_concurrent_fragments = manager.get_concurrent_fragments().await;
 
                 let mgr_progress = manager.clone();
                 let use_extractor = is_extractor || is_audio_only;
@@ -495,6 +508,7 @@ impl DownloadManager {
                         active_speed_limit.as_deref(),
                         active_cookies_browser.as_deref(),
                         active_proxy.as_deref(),
+                        active_concurrent_fragments,
                         cancel_token,
                         move |progress| {
                             let mgr = mgr_progress.clone();

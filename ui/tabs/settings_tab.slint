@@ -25,6 +25,7 @@ export component SettingsTab inherits ScrollView {
     // Filename Template & Organization
     in-out property <string> filename_template: "{title}.{ext}";
     in-out property <int> selected_asset_org_mode: 0;
+    in-out property <int> selected_concurrent_fragments: 4;
 
     callback set_theme_dark(bool);
     callback browse_download_dir();
@@ -43,6 +44,7 @@ export component SettingsTab inherits ScrollView {
     callback test_proxy(string);
     callback test_notification();
     callback update_extractor();
+    callback set_concurrent_fragments(int);
 
     vertical-stretch: 1;
 
@@ -704,6 +706,86 @@ export component SettingsTab inherits ScrollView {
                             clicked => {
                                 root.selected_concurrency = 5;
                                 root.set_max_concurrency(5);
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Rectangle { height: 1px; background: Theme.card_border; }
+
+                    // Parallel Fragments per video
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
+
+                        Rectangle {
+                            width: 34px;
+                            height: 34px;
+                            border-radius: 8px;
+                            background: #1a1240;
+                            border-width: 1px;
+                            border-color: #6d28d9;
+
+                            Image {
+                                source: @image-url("../icons/bolt.svg");
+                                width: 17px;
+                                height: 17px;
+                                colorize: #a78bfa;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 3px;
+                            Text {
+                                text: "Parallel Fragments (Per-Video Speed)";
+                                color: Theme.text_primary;
+                                font-size: 15px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "Simultaneous HLS/DASH segments downloaded per video. Higher = faster on good connections.";
+                                color: Theme.text_secondary;
+                                font-size: 13px;
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        IconChip {
+                            text: "1 (Safe)";
+                            selected: root.selected_concurrent_fragments == 1;
+                            clicked => {
+                                root.selected_concurrent_fragments = 1;
+                                root.set_concurrent_fragments(1);
+                            }
+                        }
+                        IconChip {
+                            text: "2 Segments";
+                            selected: root.selected_concurrent_fragments == 2;
+                            clicked => {
+                                root.selected_concurrent_fragments = 2;
+                                root.set_concurrent_fragments(2);
+                            }
+                        }
+                        IconChip {
+                            text: "4 Segments (Recommended)";
+                            selected: root.selected_concurrent_fragments == 4;
+                            clicked => {
+                                root.selected_concurrent_fragments = 4;
+                                root.set_concurrent_fragments(4);
+                            }
+                        }
+                        IconChip {
+                            text: "8 Segments (Max Speed)";
+                            selected: root.selected_concurrent_fragments == 8;
+                            clicked => {
+                                root.selected_concurrent_fragments = 8;
+                                root.set_concurrent_fragments(8);
                             }
                         }
                     }
