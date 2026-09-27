@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -1014,6 +1014,54 @@ fn html_escape_clean(input: &str) -> String {
         .to_string()
 }
 
+/// If the URL is an HTML webpage (e.g. MacCMS vod/play page, iframe host, or direct web scraper),
+/// resolves the underlying stream or platform URL (such as Dailymotion, YouTube, Vimeo, or .m3u8).
+pub async fn resolve_playable_stream_url(url: &str, proxy: Option<&str>) -> String {
+    if is_streaming_platform(url) || url.contains(".m3u8") || url.contains(".mp4") || url.contains(".webm") {
+        return url.to_string();
+    }
+
+    let mut builder = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(12));
+
+    if let Some(prx_str) = proxy {
+        let trimmed = prx_str.trim();
+        if !trimmed.is_empty() {
+            if let Ok(prx) = reqwest::Proxy::all(trimmed) {
+                builder = builder.proxy(prx);
+            }
+        }
+    }
+
+    let client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
+    if let Ok(resp) = client.get(url).send().await {
+        if resp.status().is_success() {
+            if let Ok(html) = resp.text().await {
+                // 1. Check MacCMS player_aaaa configuration (used by donghuafun, animevietsub, etc.)
+                if let Some(maccms) = extract_maccms_player(&html) {
+                    info!("Resolved MacCMS playable stream URL: {} -> {}", url, maccms.video_url);
+                    return maccms.video_url;
+                }
+                // 2. Check embedded iframes
+                for iframe_url in extract_iframes_from_html(&html, url) {
+                    if is_streaming_platform(&iframe_url) || iframe_url.contains(".m3u8") || iframe_url.contains(".mp4") {
+                        info!("Resolved iframe playable stream URL: {} -> {}", url, iframe_url);
+                        return iframe_url;
+                    }
+                }
+                // 3. Check direct HTML stream
+                if let Some(stream_url) = extract_stream_from_html(&html, url) {
+                    info!("Resolved direct HTML stream URL: {} -> {}", url, stream_url);
+                    return stream_url;
+                }
+            }
+        }
+    }
+
+    url.to_string()
+}
+
 /// Downloads a streaming URL via yt-dlp, streaming real-time progress events
 pub async fn download_stream<F>(
     url: &str,
@@ -1128,9 +1176,12 @@ where
         cmd.arg("--ffmpeg-location").arg(&bin_dir);
     }
 
+    let target_url = resolve_playable_stream_url(url, proxy).await;
+    info!("Target URL for extractor download resolved: {}", target_url);
+
     cmd.arg("-o")
         .arg(output_template.to_string_lossy().to_string())
-        .arg(url)
+        .arg(&target_url)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
@@ -1139,6 +1190,15 @@ where
     let stdout = child.stdout.take().ok_or_else(|| {
         AppError::Generic("Failed to capture stdout of extractor process".to_string())
     })?;
+    let stderr = child.stderr.take();
+
+    let stderr_task = tokio::spawn(async move {
+        let mut err_str = String::new();
+        if let Some(mut err_pipe) = stderr {
+            let _ = err_pipe.read_to_string(&mut err_str).await;
+        }
+        err_str
+    });
 
     let mut reader = BufReader::new(stdout).lines();
 
@@ -1193,11 +1253,15 @@ where
     }
 
     let status = child.wait().await?;
+    let stderr_output = stderr_task.await.unwrap_or_default();
+
     if !status.success() {
-        return Err(AppError::Generic(format!(
-            "Extractor process finished with exit code {:?}",
-            status.code()
-        )));
+        let err_detail = if !stderr_output.trim().is_empty() {
+            clean_extractor_error(&stderr_output)
+        } else {
+            format!("Extractor process finished with exit code {:?}", status.code())
+        };
+        return Err(AppError::Generic(err_detail));
     }
 
     // Determine the actual downloaded file on disk
