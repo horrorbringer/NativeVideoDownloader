@@ -283,26 +283,33 @@ fn run_url_analysis(
     });
 }
 
-/// Downloads a remote thumbnail image to a temporary file for rendering in the UI thread
+/// Downloads a remote thumbnail image to a temporary file for rendering in the UI thread.
+/// Automatically handles and converts AVIF, WebP, and HEIC images to standard PNG format.
 async fn download_thumbnail_to_cache(url: &str) -> Option<std::path::PathBuf> {
     info!("Fetching thumbnail image preview from: {}", url);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
-        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
         .build()
         .ok()?;
     let resp = client.get(url).send().await.ok()?;
     if !resp.status().is_success() {
+        warn!("Thumbnail HTTP fetch returned status: {}", resp.status());
         return None;
     }
     let bytes = resp.bytes().await.ok()?;
 
-    // Check if webp format (magic bytes: RIFF....WEBP)
     let is_webp = bytes.starts_with(b"RIFF") && bytes.len() > 12 && &bytes[8..12] == b"WEBP";
-    if is_webp {
-        let raw_file = std::env::temp_dir().join(format!("nvd_raw_{}.webp", uuid::Uuid::new_v4()));
+    let is_avif = (bytes.len() > 12 && (&bytes[4..12] == b"ftypavif" || &bytes[4..12] == b"ftypavis"))
+        || url.to_lowercase().contains(".avif");
+    let is_heic = bytes.len() > 12 && (&bytes[4..12] == b"ftypheic" || &bytes[4..12] == b"ftypmif1");
+
+    if is_webp || is_avif || is_heic {
+        let raw_ext = if is_avif { "avif" } else if is_heic { "heic" } else { "webp" };
+        let raw_file = std::env::temp_dir().join(format!("nvd_raw_{}.{}", uuid::Uuid::new_v4(), raw_ext));
         let png_file = std::env::temp_dir().join(format!("nvd_thumb_{}.png", uuid::Uuid::new_v4()));
         if tokio::fs::write(&raw_file, &bytes).await.is_ok() {
+            #[cfg(target_os = "macos")]
             let status = tokio::process::Command::new("sips")
                 .args(["-s", "format", "png"])
                 .arg(&raw_file)
@@ -310,14 +317,29 @@ async fn download_thumbnail_to_cache(url: &str) -> Option<std::path::PathBuf> {
                 .arg(&png_file)
                 .output()
                 .await;
+
+            #[cfg(not(target_os = "macos"))]
+            let status = {
+                let ffmpeg_bin = crate::downloader::extractor::get_bin_dir().join("ffmpeg");
+                tokio::process::Command::new(ffmpeg_bin)
+                    .args(["-y", "-i"])
+                    .arg(&raw_file)
+                    .arg(&png_file)
+                    .output()
+                    .await
+            };
+
             let _ = tokio::fs::remove_file(&raw_file).await;
             if status.map(|s| s.status.success()).unwrap_or(false) && png_file.is_file() {
+                info!("Successfully converted {} thumbnail to PNG: {:?}", raw_ext, png_file);
                 return Some(png_file);
             }
         }
     }
 
-    let temp_file = std::env::temp_dir().join(format!("nvd_thumb_{}.jpg", uuid::Uuid::new_v4()));
+    let is_png = bytes.starts_with(b"\x89PNG") || url.to_lowercase().contains(".png");
+    let ext = if is_png { "png" } else { "jpg" };
+    let temp_file = std::env::temp_dir().join(format!("nvd_thumb_{}.{}", uuid::Uuid::new_v4(), ext));
     if tokio::fs::write(&temp_file, &bytes).await.is_err() {
         return None;
     }
