@@ -157,6 +157,7 @@ export component AppWindow inherits Window {
     callback resume_all();
     callback clear_completed();
     callback clear_failed();
+    callback clear_cache();
     callback set_queue_filter(int);
     callback search_queue(string);
 
@@ -630,6 +631,7 @@ export component AppWindow inherits Window {
                 test_proxy(p) => { root.test_proxy(p); }
                 test_notification() => { root.test_notification(); }
                 update_extractor() => { root.update_extractor(); }
+                clear_cache() => { root.clear_cache(); }
                 set_concurrent_fragments(n) => { root.set_concurrent_fragments(n); }
                 set_theme_dark(d) => { root.toggle_theme(); }
             }

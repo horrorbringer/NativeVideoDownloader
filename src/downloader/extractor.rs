@@ -1716,6 +1716,31 @@ pub fn parse_extractor_progress_line(line: &str) -> Option<DownloadProgress> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn test_clear_all_caches() {
+        // Pre-populate URL cache
+        if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
+            cache.insert("https://test.example/play/1".to_string(), "https://cdn.example/stream.m3u8".to_string());
+        }
+
+        // Create dummy cookie file
+        let bin_dir = get_bin_dir();
+        let _ = std::fs::create_dir_all(&bin_dir);
+        let dummy_cookie = bin_dir.join("cookies_test_unit.txt");
+        let _ = std::fs::write(&dummy_cookie, "# Netscape HTTP Cookie File\n.example.com TRUE / FALSE 0 name val\n");
+
+        let res = clear_all_caches().await;
+        assert!(res.is_ok());
+        let msg = res.unwrap();
+        assert!(msg.contains("Cleared") || msg.contains("clean"));
+
+        // Verify URL cache is now empty
+        if let Ok(cache) = PLAYABLE_URL_CACHE.read() {
+            assert!(cache.is_empty());
+        }
+        assert!(!dummy_cookie.exists());
+    }
+
     #[test]
     fn test_parse_extractor_progress_line() {
         // Subtitles should be ignored
@@ -2083,5 +2108,93 @@ pub async fn update_ytdlp_engine() -> Result<String> {
         Err(AppError::Generic(err_msg))
     }
 }
+
+/// Clears all cached application and media data:
+/// 1. In-memory resolved playable URL cache
+/// 2. On-disk browser cookie cache files (`cookies_*.txt`)
+/// 3. Temporary thumbnail preview files in the OS temp directory
+/// 4. yt-dlp internal cache directory via `yt-dlp --rm-cache-dir`
+pub async fn clear_all_caches() -> Result<String> {
+    let mut cleared_items = Vec::new();
+
+    // 1. Clear in-memory URL resolution cache
+    if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
+        let count = cache.len();
+        cache.clear();
+        if count > 0 {
+            cleared_items.push(format!("{} resolved stream URLs", count));
+        }
+    }
+
+    // 2. Clear on-disk cookie cache files
+    let bin_dir = get_bin_dir();
+    let mut cookie_files_removed = 0;
+    if let Ok(entries) = std::fs::read_dir(&bin_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                if file_name.starts_with("cookies_") && file_name.ends_with(".txt") {
+                    if let Ok(_) = std::fs::remove_file(&path) {
+                        cookie_files_removed += 1;
+                    }
+                }
+            }
+        }
+    }
+    if let Some(parent) = bin_dir.parent() {
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if file_name.starts_with("cookies_") && file_name.ends_with(".txt") {
+                        if let Ok(_) = std::fs::remove_file(&path) {
+                            cookie_files_removed += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if cookie_files_removed > 0 {
+        cleared_items.push(format!("{} cookie cache files", cookie_files_removed));
+    }
+
+    // 3. Clear temporary thumbnail previews
+    let temp_dir = std::env::temp_dir();
+    let mut thumbs_removed = 0;
+    if let Ok(entries) = std::fs::read_dir(&temp_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with("nvd_thumb_") {
+                    if let Ok(_) = std::fs::remove_file(&path) {
+                        thumbs_removed += 1;
+                    }
+                }
+            }
+        }
+    }
+    if thumbs_removed > 0 {
+        cleared_items.push(format!("{} thumbnail previews", thumbs_removed));
+    }
+
+    // 4. Run `yt-dlp --rm-cache-dir`
+    if let Some(ytdlp_bin) = find_ytdlp_path().await {
+        let mut cmd = create_ytdlp_cmd(&ytdlp_bin);
+        cmd.arg("--rm-cache-dir");
+        if let Ok(output) = cmd.output().await {
+            if output.status.success() {
+                cleared_items.push("yt-dlp internal cache".to_string());
+            }
+        }
+    }
+
+    if cleared_items.is_empty() {
+        Ok("All caches are already clean (0 files to remove).".to_string())
+    } else {
+        Ok(format!("Cleared: {}", cleared_items.join(", ")))
+    }
+}
+
 
 

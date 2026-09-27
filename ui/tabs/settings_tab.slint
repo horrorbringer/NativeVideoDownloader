@@ -65,6 +65,7 @@ export component SettingsTab inherits ScrollView {
     callback test_proxy(string);
     callback test_notification();
     callback update_extractor();
+    callback clear_cache();
 
     vertical-stretch: 1;
 
@@ -1083,6 +1084,33 @@ export component SettingsTab inherits ScrollView {
                         }
                     }
                 }
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    VerticalLayout {
+                        spacing: 2px;
+                        alignment: center;
+                        Text {
+                            text: "Cookie & Stream Cache";
+                            color: Theme.text_primary;
+                            font-size: 13px;
+                            font-weight: 600;
+                        }
+                        Text {
+                            text: "Purge cached browser cookies, tokens, and stream URLs to force fresh authentication.";
+                            color: Theme.text_secondary;
+                            font-size: 11px;
+                        }
+                    }
+
+                    ActionButton {
+                        text: "Clear Cookie Cache";
+                        icon: @image-url("../icons/broom.svg");
+                        has_icon: true;
+                        height: 32px;
+                        clicked => { root.clear_cache(); }
+                    }
+                }
             }
         }
 
@@ -1759,6 +1787,31 @@ export component SettingsTab inherits ScrollView {
                         has_icon: true;
                         height: 28px;
                         clicked => { root.update_extractor(); }
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    VerticalLayout {
+                        spacing: 2px;
+                        alignment: center;
+                        Text {
+                            text: "App & Engine Caches";
+                            color: #949db2;
+                            font-size: 12px;
+                        }
+                        Text {
+                            text: "Purge yt-dlp cache directory, thumbnail previews, and stream cache";
+                            color: #64748b;
+                            font-size: 10px;
+                        }
+                    }
+                    ActionButton {
+                        text: "Clear All Caches";
+                        icon: @image-url("../icons/trash.svg");
+                        has_icon: true;
+                        height: 28px;
+                        clicked => { root.clear_cache(); }
                     }
                 }
             }

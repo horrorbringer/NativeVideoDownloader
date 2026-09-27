@@ -2402,6 +2402,32 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
         });
     });
 
+    // Callback: Clear all application & engine caches
+    let weak_clear = main_window.as_weak();
+    main_window.on_clear_cache(move || {
+        let weak = weak_clear.clone();
+        tokio::spawn(async move {
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_status_message("Purging all cookies, URL cache, and temporary media files...".into());
+            });
+            match downloader::clear_all_caches().await {
+                Ok(msg) => {
+                    info!("Clear all caches success: {}", msg);
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_status_message(format!("Cache purged: {}", msg).into());
+                    });
+                }
+                Err(err) => {
+                    warn!("Failed to clear caches: {}", err);
+                    let err_str = err.to_string();
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_status_message(format!("Cache purge error: {}", err_str).into());
+                    });
+                }
+            }
+        });
+    });
+
     // Load initial history on startup
     let db_init_hist = db.clone();
     let weak_init_hist = main_window.as_weak();
