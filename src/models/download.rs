@@ -148,4 +148,51 @@ pub struct VideoMetadata {
     pub has_subtitles: bool,
     pub subtitles_summary: String,
     pub thumbnail_url: Option<String>,
+
+    #[serde(default)]
+    pub fps: Option<f64>,
+    #[serde(default)]
+    pub vcodec: Option<String>,
+    #[serde(default)]
+    pub acodec: Option<String>,
+    #[serde(default)]
+    pub size_best: Option<u64>,
+    #[serde(default)]
+    pub size_1080p: Option<u64>,
+    #[serde(default)]
+    pub size_720p: Option<u64>,
+    #[serde(default)]
+    pub size_480p: Option<u64>,
+    #[serde(default)]
+    pub size_audio: Option<u64>,
+}
+
+impl Default for VideoMetadata {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            title: String::new(),
+            content_length: None,
+            content_type: None,
+            supports_ranges: false,
+            is_extractor: false,
+            duration_seconds: None,
+            resolution: None,
+            ext: None,
+            is_playlist: false,
+            playlist_count: 0,
+            playlist_entries: Vec::new(),
+            has_subtitles: false,
+            subtitles_summary: String::new(),
+            thumbnail_url: None,
+            fps: None,
+            vcodec: None,
+            acodec: None,
+            size_best: None,
+            size_1080p: None,
+            size_720p: None,
+            size_480p: None,
+            size_audio: None,
+        }
+    }
 }

@@ -182,6 +182,7 @@ impl DownloadManager {
         Ok(count)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_download(
         self: &Arc<Self>,
         url: String,
@@ -192,6 +193,8 @@ impl DownloadManager {
         is_audio_only: bool,
         quality: Option<String>,
         download_subtitles: bool,
+        download_thumbnail: bool,
+        thumbnail_url: Option<String>,
         audio_format: Option<String>,
         audio_bitrate: Option<String>,
         embed_artwork: bool,
@@ -205,6 +208,8 @@ impl DownloadManager {
             is_audio_only,
             quality,
             download_subtitles,
+            download_thumbnail,
+            thumbnail_url,
             audio_format,
             audio_bitrate,
             embed_artwork,
@@ -225,6 +230,8 @@ impl DownloadManager {
         is_audio_only: bool,
         quality: Option<String>,
         download_subtitles: bool,
+        download_thumbnail: bool,
+        thumbnail_url: Option<String>,
         audio_format: Option<String>,
         audio_bitrate: Option<String>,
         embed_artwork: bool,
@@ -263,6 +270,8 @@ impl DownloadManager {
             is_audio_only,
             quality,
             download_subtitles,
+            download_thumbnail,
+            thumbnail_url,
             audio_format,
             audio_bitrate,
             embed_artwork,
@@ -416,6 +425,8 @@ impl DownloadManager {
                 is_audio_only,
                 quality,
                 download_subtitles,
+                download_thumbnail,
+                thumbnail_url,
                 audio_format,
                 audio_bitrate,
                 embed_artwork,
@@ -437,6 +448,8 @@ impl DownloadManager {
                     job.is_audio_only,
                     job.quality.clone(),
                     job.download_subtitles,
+                    job.download_thumbnail,
+                    job.thumbnail_url.clone(),
                     job.audio_format.clone(),
                     job.audio_bitrate.clone(),
                     job.embed_artwork,
@@ -475,6 +488,7 @@ impl DownloadManager {
                         is_audio_only,
                         quality.as_deref(),
                         download_subtitles,
+                        download_thumbnail,
                         audio_format.as_deref(),
                         audio_bitrate.as_deref(),
                         embed_artwork,
@@ -587,6 +601,24 @@ impl DownloadManager {
                             let _ = manager.db.mark_failed(id, &err_msg).await;
                             manager.notify_update().await;
                             break;
+                        }
+
+                        // If thumbnail downloading is enabled, ensure companion image is saved
+                        if download_thumbnail {
+                            let parent = out_path.parent().unwrap_or(Path::new("."));
+                            let stem = out_path.file_stem().and_then(|s| s.to_str()).unwrap_or("thumb");
+                            let has_thumb = ["png", "jpg", "jpeg", "webp", "avif"].iter().any(|ext| {
+                                parent.join(format!("{}.{}", stem, ext)).exists()
+                            });
+                            if !has_thumb {
+                                if let Some(ref thumb_url) = thumbnail_url {
+                                    if let Ok(bytes) = manager.network_client.download_image_bytes(thumb_url).await {
+                                        let thumb_path = parent.join(format!("{}.jpg", stem));
+                                        let _ = tokio::fs::write(&thumb_path, &bytes).await;
+                                        info!("Saved companion thumbnail to {:?}", thumb_path);
+                                    }
+                                }
+                            }
                         }
 
                         info!("Job {} completed successfully with size {} bytes", id, final_size);

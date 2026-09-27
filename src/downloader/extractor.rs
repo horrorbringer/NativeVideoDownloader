@@ -224,6 +224,186 @@ fn create_ytdlp_cmd(ytdlp_bin: &Path) -> Command {
     cmd
 }
 
+/// Analyzes yt-dlp format streams to extract fps, codecs, and calculate estimated sizes for each quality preset
+pub fn parse_quality_and_codecs(
+    json_val: &serde_json::Value,
+    duration_secs: Option<u64>,
+    top_filesize: Option<u64>,
+) -> (
+    Option<f64>,
+    Option<String>,
+    Option<String>,
+    Option<u64>,
+    Option<u64>,
+    Option<u64>,
+    Option<u64>,
+    Option<u64>,
+) {
+    let formats = json_val.get("formats").and_then(|v| v.as_array());
+
+    // FPS
+    let fps = json_val
+        .get("fps")
+        .and_then(|v| v.as_f64())
+        .or_else(|| {
+            formats.and_then(|arr| {
+                arr.iter()
+                    .filter_map(|f| f.get("fps").and_then(|v| v.as_f64()))
+                    .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            })
+        });
+
+    let clean_vcodec = |raw: &str| -> String {
+        let r = raw.trim();
+        if r.starts_with("avc1") || r.starts_with("h264") {
+            "H.264 (AVC)".to_string()
+        } else if r.starts_with("vp09") || r.starts_with("vp9") {
+            "VP9".to_string()
+        } else if r.starts_with("av01") || r.starts_with("av1") {
+            "AV1".to_string()
+        } else if r.starts_with("hev1") || r.starts_with("hvc1") || r.starts_with("h265") {
+            "H.265 (HEVC)".to_string()
+        } else {
+            r.split('.').next().unwrap_or(r).to_uppercase()
+        }
+    };
+
+    let clean_acodec = |raw: &str| -> String {
+        let r = raw.trim();
+        if r.starts_with("mp4a") || r.starts_with("aac") {
+            "AAC".to_string()
+        } else if r.starts_with("opus") {
+            "Opus".to_string()
+        } else if r.starts_with("vorbis") {
+            "Vorbis".to_string()
+        } else if r.starts_with("mp3") {
+            "MP3".to_string()
+        } else {
+            r.split('.').next().unwrap_or(r).to_uppercase()
+        }
+    };
+
+    // Video Codec
+    let mut vcodec = json_val
+        .get("vcodec")
+        .and_then(|v| v.as_str())
+        .filter(|s| *s != "none" && !s.is_empty())
+        .map(clean_vcodec);
+
+    if vcodec.is_none() {
+        if let Some(arr) = formats {
+            vcodec = arr.iter().rev().find_map(|f| {
+                let vc = f.get("vcodec").and_then(|v| v.as_str())?;
+                if vc != "none" && !vc.is_empty() {
+                    Some(clean_vcodec(vc))
+                } else {
+                    None
+                }
+            });
+        }
+    }
+
+    // Audio Codec
+    let mut acodec = json_val
+        .get("acodec")
+        .and_then(|v| v.as_str())
+        .filter(|s| *s != "none" && !s.is_empty())
+        .map(clean_acodec);
+
+    if acodec.is_none() {
+        if let Some(arr) = formats {
+            acodec = arr.iter().rev().find_map(|f| {
+                let ac = f.get("acodec").and_then(|v| v.as_str())?;
+                if ac != "none" && !ac.is_empty() {
+                    Some(clean_acodec(ac))
+                } else {
+                    None
+                }
+            });
+        }
+    }
+
+    // Best Audio size estimate
+    let mut best_audio_size: Option<u64> = None;
+    if let Some(arr) = formats {
+        for f in arr {
+            let vc = f.get("vcodec").and_then(|v| v.as_str()).unwrap_or("none");
+            let ac = f.get("acodec").and_then(|v| v.as_str()).unwrap_or("none");
+            let h = f.get("height").and_then(|v| v.as_u64());
+
+            if (vc == "none" || h.is_none() || h == Some(0)) && ac != "none" {
+                let size = f.get("filesize").and_then(|v| v.as_u64())
+                    .or_else(|| f.get("filesize_approx").and_then(|v| v.as_u64()));
+                if let Some(s) = size {
+                    best_audio_size = Some(best_audio_size.map_or(s, |curr| curr.max(s)));
+                }
+            }
+        }
+    }
+
+    if best_audio_size.is_none() {
+        if let Some(d) = duration_secs {
+            best_audio_size = Some(d.saturating_mul(160_000 / 8)); // ~160 kbps standard audio
+        }
+    }
+
+    let get_format_size_for_height = |target_height: u64| -> Option<u64> {
+        let arr = formats?;
+        let min_h = (target_height * 7) / 10;
+        let mut best_candidate_size: Option<u64> = None;
+
+        for f in arr {
+            let h = f.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
+            if h >= min_h && h <= target_height {
+                let size = f.get("filesize").and_then(|v| v.as_u64())
+                    .or_else(|| f.get("filesize_approx").and_then(|v| v.as_u64()));
+                let ac = f.get("acodec").and_then(|v| v.as_str()).unwrap_or("none");
+
+                if let Some(base_size) = size {
+                    let total = if ac == "none" {
+                        base_size.saturating_add(best_audio_size.unwrap_or(0))
+                    } else {
+                        base_size
+                    };
+                    best_candidate_size = Some(best_candidate_size.map_or(total, |curr| curr.max(total)));
+                }
+            }
+        }
+
+        best_candidate_size
+    };
+
+    let size_1080p = get_format_size_for_height(1080).or_else(|| {
+        duration_secs.map(|d| d.saturating_mul(525_000)) // ~4.2 Mbps
+    });
+
+    let size_720p = get_format_size_for_height(720).or_else(|| {
+        duration_secs.map(|d| d.saturating_mul(275_000)) // ~2.2 Mbps
+    });
+
+    let size_480p = get_format_size_for_height(480).or_else(|| {
+        duration_secs.map(|d| d.saturating_mul(120_000)) // ~960 kbps
+    });
+
+    let size_audio = best_audio_size;
+
+    let size_best = top_filesize
+        .or(size_1080p)
+        .or(size_720p)
+        .or(size_480p);
+
+    (
+        fps,
+        vcodec,
+        acodec,
+        size_best,
+        size_1080p,
+        size_720p,
+        size_480p,
+        size_audio,
+    )
+}
+
 /// Inspects a video or album/playlist streaming URL to fetch metadata with optional browser cookies and proxy
 pub async fn inspect_video_with_options(
     url: &str,
@@ -375,10 +555,13 @@ pub async fn inspect_video_with_options(
         })
         .map(|s| s.to_string());
 
+    let (fps, vcodec, acodec, size_best, size_1080p, size_720p, size_480p, size_audio) =
+        parse_quality_and_codecs(&json_val, duration_secs, filesize);
+
     Ok(VideoMetadata {
         url: url.to_string(),
         title,
-        content_length: filesize,
+        content_length: filesize.or(size_best),
         content_type: Some(format!("video/{}", ext)),
         supports_ranges: true,
         is_extractor: true,
@@ -391,6 +574,14 @@ pub async fn inspect_video_with_options(
         has_subtitles,
         subtitles_summary,
         thumbnail_url,
+        fps,
+        vcodec,
+        acodec,
+        size_best,
+        size_1080p,
+        size_720p,
+        size_480p,
+        size_audio,
     })
 }
 
@@ -467,6 +658,7 @@ pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str
                 has_subtitles: false,
                 subtitles_summary: String::new(),
                 thumbnail_url: page_thumbnail.clone(),
+                ..Default::default()
             });
         }
     }
@@ -545,6 +737,7 @@ pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str
         has_subtitles: false,
         subtitles_summary: String::new(),
         thumbnail_url: page_thumbnail,
+        ..Default::default()
     })
 }
 
@@ -826,6 +1019,7 @@ pub fn extract_playlist_from_detail_html(html: &str, page_url: &str) -> Option<V
         has_subtitles: false,
         subtitles_summary: String::new(),
         thumbnail_url,
+        ..Default::default()
     })
 }
 
@@ -1069,6 +1263,7 @@ pub async fn download_stream<F>(
     is_audio_only: bool,
     quality: Option<&str>,
     download_subtitles: bool,
+    download_thumbnail: bool,
     audio_format: Option<&str>,
     audio_bitrate: Option<&str>,
     embed_artwork: bool,
@@ -1144,6 +1339,11 @@ where
         if embed_artwork {
             cmd.arg("--embed-thumbnail").arg("--embed-metadata");
         }
+        if download_thumbnail {
+            cmd.arg("--write-thumbnail")
+                .arg("--convert-thumbnails")
+                .arg("png");
+        }
     } else {
         if download_subtitles {
             cmd.arg("--write-subs")
@@ -1151,6 +1351,11 @@ where
                 .arg("--sub-langs")
                 .arg("all,-live_chat")
                 .arg("--embed-subs");
+        }
+        if download_thumbnail {
+            cmd.arg("--write-thumbnail")
+                .arg("--convert-thumbnails")
+                .arg("png");
         }
         if let Some(q) = quality {
             match q {
@@ -1380,6 +1585,54 @@ mod tests {
         assert!(is_streaming_platform("https://www.tiktok.com/@user/video/123"));
         assert!(!is_streaming_platform("https://example.com/video.mp4"));
         assert!(!is_streaming_platform("http://files.cdn.com/stream.webm"));
+    }
+
+    #[test]
+    fn test_parse_quality_and_codecs() {
+        let json: serde_json::Value = serde_json::json!({
+            "fps": 60.0,
+            "vcodec": "avc1.640028",
+            "acodec": "mp4a.40.2",
+            "filesize": 150_000_000u64,
+            "formats": [
+                {
+                    "format_id": "140",
+                    "vcodec": "none",
+                    "acodec": "mp4a.40.2",
+                    "filesize": 8_500_000u64,
+                    "height": null
+                },
+                {
+                    "format_id": "137",
+                    "height": 1080,
+                    "vcodec": "avc1.640028",
+                    "acodec": "none",
+                    "filesize": 120_000_000u64
+                },
+                {
+                    "format_id": "136",
+                    "height": 720,
+                    "vcodec": "avc1.4d401f",
+                    "acodec": "none",
+                    "filesize": 60_000_000u64
+                }
+            ]
+        });
+
+        let (fps, vcodec, acodec, size_best, size_1080p, size_720p, size_480p, size_audio) =
+            parse_quality_and_codecs(&json, Some(300), Some(150_000_000));
+
+        assert_eq!(fps, Some(60.0));
+        assert_eq!(vcodec, Some("H.264 (AVC)".to_string()));
+        assert_eq!(acodec, Some("AAC".to_string()));
+        assert_eq!(size_audio, Some(8_500_000));
+        // 1080p video (120M) + audio (8.5M) = 128.5M
+        assert_eq!(size_1080p, Some(128_500_000));
+        // 720p video (60M) + audio (8.5M) = 68.5M
+        assert_eq!(size_720p, Some(68_500_000));
+        // 480p fallback estimated based on duration 300s * 120_000 = 36_000_000
+        assert_eq!(size_480p, Some(36_000_000));
+        assert_eq!(size_best, Some(150_000_000));
     }
 
     #[test]

@@ -100,6 +100,14 @@ fn run_url_analysis(
         window.set_error_message("".into());
         window.set_is_playlist(false);
         window.set_playlist_count(0);
+        window.set_video_size_text("".into());
+        window.set_video_fps_text("".into());
+        window.set_video_codecs_text("".into());
+        window.set_format_best_label("Best Quality".into());
+        window.set_format_1080_label("1080p FHD".into());
+        window.set_format_720_label("720p HD".into());
+        window.set_format_480_label("480p SD".into());
+        window.set_format_audio_label("Extract Audio".into());
         window.set_status_message(format!("Inspecting media at {}...", url_str).into());
     }
 
@@ -218,6 +226,49 @@ fn run_url_analysis(
                 };
                 let selected_count = episodes.len() as i32;
 
+                let video_size_text = metadata
+                    .content_length
+                    .or(metadata.size_best)
+                    .map(|bytes| DownloadProgress::format_size(bytes))
+                    .unwrap_or_default();
+
+                let video_fps_text = metadata
+                    .fps
+                    .map(|f| format!("{:.0} FPS", f))
+                    .unwrap_or_default();
+
+                let video_codecs_text = match (&metadata.vcodec, &metadata.acodec) {
+                    (Some(v), Some(a)) => format!("{} / {}", v, a),
+                    (Some(v), None) => v.clone(),
+                    (None, Some(a)) => a.clone(),
+                    (None, None) => String::new(),
+                };
+
+                let format_best_label = match metadata.size_best.or(metadata.content_length) {
+                    Some(s) => format!("Best Quality • ~{}", DownloadProgress::format_size(s)),
+                    None => "Best Quality".to_string(),
+                };
+
+                let format_1080_label = match metadata.size_1080p {
+                    Some(s) => format!("1080p FHD • ~{}", DownloadProgress::format_size(s)),
+                    None => "1080p FHD".to_string(),
+                };
+
+                let format_720_label = match metadata.size_720p {
+                    Some(s) => format!("720p HD • ~{}", DownloadProgress::format_size(s)),
+                    None => "720p HD".to_string(),
+                };
+
+                let format_480_label = match metadata.size_480p {
+                    Some(s) => format!("480p SD • ~{}", DownloadProgress::format_size(s)),
+                    None => "480p SD".to_string(),
+                };
+
+                let format_audio_label = match metadata.size_audio {
+                    Some(s) => format!("Extract Audio • ~{}", DownloadProgress::format_size(s)),
+                    None => "Extract Audio".to_string(),
+                };
+
                 *meta_for_async.lock().await = Some(metadata);
 
                 let _ = weak_for_async.upgrade_in_event_loop(move |window| {
@@ -254,6 +305,14 @@ fn run_url_analysis(
                     window.set_video_title(title.into());
                     window.set_video_resolution(format_display.into());
                     window.set_video_duration(details_str.into());
+                    window.set_video_size_text(video_size_text.into());
+                    window.set_video_fps_text(video_fps_text.into());
+                    window.set_video_codecs_text(video_codecs_text.into());
+                    window.set_format_best_label(format_best_label.into());
+                    window.set_format_1080_label(format_1080_label.into());
+                    window.set_format_720_label(format_720_label.into());
+                    window.set_format_480_label(format_480_label.into());
+                    window.set_format_audio_label(format_audio_label.into());
                     window.set_status_message(
                         if is_playlist {
                             format!("Series analyzed: {} episodes found. Ready to download.", playlist_count).into()
@@ -274,6 +333,14 @@ fn run_url_analysis(
                     window.set_episode_range_input("".into());
                     window.set_has_thumbnail(false);
                     window.set_thumbnail_image(slint::Image::default());
+                    window.set_video_size_text("".into());
+                    window.set_video_fps_text("".into());
+                    window.set_video_codecs_text("".into());
+                    window.set_format_best_label("Best Quality".into());
+                    window.set_format_1080_label("1080p FHD".into());
+                    window.set_format_720_label("720p HD".into());
+                    window.set_format_480_label("480p SD".into());
+                    window.set_format_audio_label("Extract Audio".into());
                     window.set_has_error(true);
                     window.set_error_message(clean_msg.into());
                     window.set_status_message("Unable to analyze URL. See details above.".into());
@@ -782,6 +849,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             window.set_video_title("".into());
             window.set_video_duration("".into());
             window.set_video_resolution("".into());
+            window.set_video_size_text("".into());
+            window.set_video_fps_text("".into());
+            window.set_video_codecs_text("".into());
+            window.set_format_best_label("Best Quality".into());
+            window.set_format_1080_label("1080p FHD".into());
+            window.set_format_720_label("720p HD".into());
+            window.set_format_480_label("480p SD".into());
+            window.set_format_audio_label("Extract Audio".into());
             window.set_has_thumbnail(false);
             window.set_thumbnail_image(slint::Image::default());
             window.set_has_subtitles(false);
@@ -1248,14 +1323,14 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
     let mgr_clone_dl = download_manager.clone();
     let current_dir_dl = current_download_dir.clone();
 
-    main_window.on_start_download(move |format_idx, download_subs, audio_fmt_idx, audio_br_idx, embed_meta| {
+    main_window.on_start_download(move |format_idx, download_subs, download_thumb, audio_fmt_idx, audio_br_idx, embed_meta| {
         let (is_audio_only, quality) = map_format_index(format_idx);
         let audio_format = if is_audio_only { Some(map_audio_format(audio_fmt_idx).to_string()) } else { None };
         let audio_bitrate = if is_audio_only { Some(map_audio_bitrate(audio_br_idx).to_string()) } else { None };
 
         info!(
-            "User triggered 'Start Download' with format_idx: {} (audio: {}, format: {:?}, bitrate: {:?}, embed_meta: {}, subs: {})",
-            format_idx, is_audio_only, audio_format, audio_bitrate, embed_meta, download_subs
+            "User triggered 'Start Download' with format_idx: {} (audio: {}, format: {:?}, bitrate: {:?}, embed_meta: {}, subs: {}, thumb: {})",
+            format_idx, is_audio_only, audio_format, audio_bitrate, embed_meta, download_subs, download_thumb
         );
 
         let selected_indices: Option<HashSet<usize>> = window_weak_dl.upgrade().map(|win| {
@@ -1308,6 +1383,8 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
                             is_audio_only,
                             quality.clone(),
                             download_subs,
+                            download_thumb,
+                            metadata.thumbnail_url.clone(),
                             audio_fmt_clone.clone(),
                             audio_br_clone.clone(),
                             embed_meta,
@@ -1339,6 +1416,8 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
                     is_audio_only,
                     quality,
                     download_subs,
+                    download_thumb,
+                    metadata.thumbnail_url.clone(),
                     audio_fmt_clone,
                     audio_br_clone,
                     embed_meta,
@@ -1371,7 +1450,7 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
     let mgr_clone_batch = download_manager.clone();
     let current_dir_batch = current_download_dir.clone();
 
-    main_window.on_start_batch_download(move |raw_text, format_idx, audio_fmt_idx, audio_br_idx, embed_meta| {
+    main_window.on_start_batch_download(move |raw_text, format_idx, download_thumb, audio_fmt_idx, audio_br_idx, embed_meta| {
         let text_val = raw_text.to_string();
         let (is_audio_only, quality) = map_format_index(format_idx);
         let audio_format = if is_audio_only { Some(map_audio_format(audio_fmt_idx).to_string()) } else { None };
@@ -1420,6 +1499,8 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
                         is_audio_only,
                         quality.clone(),
                         true,
+                        download_thumb,
+                        None,
                         audio_format.clone(),
                         audio_bitrate.clone(),
                         embed_meta,
@@ -1587,7 +1668,21 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
 
             let is_extractor = downloader::is_streaming_platform(&url);
             match mgr
-                .add_download(url, title, &download_dir, None, is_extractor, false, None, true, None, None, false)
+                .add_download(
+                    url,
+                    title,
+                    &download_dir,
+                    None,
+                    is_extractor,
+                    false,
+                    None,
+                    true,
+                    true,
+                    None,
+                    None,
+                    None,
+                    false,
+                )
                 .await
             {
                 Ok(id) => {

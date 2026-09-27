@@ -71,8 +71,19 @@ export component AppWindow inherits Window {
     in-out property <bool> has_subtitles: false;
     in-out property <string> subtitles_summary: "";
     in-out property <bool> download_subtitles: true;
+    in-out property <bool> download_thumbnail: true;
     in-out property <bool> has_thumbnail: false;
     in-out property <image> thumbnail_image;
+
+    // Detailed metadata properties
+    in-out property <string> video_size_text: "";
+    in-out property <string> video_fps_text: "";
+    in-out property <string> video_codecs_text: "";
+    in-out property <string> format_best_label: "Best Quality";
+    in-out property <string> format_1080_label: "1080p FHD";
+    in-out property <string> format_720_label: "720p HD";
+    in-out property <string> format_480_label: "480p SD";
+    in-out property <string> format_audio_label: "Extract Audio";
 
     // Dedicated Audio Extractor properties
     in-out property <int> selected_audio_format_index: 0;
@@ -116,8 +127,8 @@ export component AppWindow inherits Window {
     callback set_embed_audio_metadata(bool);
     callback set_proxy(bool, string);
     callback test_proxy(string);
-    callback start_download(int, bool, int, int, bool);
-    callback start_batch_download(string, int, int, int, bool);
+    callback start_download(int, bool, bool, int, int, bool);
+    callback start_batch_download(string, int, bool, int, int, bool);
     callback pause_download(string);
     callback resume_download(string);
     callback cancel_download(string);
@@ -433,8 +444,17 @@ export component AppWindow inherits Window {
                 has_subtitles: root.has_subtitles;
                 subtitles_summary: root.subtitles_summary;
                 download_subtitles <=> root.download_subtitles;
+                download_thumbnail <=> root.download_thumbnail;
                 has_thumbnail: root.has_thumbnail;
                 thumbnail_image: root.thumbnail_image;
+                video_size_text: root.video_size_text;
+                video_fps_text: root.video_fps_text;
+                video_codecs_text: root.video_codecs_text;
+                format_best_label: root.format_best_label;
+                format_1080_label: root.format_1080_label;
+                format_720_label: root.format_720_label;
+                format_480_label: root.format_480_label;
+                format_audio_label: root.format_audio_label;
                 selected_audio_format_index <=> root.selected_audio_format_index;
                 selected_audio_bitrate_index <=> root.selected_audio_bitrate_index;
                 embed_audio_metadata <=> root.embed_audio_metadata;
@@ -451,8 +471,8 @@ export component AppWindow inherits Window {
                 import_links_file() => { root.import_links_file(); }
                 analyze_clipboard_detected() => { root.analyze_clipboard_detected(); }
                 dismiss_clipboard_detected() => { root.dismiss_clipboard_detected(); }
-                start_download(fmt, subs, afmt, abr, meta) => { root.start_download(fmt, subs, afmt, abr, meta); }
-                start_batch_download(text, fmt, afmt, abr, meta) => { root.start_batch_download(text, fmt, afmt, abr, meta); }
+                start_download(fmt, subs, thumb, afmt, abr, meta) => { root.start_download(fmt, subs, thumb, afmt, abr, meta); }
+                start_batch_download(text, fmt, thumb, afmt, abr, meta) => { root.start_batch_download(text, fmt, thumb, afmt, abr, meta); }
                 dismiss_error() => { root.dismiss_error(); }
                 open_logs() => { root.active_tab = 3; }
             }

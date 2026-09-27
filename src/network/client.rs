@@ -109,6 +109,14 @@ impl NetworkClient {
         self.client.read().unwrap().clone()
     }
 
+    /// Downloads raw bytes of an image or asset URL
+    pub async fn download_image_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        let client = self.client.read().unwrap().clone();
+        let resp = client.get(url).send().await?;
+        let bytes = resp.bytes().await?;
+        Ok(bytes.to_vec())
+    }
+
     /// Inspects a media URL to fetch content length, content type, and range support
     pub async fn inspect_url(&self, url: &str) -> Result<VideoMetadata> {
         let client = self.client.read().unwrap().clone();
@@ -177,6 +185,8 @@ impl NetworkClient {
             has_subtitles: false,
             subtitles_summary: String::new(),
             thumbnail_url: None,
+            size_best: content_length,
+            ..Default::default()
         })
     }
 

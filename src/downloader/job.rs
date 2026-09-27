@@ -24,12 +24,15 @@ pub struct DownloadJob {
     pub is_audio_only: bool,
     pub quality: Option<String>,
     pub download_subtitles: bool,
+    pub download_thumbnail: bool,
+    pub thumbnail_url: Option<String>,
     pub audio_format: Option<String>,
     pub audio_bitrate: Option<String>,
     pub embed_artwork: bool,
 }
 
 impl DownloadJob {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         url: String,
         title: String,
@@ -39,6 +42,8 @@ impl DownloadJob {
         is_audio_only: bool,
         quality: Option<String>,
         download_subtitles: bool,
+        download_thumbnail: bool,
+        thumbnail_url: Option<String>,
         audio_format: Option<String>,
         audio_bitrate: Option<String>,
         embed_artwork: bool,
@@ -61,6 +66,8 @@ impl DownloadJob {
             is_audio_only,
             quality,
             download_subtitles,
+            download_thumbnail,
+            thumbnail_url,
             audio_format,
             audio_bitrate,
             embed_artwork,
@@ -144,6 +151,8 @@ mod tests {
             false,
             None,
             false,
+            false,
+            None,
             None,
             None,
             false,

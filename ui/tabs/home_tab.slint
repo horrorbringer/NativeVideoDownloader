@@ -25,8 +25,19 @@ export component HomeTab inherits ScrollView {
     in-out property <bool> has_subtitles: false;
     in-out property <string> subtitles_summary: "";
     in-out property <bool> download_subtitles: true;
+    in-out property <bool> download_thumbnail: true;
     in-out property <bool> has_thumbnail: false;
     in-out property <image> thumbnail_image;
+
+    // Detailed metadata properties
+    in-out property <string> video_size_text: "";
+    in-out property <string> video_fps_text: "";
+    in-out property <string> video_codecs_text: "";
+    in-out property <string> format_best_label: "Best Quality";
+    in-out property <string> format_1080_label: "1080p FHD";
+    in-out property <string> format_720_label: "720p HD";
+    in-out property <string> format_480_label: "480p SD";
+    in-out property <string> format_audio_label: "Extract Audio";
 
     // Dedicated Audio Extractor options
     in-out property <int> selected_audio_format_index: 0;
@@ -47,8 +58,8 @@ export component HomeTab inherits ScrollView {
     callback import_links_file();
     callback analyze_clipboard_detected();
     callback dismiss_clipboard_detected();
-    callback start_download(int, bool, int, int, bool);
-    callback start_batch_download(string, int, int, int, bool);
+    callback start_download(int, bool, bool, int, int, bool);
+    callback start_batch_download(string, int, bool, int, int, bool);
     callback dismiss_error();
     callback open_logs();
 
@@ -498,6 +509,39 @@ export component HomeTab inherits ScrollView {
                                 }
                             }
 
+                            if !root.is_playlist && root.video_size_text != "": Rectangle {
+                                background: Theme.chip_bg;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.chip_border;
+                                height: 22px;
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 4px;
+                                    alignment: center;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/download.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            colorize: Theme.text_muted;
+                                        }
+                                    }
+
+                                    Text {
+                                        text: root.video_size_text;
+                                        color: Theme.chip_text;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
                             if !root.is_playlist && root.video_resolution != "": Rectangle {
                                 background: Theme.chip_bg;
                                 border-radius: 4px;
@@ -523,6 +567,72 @@ export component HomeTab inherits ScrollView {
 
                                     Text {
                                         text: root.video_resolution;
+                                        color: Theme.chip_text;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            if !root.is_playlist && root.video_fps_text != "": Rectangle {
+                                background: Theme.chip_bg;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.chip_border;
+                                height: 22px;
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 4px;
+                                    alignment: center;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/bolt.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            colorize: Theme.text_muted;
+                                        }
+                                    }
+
+                                    Text {
+                                        text: root.video_fps_text;
+                                        color: Theme.chip_text;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            if !root.is_playlist && root.video_codecs_text != "": Rectangle {
+                                background: Theme.chip_bg;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.chip_border;
+                                height: 22px;
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 4px;
+                                    alignment: center;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/video.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            colorize: Theme.text_muted;
+                                        }
+                                    }
+
+                                    Text {
+                                        text: root.video_codecs_text;
                                         color: Theme.chip_text;
                                         font-size: 11px;
                                         font-weight: 600;
@@ -767,35 +877,35 @@ export component HomeTab inherits ScrollView {
                     spacing: 8px;
 
                     IconChip {
-                        text: "Best Quality";
+                        text: root.format_best_label;
                         icon: @image-url("../icons/video.svg");
                         has_icon: true;
                         selected: root.selected_format_index == 0;
                         clicked => { root.selected_format_index = 0; }
                     }
                     IconChip {
-                        text: "1080p FHD";
+                        text: root.format_1080_label;
                         icon: @image-url("../icons/video.svg");
                         has_icon: true;
                         selected: root.selected_format_index == 1;
                         clicked => { root.selected_format_index = 1; }
                     }
                     IconChip {
-                        text: "720p HD";
+                        text: root.format_720_label;
                         icon: @image-url("../icons/video.svg");
                         has_icon: true;
                         selected: root.selected_format_index == 2;
                         clicked => { root.selected_format_index = 2; }
                     }
                     IconChip {
-                        text: "480p SD";
+                        text: root.format_480_label;
                         icon: @image-url("../icons/video.svg");
                         has_icon: true;
                         selected: root.selected_format_index == 3;
                         clicked => { root.selected_format_index = 3; }
                     }
                     IconChip {
-                        text: "Extract Audio";
+                        text: root.format_audio_label;
                         icon: @image-url("../icons/music.svg");
                         has_icon: true;
                         selected: root.selected_format_index == 4;
@@ -932,9 +1042,10 @@ export component HomeTab inherits ScrollView {
                 }
 
                 // Subtitle extraction & embedding option
+                // Subtitle & Thumbnail extraction options
                 HorizontalLayout {
                     spacing: 10px;
-                    alignment: space-between;
+                    alignment: start;
 
                     Rectangle {
                         background: root.download_subtitles ? (Theme.is_dark ? #121c32 : #eff6ff) : Theme.inner_bg;
@@ -970,6 +1081,43 @@ export component HomeTab inherits ScrollView {
 
                         TouchArea {
                             clicked => { root.download_subtitles = !root.download_subtitles; }
+                        }
+                    }
+
+                    Rectangle {
+                        background: root.download_thumbnail ? (Theme.is_dark ? #121c32 : #eff6ff) : Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: root.download_thumbnail ? (Theme.is_dark ? #2563eb : #93c5fd) : Theme.inner_border;
+                        height: 32px;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 6px;
+                            alignment: center;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../icons/sparkles.svg");
+                                    width: 14px;
+                                    height: 14px;
+                                    colorize: root.download_thumbnail ? (Theme.is_dark ? #60a5fa : #2563eb) : Theme.icon_default;
+                                }
+                            }
+
+                            Text {
+                                text: root.download_thumbnail ? "Cover Art / Thumbnail: Enabled" : "Cover Art / Thumbnail: Disabled";
+                                color: root.download_thumbnail ? (Theme.is_dark ? #60a5fa : #2563eb) : Theme.text_secondary;
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.download_thumbnail = !root.download_thumbnail; }
                         }
                     }
 
@@ -1012,6 +1160,7 @@ export component HomeTab inherits ScrollView {
                             root.start_download(
                                 root.selected_format_index,
                                 root.download_subtitles,
+                                root.download_thumbnail,
                                 root.selected_audio_format_index,
                                 root.selected_audio_bitrate_index,
                                 root.embed_audio_metadata,
@@ -1221,21 +1370,21 @@ export component HomeTab inherits ScrollView {
                     spacing: 8px;
 
                     IconChip {
-                        text: "Best Quality";
+                        text: root.format_best_label;
                         icon: @image-url("../icons/video.svg");
                         has_icon: true;
                         selected: root.selected_format_index == 0;
                         clicked => { root.selected_format_index = 0; }
                     }
                     IconChip {
-                        text: "720p HD";
+                        text: root.format_720_label;
                         icon: @image-url("../icons/video.svg");
                         has_icon: true;
                         selected: root.selected_format_index == 2;
                         clicked => { root.selected_format_index = 2; }
                     }
                     IconChip {
-                        text: "Audio (MP3)";
+                        text: root.format_audio_label;
                         icon: @image-url("../icons/music.svg");
                         has_icon: true;
                         selected: root.selected_format_index == 4;
@@ -1257,6 +1406,7 @@ export component HomeTab inherits ScrollView {
                             root.start_batch_download(
                                 root.batch_urls_text,
                                 root.selected_format_index,
+                                root.download_thumbnail,
                                 root.selected_audio_format_index,
                                 root.selected_audio_bitrate_index,
                                 root.embed_audio_metadata,
