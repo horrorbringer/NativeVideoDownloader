@@ -301,6 +301,41 @@ fn create_ytdlp_cmd(ytdlp_bin: &Path) -> Command {
     cmd
 }
 
+/// Helper to configure browser cookies with an on-disk cache to prevent repeating expensive
+/// macOS Keychain unlocks and SQLite cookie decryptions on every single operation.
+pub fn apply_browser_cookies(cmd: &mut Command, browser: &str) {
+    let trimmed = browser.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    let bin_dir = get_bin_dir();
+    let _ = std::fs::create_dir_all(&bin_dir);
+    let cache_file = bin_dir.join(format!("cookies_{}.txt", trimmed));
+    let is_fresh = if let Ok(metadata) = std::fs::metadata(&cache_file) {
+        if let Ok(modified) = metadata.modified() {
+            if let Ok(elapsed) = modified.elapsed() {
+                // Cookies cached within the last 45 minutes are reused immediately
+                elapsed.as_secs() < 2700 && metadata.len() > 100
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if is_fresh {
+        info!("Applying cached browser cookies from {:?} (bypassing Keychain decryption)", cache_file);
+        cmd.arg("--cookies").arg(&cache_file);
+    } else {
+        info!("Extracting fresh browser cookies from {} and updating cache at {:?}", trimmed, cache_file);
+        cmd.arg("--cookies-from-browser").arg(trimmed);
+        cmd.arg("--cookies").arg(&cache_file);
+    }
+}
+
 /// Analyzes yt-dlp format streams to extract fps, codecs, and calculate estimated sizes for each quality preset
 pub fn parse_quality_and_codecs(
     json_val: &serde_json::Value,
@@ -495,9 +530,7 @@ pub async fn inspect_video_with_options(
     );
     let mut cmd = create_ytdlp_cmd(&ytdlp_bin);
     if let Some(b) = cookies_browser {
-        if !b.is_empty() {
-            cmd.arg("--cookies-from-browser").arg(b);
-        }
+        apply_browser_cookies(&mut cmd, b);
     }
     if let Some(p) = proxy {
         let trimmed = p.trim();
@@ -1307,15 +1340,24 @@ fn html_escape_clean(input: &str) -> String {
 }
 
 /// If the URL is an HTML webpage (e.g. MacCMS vod/play page, iframe host, or direct web scraper),
-/// resolves the underlying stream or platform URL (such as Dailymotion, YouTube, Vimeo, or .m3u8).
+static PLAYABLE_URL_CACHE: std::sync::LazyLock<std::sync::RwLock<std::collections::HashMap<String, String>>> =
+    std::sync::LazyLock::new(|| std::sync::RwLock::new(std::collections::HashMap::new()));
+
+/// Resolves the underlying stream or platform URL (such as Dailymotion, YouTube, Vimeo, or .m3u8).
 pub async fn resolve_playable_stream_url(url: &str, proxy: Option<&str>) -> String {
     if is_streaming_platform(url) || url.contains(".m3u8") || url.contains(".mp4") || url.contains(".webm") {
         return url.to_string();
     }
 
+    if let Ok(cache) = PLAYABLE_URL_CACHE.read() {
+        if let Some(cached) = cache.get(url) {
+            return cached.clone();
+        }
+    }
+
     let mut builder = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
-        .timeout(std::time::Duration::from_secs(12));
+        .timeout(std::time::Duration::from_secs(6));
 
     if let Some(prx_str) = proxy {
         let trimmed = prx_str.trim();
@@ -1333,18 +1375,27 @@ pub async fn resolve_playable_stream_url(url: &str, proxy: Option<&str>) -> Stri
                 // 1. Check MacCMS player_aaaa configuration (used by donghuafun, animevietsub, etc.)
                 if let Some(maccms) = extract_maccms_player(&html) {
                     info!("Resolved MacCMS playable stream URL: {} -> {}", url, maccms.video_url);
+                    if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
+                        cache.insert(url.to_string(), maccms.video_url.clone());
+                    }
                     return maccms.video_url;
                 }
                 // 2. Check embedded iframes
                 for iframe_url in extract_iframes_from_html(&html, url) {
                     if is_streaming_platform(&iframe_url) || iframe_url.contains(".m3u8") || iframe_url.contains(".mp4") {
                         info!("Resolved iframe playable stream URL: {} -> {}", url, iframe_url);
+                        if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
+                            cache.insert(url.to_string(), iframe_url.clone());
+                        }
                         return iframe_url;
                     }
                 }
                 // 3. Check direct HTML stream
                 if let Some(stream_url) = extract_stream_from_html(&html, url) {
                     info!("Resolved direct HTML stream URL: {} -> {}", url, stream_url);
+                    if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
+                        cache.insert(url.to_string(), stream_url.clone());
+                    }
                     return stream_url;
                 }
             }
@@ -1401,6 +1452,8 @@ where
 
     let mut cmd = create_ytdlp_cmd(&ytdlp_bin);
     cmd.arg("--no-playlist")
+        .arg("--no-check-formats")
+        .arg("--no-warnings")
         .arg("--newline")
         .arg("--progress-template")
         .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress._percent)s|%(info.ext)s|%(progress.filename)s");
@@ -1412,10 +1465,7 @@ where
     }
 
     if let Some(browser) = cookies_browser {
-        if !browser.is_empty() {
-            info!("Applying browser cookies from {} to yt-dlp download", browser);
-            cmd.arg("--cookies-from-browser").arg(browser);
-        }
+        apply_browser_cookies(&mut cmd, browser);
     }
 
     if let Some(prx) = proxy {
@@ -1441,23 +1491,21 @@ where
             cmd.arg("--embed-thumbnail").arg("--embed-metadata");
         }
         if download_thumbnail {
-            cmd.arg("--write-thumbnail")
-                .arg("--convert-thumbnails")
-                .arg("png");
+            cmd.arg("--write-thumbnail");
         }
     } else {
         if download_subtitles {
             let sub_langs = subtitle_language.unwrap_or("all,-live_chat");
             cmd.arg("--write-subs")
-                .arg("--write-auto-subs")
                 .arg("--sub-langs")
                 .arg(sub_langs)
                 .arg("--embed-subs");
+            if sub_langs.contains("all") {
+                cmd.arg("--write-auto-subs");
+            }
         }
         if download_thumbnail {
-            cmd.arg("--write-thumbnail")
-                .arg("--convert-thumbnails")
-                .arg("png");
+            cmd.arg("--write-thumbnail");
         }
         if let Some(q) = quality {
             match q {
