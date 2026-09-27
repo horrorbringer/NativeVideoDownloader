@@ -91,13 +91,13 @@ export component HomeTab inherits ScrollView {
 
                         Text {
                             text: "Analysis / Download Alert";
-                            color: #ef4444;
+                            color: Theme.error_text;
                             font-size: 13px;
                             font-weight: 700;
                         }
                         Text {
                             text: root.error_message;
-                            color: #fca5a5;
+                            color: Theme.error_text;
                             font-size: 12px;
                             wrap: word-wrap;
                         }
@@ -258,7 +258,7 @@ export component HomeTab inherits ScrollView {
 
                     Text {
                         text: "Source Media URL";
-                        color: #c7cbd9;
+                        color: Theme.text_primary;
                         font-size: 13px;
                         font-weight: 600;
                         vertical-alignment: center;
@@ -369,7 +369,7 @@ export component HomeTab inherits ScrollView {
 
                         Text {
                             text: "Media Stream Detected";
-                            color: #7082ff;
+                            color: Theme.brand_purple;
                             font-size: 14px;
                             font-weight: 700;
                             vertical-alignment: center;
@@ -381,10 +381,10 @@ export component HomeTab inherits ScrollView {
                         alignment: end;
 
                         Rectangle {
-                            background: #0e291b;
+                            background: Theme.success_bg;
                             border-radius: 4px;
                             border-width: 1px;
-                            border-color: #166534;
+                            border-color: Theme.success_border;
                             height: 24px;
 
                             HorizontalLayout {
@@ -393,7 +393,7 @@ export component HomeTab inherits ScrollView {
                                 alignment: center;
                                 Text {
                                     text: "Ready to Download";
-                                    color: #4ade80;
+                                    color: Theme.success_text;
                                     font-size: 11px;
                                     font-weight: 700;
                                     vertical-alignment: center;
@@ -420,10 +420,10 @@ export component HomeTab inherits ScrollView {
                     Rectangle {
                         width: 154px;
                         height: 96px;
-                        background: #121520;
+                        background: Theme.inner_bg;
                         border-radius: 9px;
                         border-width: 1px;
-                        border-color: #2c354e;
+                        border-color: Theme.inner_border;
                         clip: true;
 
                         if root.has_thumbnail: Image {
@@ -442,14 +442,14 @@ export component HomeTab inherits ScrollView {
                                         root.selected_format_index == 4 ? @image-url("../icons/music.svg") : @image-url("../icons/video.svg");
                                 width: 26px;
                                 height: 26px;
-                                colorize: #7082ff;
+                                colorize: Theme.brand_purple;
                                 horizontal-alignment: center;
                             }
 
                             Text {
                                 text: root.is_playlist ? "Series" :
                                       root.selected_format_index == 4 ? "Audio" : "Video";
-                                color: #8c93a8;
+                                color: Theme.text_secondary;
                                 font-size: 11px;
                                 font-weight: 600;
                                 horizontal-alignment: center;
@@ -464,7 +464,7 @@ export component HomeTab inherits ScrollView {
 
                         Text {
                             text: root.video_title != "" ? root.video_title : "Title unknown";
-                            color: #ffffff;
+                            color: Theme.text_primary;
                             font-size: 16px;
                             font-weight: 600;
                             overflow: elide;
@@ -475,8 +475,10 @@ export component HomeTab inherits ScrollView {
                             alignment: start;
 
                             if root.is_playlist: Rectangle {
-                                background: #252a3d;
+                                background: Theme.chip_bg;
                                 border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.chip_border;
                                 height: 22px;
 
                                 HorizontalLayout {
@@ -485,7 +487,7 @@ export component HomeTab inherits ScrollView {
                                     alignment: center;
                                     Text {
                                         text: "Series • " + root.playlist_count + " Episodes Available";
-                                        color: #cbd5e1;
+                                        color: Theme.chip_text;
                                         font-size: 11px;
                                         font-weight: 600;
                                         vertical-alignment: center;
@@ -494,8 +496,10 @@ export component HomeTab inherits ScrollView {
                             }
 
                             if !root.is_playlist && root.video_resolution != "": Rectangle {
-                                background: #252a3d;
+                                background: Theme.chip_bg;
                                 border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.chip_border;
                                 height: 22px;
 
                                 HorizontalLayout {
@@ -510,13 +514,13 @@ export component HomeTab inherits ScrollView {
                                             source: @image-url("../icons/monitor.svg");
                                             width: 12px;
                                             height: 12px;
-                                            colorize: #949db2;
+                                            colorize: Theme.text_muted;
                                         }
                                     }
 
                                     Text {
                                         text: root.video_resolution;
-                                        color: #cbd5e1;
+                                        color: Theme.chip_text;
                                         font-size: 11px;
                                         font-weight: 600;
                                         vertical-alignment: center;
@@ -525,8 +529,10 @@ export component HomeTab inherits ScrollView {
                             }
 
                             if !root.is_playlist && root.video_duration != "": Rectangle {
-                                background: #252a3d;
+                                background: Theme.chip_bg;
                                 border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.chip_border;
                                 height: 22px;
 
                                 HorizontalLayout {
@@ -541,13 +547,13 @@ export component HomeTab inherits ScrollView {
                                             source: @image-url("../icons/history.svg");
                                             width: 12px;
                                             height: 12px;
-                                            colorize: #949db2;
+                                            colorize: Theme.text_muted;
                                         }
                                     }
 
                                     Text {
                                         text: root.video_duration;
-                                        color: #cbd5e1;
+                                        color: Theme.chip_text;
                                         font-size: 11px;
                                         font-weight: 600;
                                         vertical-alignment: center;
@@ -571,17 +577,17 @@ export component HomeTab inherits ScrollView {
 
                             Text {
                                 text: "Select Episodes to Download:";
-                                color: #c7cbd9;
+                                color: Theme.text_primary;
                                 font-size: 13px;
                                 font-weight: 600;
                                 vertical-alignment: center;
                             }
 
                             Rectangle {
-                                background: root.selected_episodes_count > 0 ? #172554 : #381216;
+                                background: root.selected_episodes_count > 0 ? (Theme.is_dark ? #172554 : #dbeafe) : Theme.error_bg;
                                 border-radius: 4px;
                                 border-width: 1px;
-                                border-color: root.selected_episodes_count > 0 ? #2563eb : #991b1b;
+                                border-color: root.selected_episodes_count > 0 ? (Theme.is_dark ? #2563eb : #93c5fd) : Theme.error_border;
                                 height: 22px;
 
                                 HorizontalLayout {
@@ -590,7 +596,7 @@ export component HomeTab inherits ScrollView {
                                     alignment: center;
                                     Text {
                                         text: root.selected_episodes_count + " of " + root.playlist_episodes.length + " selected";
-                                        color: root.selected_episodes_count > 0 ? #60a5fa : #f87171;
+                                        color: root.selected_episodes_count > 0 ? (Theme.is_dark ? #60a5fa : #1d4ed8) : Theme.error_text;
                                         font-size: 11px;
                                         font-weight: 700;
                                         vertical-alignment: center;
@@ -633,10 +639,10 @@ export component HomeTab inherits ScrollView {
                     }
 
                     Rectangle {
-                        background: #111420;
+                        background: Theme.inner_bg;
                         border-radius: 8px;
                         border-width: 1px;
-                        border-color: #202638;
+                        border-color: Theme.inner_border;
                         height: 140px;
                         clip: true;
 
@@ -646,11 +652,11 @@ export component HomeTab inherits ScrollView {
                                 spacing: 4px;
 
                                 for ep in root.playlist_episodes: Rectangle {
-                                    background: ep.selected ? (touch.has-hover ? #242c44 : #1c2338) :
-                                                (touch.has-hover ? #171b28 : transparent);
+                                    background: ep.selected ? (touch.has-hover ? Theme.nav_active_bg : Theme.chip_bg) :
+                                                (touch.has-hover ? Theme.inner_alt : transparent);
                                     border-radius: 6px;
                                     border-width: 1px;
-                                    border-color: ep.selected ? #33416b : transparent;
+                                    border-color: ep.selected ? Theme.nav_active_border : transparent;
                                     height: 32px;
                                     animate background { duration: 100ms; }
 
@@ -674,8 +680,8 @@ export component HomeTab inherits ScrollView {
                                                 height: 16px;
                                                 border-radius: 4px;
                                                 border-width: 1px;
-                                                background: ep.selected ? #4f58c7 : #161a26;
-                                                border-color: ep.selected ? #7082ff : #2e354e;
+                                                background: ep.selected ? Theme.primary_accent : Theme.card_bg;
+                                                border-color: ep.selected ? Theme.primary_border : Theme.card_border;
                                                 y: (parent.height - self.height) / 2;
 
                                                 if ep.selected: Image {
@@ -692,7 +698,9 @@ export component HomeTab inherits ScrollView {
                                             Rectangle {
                                                 height: 20px;
                                                 border-radius: 3px;
-                                                background: #202538;
+                                                background: Theme.sidebar_status_bg;
+                                                border-width: 1px;
+                                                border-color: Theme.sidebar_status_border;
                                                 y: (parent.height - self.height) / 2;
 
                                                 HorizontalLayout {
@@ -701,7 +709,7 @@ export component HomeTab inherits ScrollView {
                                                     alignment: center;
                                                     Text {
                                                         text: "#" + (ep.index + 1);
-                                                        color: #949db2;
+                                                        color: Theme.text_secondary;
                                                         font-size: 10px;
                                                         font-weight: 700;
                                                         vertical-alignment: center;
@@ -712,7 +720,7 @@ export component HomeTab inherits ScrollView {
                                             // Episode Title
                                             Text {
                                                 text: ep.title;
-                                                color: ep.selected ? #ffffff : #8c93a8;
+                                                color: ep.selected ? Theme.text_primary : Theme.text_secondary;
                                                 font-size: 12px;
                                                 font-weight: ep.selected ? 600 : 500;
                                                 vertical-alignment: center;
@@ -721,7 +729,7 @@ export component HomeTab inherits ScrollView {
 
                                         Text {
                                             text: ep.selected ? "Included" : "Skipped";
-                                            color: ep.selected ? #4ade80 : #525a70;
+                                            color: ep.selected ? Theme.success_text : Theme.text_dimmed;
                                             font-size: 11px;
                                             font-weight: 500;
                                             vertical-alignment: center;
@@ -736,7 +744,7 @@ export component HomeTab inherits ScrollView {
                 // Format & Quality Selection Chips
                 Text {
                     text: root.is_playlist ? "Select Quality for All Episodes:" : "Select Format & Quality:";
-                    color: #c7cbd9;
+                    color: Theme.text_primary;
                     font-size: 12px;
                     font-weight: 600;
                 }
@@ -782,10 +790,10 @@ export component HomeTab inherits ScrollView {
 
                 // Dedicated Audio Extraction Panel (active when Extract Audio is selected)
                 if root.selected_format_index == 4: Rectangle {
-                    background: #111420;
+                    background: Theme.inner_bg;
                     border-radius: 10px;
                     border-width: 1px;
-                    border-color: #272f47;
+                    border-color: Theme.inner_border;
 
                     VerticalLayout {
                         padding: 12px;
@@ -796,7 +804,7 @@ export component HomeTab inherits ScrollView {
                             alignment: space-between;
                             Text {
                                 text: "Audio Container:";
-                                color: #949db2;
+                                color: Theme.text_secondary;
                                 font-size: 12px;
                                 font-weight: 600;
                                 vertical-alignment: center;
@@ -836,7 +844,7 @@ export component HomeTab inherits ScrollView {
                             alignment: space-between;
                             Text {
                                 text: "Audio Bitrate:";
-                                color: #949db2;
+                                color: Theme.text_secondary;
                                 font-size: 12px;
                                 font-weight: 600;
                                 vertical-alignment: center;
@@ -868,10 +876,10 @@ export component HomeTab inherits ScrollView {
 
                         // Embed Artwork & Tags
                         Rectangle {
-                            background: root.embed_audio_metadata ? #121c32 : #131622;
+                            background: root.embed_audio_metadata ? (Theme.is_dark ? #121c32 : #eff6ff) : Theme.inner_bg;
                             border-radius: 6px;
                             border-width: 1px;
-                            border-color: root.embed_audio_metadata ? #2563eb : #212638;
+                            border-color: root.embed_audio_metadata ? (Theme.is_dark ? #2563eb : #93c5fd) : Theme.inner_border;
                             height: 32px;
 
                             HorizontalLayout {
@@ -886,7 +894,7 @@ export component HomeTab inherits ScrollView {
                                         source: @image-url("../icons/sparkles.svg");
                                         width: 14px;
                                         height: 14px;
-                                        colorize: root.embed_audio_metadata ? #60a5fa : #8c93a8;
+                                        colorize: root.embed_audio_metadata ? (Theme.is_dark ? #60a5fa : #2563eb) : Theme.icon_default;
                                     }
                                 }
 
@@ -894,7 +902,7 @@ export component HomeTab inherits ScrollView {
                                     text: root.embed_audio_metadata
                                         ? "Embed Album Cover Art & ID3 Metadata: Enabled"
                                         : "Embed Album Cover Art & ID3 Metadata: Disabled";
-                                    color: root.embed_audio_metadata ? #60a5fa : #8c93a8;
+                                    color: root.embed_audio_metadata ? (Theme.is_dark ? #60a5fa : #2563eb) : Theme.text_secondary;
                                     font-size: 11px;
                                     font-weight: 600;
                                     vertical-alignment: center;
@@ -914,10 +922,10 @@ export component HomeTab inherits ScrollView {
                     alignment: space-between;
 
                     Rectangle {
-                        background: root.download_subtitles ? #0f2142 : #141724;
+                        background: root.download_subtitles ? (Theme.is_dark ? #121c32 : #eff6ff) : Theme.inner_bg;
                         border-radius: 8px;
                         border-width: 1px;
-                        border-color: root.download_subtitles ? #2563eb : #22283a;
+                        border-color: root.download_subtitles ? (Theme.is_dark ? #2563eb : #93c5fd) : Theme.inner_border;
                         height: 32px;
 
                         HorizontalLayout {
@@ -932,13 +940,13 @@ export component HomeTab inherits ScrollView {
                                     source: @image-url("../icons/subtitles.svg");
                                     width: 14px;
                                     height: 14px;
-                                    colorize: root.download_subtitles ? #60a5fa : #8c93a8;
+                                    colorize: root.download_subtitles ? (Theme.is_dark ? #60a5fa : #2563eb) : Theme.icon_default;
                                 }
                             }
 
                             Text {
                                 text: root.download_subtitles ? "Subtitles: Enabled (.srt/embed)" : "Subtitles: Disabled";
-                                color: root.download_subtitles ? #60a5fa : #8c93a8;
+                                color: root.download_subtitles ? (Theme.is_dark ? #60a5fa : #2563eb) : Theme.text_secondary;
                                 font-size: 12px;
                                 font-weight: 600;
                                 vertical-alignment: center;
@@ -1017,15 +1025,15 @@ export component HomeTab inherits ScrollView {
                         width: 44px;
                         height: 44px;
                         border-radius: 22px;
-                        background: #1d2234;
+                        background: Theme.sidebar_brand_bg;
                         border-width: 1px;
-                        border-color: #2b334d;
+                        border-color: Theme.sidebar_brand_border;
 
                         Image {
                             source: @image-url("../icons/sparkles.svg");
                             width: 22px;
                             height: 22px;
-                            colorize: #7082ff;
+                            colorize: Theme.brand_purple;
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
                         }
@@ -1036,14 +1044,14 @@ export component HomeTab inherits ScrollView {
                     spacing: 4px;
                     Text {
                         text: "Ready to Analyze & Download Media";
-                        color: #ffffff;
+                        color: Theme.text_primary;
                         font-size: 15px;
                         font-weight: 700;
                         horizontal-alignment: center;
                     }
                     Text {
                         text: "Paste any video/audio stream link above or import a .txt / .m3u links file";
-                        color: #8c93a8;
+                        color: Theme.text_secondary;
                         font-size: 13px;
                         horizontal-alignment: center;
                     }
@@ -1068,10 +1076,10 @@ export component HomeTab inherits ScrollView {
                     alignment: center;
 
                     Rectangle {
-                        background: #191e2c;
+                        background: Theme.chip_bg;
                         border-radius: 4px;
                         border-width: 1px;
-                        border-color: #242c40;
+                        border-color: Theme.chip_border;
                         height: 22px;
                         HorizontalLayout {
                             padding-left: 8px;
@@ -1079,7 +1087,7 @@ export component HomeTab inherits ScrollView {
                             alignment: center;
                             Text {
                                 text: "Up to 4K Lossless";
-                                color: #8c93a8;
+                                color: Theme.chip_text;
                                 font-size: 11px;
                                 font-weight: 500;
                                 vertical-alignment: center;
@@ -1088,10 +1096,10 @@ export component HomeTab inherits ScrollView {
                     }
 
                     Rectangle {
-                        background: #191e2c;
+                        background: Theme.chip_bg;
                         border-radius: 4px;
                         border-width: 1px;
-                        border-color: #242c40;
+                        border-color: Theme.chip_border;
                         height: 22px;
                         HorizontalLayout {
                             padding-left: 8px;
@@ -1099,7 +1107,7 @@ export component HomeTab inherits ScrollView {
                             alignment: center;
                             Text {
                                 text: "Fast Resumption";
-                                color: #8c93a8;
+                                color: Theme.chip_text;
                                 font-size: 11px;
                                 font-weight: 500;
                                 vertical-alignment: center;
@@ -1108,10 +1116,10 @@ export component HomeTab inherits ScrollView {
                     }
 
                     Rectangle {
-                        background: #191e2c;
+                        background: Theme.chip_bg;
                         border-radius: 4px;
                         border-width: 1px;
-                        border-color: #242c40;
+                        border-color: Theme.chip_border;
                         height: 22px;
                         HorizontalLayout {
                             padding-left: 8px;
@@ -1119,7 +1127,7 @@ export component HomeTab inherits ScrollView {
                             alignment: center;
                             Text {
                                 text: "Subtitles & Audio MP3";
-                                color: #8c93a8;
+                                color: Theme.chip_text;
                                 font-size: 11px;
                                 font-weight: 500;
                                 vertical-alignment: center;
@@ -1149,7 +1157,7 @@ export component HomeTab inherits ScrollView {
                     alignment: space-between;
                     Text {
                         text: "Batch Download Queue (one link per line)";
-                        color: #c7cbd9;
+                        color: Theme.text_primary;
                         font-size: 14px;
                         font-weight: 600;
                         vertical-alignment: center;
@@ -1189,7 +1197,7 @@ export component HomeTab inherits ScrollView {
 
                 Text {
                     text: "Select Default Format for Batch:";
-                    color: #c7cbd9;
+                    color: Theme.text_primary;
                     font-size: 12px;
                     font-weight: 600;
                 }

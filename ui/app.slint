@@ -160,7 +160,7 @@ export component AppWindow inherits Window {
     HorizontalLayout {
         // Sidebar Navigation
         Rectangle {
-            width: 200px;
+            width: 216px;
             background: Theme.sidebar_bg;
             border-width: 1px;
             border-color: Theme.sidebar_border;
@@ -175,6 +175,7 @@ export component AppWindow inherits Window {
                     alignment: space-between;
                     padding-bottom: 10px;
                     padding-left: 2px;
+                    padding-right: 2px;
                     padding-top: 2px;
 
                     HorizontalLayout {
@@ -215,28 +216,32 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    // Theme toggle button
-                    theme_btn := Rectangle {
-                        width: 28px;
-                        height: 28px;
-                        border-radius: 6px;
-                        background: theme_touch.has-hover ? Theme.nav_hover_bg : transparent;
-                        border-width: 1px;
-                        border-color: theme_touch.has-hover ? Theme.nav_hover_border : transparent;
+                    // Theme toggle button (vertically centered)
+                    VerticalLayout {
+                        alignment: center;
 
-                        Image {
-                            source: Theme.is_dark ? @image-url("icons/sun.svg") : @image-url("icons/moon.svg");
-                            width: 15px;
-                            height: 15px;
-                            colorize: theme_touch.has-hover ? Theme.brand_purple : Theme.icon_default;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                        }
+                        theme_btn := Rectangle {
+                            width: 28px;
+                            height: 28px;
+                            border-radius: 6px;
+                            background: theme_touch.has-hover ? Theme.nav_hover_bg : transparent;
+                            border-width: 1px;
+                            border-color: theme_touch.has-hover ? Theme.nav_hover_border : transparent;
 
-                        theme_touch := TouchArea {
-                            clicked => {
-                                Theme.is_dark = !Theme.is_dark;
-                                root.toggle_theme();
+                            Image {
+                                source: Theme.is_dark ? @image-url("icons/sun.svg") : @image-url("icons/moon.svg");
+                                width: 15px;
+                                height: 15px;
+                                colorize: theme_touch.has-hover ? Theme.brand_purple : Theme.icon_default;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+
+                            theme_touch := TouchArea {
+                                clicked => {
+                                    Theme.is_dark = !Theme.is_dark;
+                                    root.toggle_theme();
+                                }
                             }
                         }
                     }

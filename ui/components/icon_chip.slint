@@ -13,7 +13,7 @@ export component IconChip inherits Rectangle {
     border-radius: 7px;
     border-width: 1px;
     border-color: root.selected ? Theme.primary_border :
-                  (touch.has-hover ? Theme.sidebar_status_border : Theme.card_border);
+                  (touch.has-hover ? Theme.primary_border : Theme.btn_secondary_border);
     animate border-color { duration: 120ms; }
     height: 32px;
 

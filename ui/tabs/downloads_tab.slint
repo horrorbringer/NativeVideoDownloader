@@ -170,25 +170,25 @@ export component DownloadsTab inherits VerticalLayout {
 
                     Text {
                         text: "-30s";
-                        color: #4b5568;
+                        color: Theme.text_muted;
                         font-size: 9px;
                         font-weight: 600;
                     }
                     Text {
                         text: "-20s";
-                        color: #4b5568;
+                        color: Theme.text_muted;
                         font-size: 9px;
                         font-weight: 600;
                     }
                     Text {
                         text: "-10s";
-                        color: #4b5568;
+                        color: Theme.text_muted;
                         font-size: 9px;
                         font-weight: 600;
                     }
                     Text {
                         text: "Now";
-                        color: root.is_downloading_active ? #38bdf8 : #4b5568;
+                        color: root.is_downloading_active ? (Theme.is_dark ? #38bdf8 : #0284c7) : Theme.text_muted;
                         font-size: 9px;
                         font-weight: 700;
                     }

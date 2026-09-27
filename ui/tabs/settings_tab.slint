@@ -253,15 +253,15 @@ export component SettingsTab inherits ScrollView {
                         width: 34px;
                         height: 34px;
                         border-radius: 8px;
-                        background: #1e2438;
+                        background: Theme.sidebar_brand_bg;
                         border-width: 1px;
-                        border-color: #2c3550;
+                        border-color: Theme.sidebar_brand_border;
 
                         Image {
                             source: @image-url("../icons/folder.svg");
                             width: 17px;
                             height: 17px;
-                            colorize: #7082ff;
+                            colorize: Theme.brand_purple;
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
                         }
@@ -271,13 +271,13 @@ export component SettingsTab inherits ScrollView {
                         spacing: 3px;
                         Text {
                             text: "Default Download Directory";
-                            color: #ffffff;
+                            color: Theme.text_primary;
                             font-size: 15px;
                             font-weight: 700;
                         }
                         Text {
                             text: "All media, video series, and extracted audio files are saved into this folder.";
-                            color: #8c93a8;
+                            color: Theme.text_secondary;
                             font-size: 13px;
                         }
                     }
@@ -287,10 +287,10 @@ export component SettingsTab inherits ScrollView {
                     spacing: 10px;
 
                     Rectangle {
-                        background: #0f121d;
+                        background: Theme.inner_bg;
                         border-radius: 8px;
                         border-width: 1px;
-                        border-color: #202638;
+                        border-color: Theme.inner_border;
                         horizontal-stretch: 1;
                         height: 38px;
 
@@ -301,7 +301,7 @@ export component SettingsTab inherits ScrollView {
 
                             Text {
                                 text: root.download_dir_path;
-                                color: #e2e8f0;
+                                color: Theme.text_primary;
                                 font-size: 13px;
                                 font-weight: 500;
                                 vertical-alignment: center;
@@ -338,7 +338,7 @@ export component SettingsTab inherits ScrollView {
                 // Divider
                 Rectangle {
                     height: 1px;
-                    background: #202638;
+                    background: Theme.card_border;
                 }
 
                 // Filename Template & Automatic Subfolders
@@ -349,13 +349,13 @@ export component SettingsTab inherits ScrollView {
                         spacing: 3px;
                         Text {
                             text: "Filename Template & Automatic Subfolders";
-                            color: #ffffff;
+                            color: Theme.text_primary;
                             font-size: 14px;
                             font-weight: 700;
                         }
                         Text {
                             text: "Customize media filenames and organize episodes or playlists into subfolders with variables.";
-                            color: #8c93a8;
+                            color: Theme.text_secondary;
                             font-size: 12px;
                         }
                     }
@@ -459,15 +459,15 @@ export component SettingsTab inherits ScrollView {
                             width: 34px;
                             height: 34px;
                             border-radius: 8px;
-                            background: #1e2438;
+                            background: Theme.sidebar_brand_bg;
                             border-width: 1px;
-                            border-color: #2c3550;
+                            border-color: Theme.sidebar_brand_border;
 
                             Image {
                                 source: @image-url("../icons/bolt.svg");
                                 width: 17px;
                                 height: 17px;
-                                colorize: #7082ff;
+                                colorize: Theme.brand_purple;
                                 x: (parent.width - self.width) / 2;
                                 y: (parent.height - self.height) / 2;
                             }
@@ -477,13 +477,13 @@ export component SettingsTab inherits ScrollView {
                             spacing: 3px;
                             Text {
                                 text: "Bandwidth Speed Limiter";
-                                color: #ffffff;
+                                color: Theme.text_primary;
                                 font-size: 15px;
                                 font-weight: 700;
                             }
                             Text {
                                 text: "Throttle maximum download speed to avoid saturating your local network.";
-                                color: #8c93a8;
+                                color: Theme.text_secondary;
                                 font-size: 13px;
                             }
                         }
@@ -541,7 +541,7 @@ export component SettingsTab inherits ScrollView {
                 // Divider
                 Rectangle {
                     height: 1px;
-                    background: #202638;
+                    background: Theme.card_border;
                 }
 
                 // Concurrency
@@ -556,15 +556,15 @@ export component SettingsTab inherits ScrollView {
                             width: 34px;
                             height: 34px;
                             border-radius: 8px;
-                            background: #1e2438;
+                            background: Theme.sidebar_brand_bg;
                             border-width: 1px;
-                            border-color: #2c3550;
+                            border-color: Theme.sidebar_brand_border;
 
                             Image {
                                 source: @image-url("../icons/cpu.svg");
                                 width: 17px;
                                 height: 17px;
-                                colorize: #7082ff;
+                                colorize: Theme.brand_purple;
                                 x: (parent.width - self.width) / 2;
                                 y: (parent.height - self.height) / 2;
                             }
@@ -574,13 +574,13 @@ export component SettingsTab inherits ScrollView {
                             spacing: 3px;
                             Text {
                                 text: "Concurrent Queue Workers";
-                                color: #ffffff;
+                                color: Theme.text_primary;
                                 font-size: 15px;
                                 font-weight: 700;
                             }
                             Text {
                                 text: "Number of download items actively processed simultaneously.";
-                                color: #8c93a8;
+                                color: Theme.text_secondary;
                                 font-size: 13px;
                             }
                         }
@@ -646,15 +646,15 @@ export component SettingsTab inherits ScrollView {
                         width: 34px;
                         height: 34px;
                         border-radius: 8px;
-                        background: #1e2438;
+                        background: Theme.sidebar_brand_bg;
                         border-width: 1px;
-                        border-color: #2c3550;
+                        border-color: Theme.sidebar_brand_border;
 
                         Image {
                             source: @image-url("../icons/monitor.svg");
                             width: 17px;
                             height: 17px;
-                            colorize: #7082ff;
+                            colorize: Theme.brand_purple;
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
                         }
@@ -664,13 +664,13 @@ export component SettingsTab inherits ScrollView {
                         spacing: 3px;
                         Text {
                             text: "Browser Cookies & Authentication";
-                            color: #ffffff;
+                            color: Theme.text_primary;
                             font-size: 15px;
                             font-weight: 700;
                         }
                         Text {
                             text: "Extract session cookies from your web browser to download private, age-gated, or member-only videos.";
-                            color: #8c93a8;
+                            color: Theme.text_secondary;
                             font-size: 13px;
                         }
                     }
@@ -731,10 +731,10 @@ export component SettingsTab inherits ScrollView {
                 }
 
                 Rectangle {
-                    background: #0f121d;
+                    background: Theme.inner_bg;
                     border-radius: 8px;
                     border-width: 1px;
-                    border-color: #202638;
+                    border-color: Theme.inner_border;
 
                     HorizontalLayout {
                         padding-left: 12px;
@@ -791,15 +791,15 @@ export component SettingsTab inherits ScrollView {
                         width: 34px;
                         height: 34px;
                         border-radius: 8px;
-                        background: #1e2438;
+                        background: Theme.sidebar_brand_bg;
                         border-width: 1px;
-                        border-color: #2c3550;
+                        border-color: Theme.sidebar_brand_border;
 
                         Image {
                             source: @image-url("../icons/music.svg");
                             width: 17px;
                             height: 17px;
-                            colorize: #ec4899;
+                            colorize: Theme.brand_purple;
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
                         }
@@ -809,13 +809,13 @@ export component SettingsTab inherits ScrollView {
                         spacing: 3px;
                         Text {
                             text: "Audio Extraction & Music Defaults";
-                            color: #ffffff;
+                            color: Theme.text_primary;
                             font-size: 15px;
                             font-weight: 700;
                         }
                         Text {
                             text: "Configure preferred audio container, bitrate, and ID3 cover artwork embedding.";
-                            color: #8c93a8;
+                            color: Theme.text_secondary;
                             font-size: 13px;
                         }
                     }
@@ -986,15 +986,15 @@ export component SettingsTab inherits ScrollView {
                         width: 34px;
                         height: 34px;
                         border-radius: 8px;
-                        background: #1e2438;
+                        background: Theme.sidebar_brand_bg;
                         border-width: 1px;
-                        border-color: #2c3550;
+                        border-color: Theme.sidebar_brand_border;
 
                         Image {
                             source: @image-url("../icons/link.svg");
                             width: 17px;
                             height: 17px;
-                            colorize: #7082ff;
+                            colorize: Theme.brand_purple;
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
                         }
@@ -1004,13 +1004,13 @@ export component SettingsTab inherits ScrollView {
                         spacing: 3px;
                         Text {
                             text: "Network & Custom Proxy";
-                            color: #ffffff;
+                            color: Theme.text_primary;
                             font-size: 15px;
                             font-weight: 700;
                         }
                         Text {
                             text: "Route media analysis, scrapers, and downloads through an HTTP, HTTPS, or SOCKS5 proxy.";
-                            color: #8c93a8;
+                            color: Theme.text_secondary;
                             font-size: 13px;
                         }
                     }
@@ -1135,10 +1135,10 @@ export component SettingsTab inherits ScrollView {
 
                 // Proxy status chip
                 if root.proxy_status_message != "": Rectangle {
-                    background: #0f172a;
+                    background: Theme.inner_bg;
                     border-radius: 6px;
                     border-width: 1px;
-                    border-color: #1e293b;
+                    border-color: Theme.inner_border;
                     height: 28px;
 
                     HorizontalLayout {
@@ -1190,15 +1190,15 @@ export component SettingsTab inherits ScrollView {
                             width: 34px;
                             height: 34px;
                             border-radius: 8px;
-                            background: #1e2438;
+                            background: Theme.sidebar_brand_bg;
                             border-width: 1px;
-                            border-color: #2c3550;
+                            border-color: Theme.sidebar_brand_border;
 
                             Image {
                                 source: @image-url("../icons/bell.svg");
                                 width: 17px;
                                 height: 17px;
-                                colorize: #7082ff;
+                                colorize: Theme.brand_purple;
                                 x: (parent.width - self.width) / 2;
                                 y: (parent.height - self.height) / 2;
                             }
@@ -1208,13 +1208,13 @@ export component SettingsTab inherits ScrollView {
                             spacing: 3px;
                             Text {
                                 text: "System Notifications";
-                                color: #ffffff;
+                                color: Theme.text_primary;
                                 font-size: 15px;
                                 font-weight: 700;
                             }
                             Text {
                                 text: "Sends native macOS alerts with audio chime when downloads finish.";
-                                color: #8c93a8;
+                                color: Theme.text_secondary;
                                 font-size: 13px;
                             }
                         }
@@ -1250,15 +1250,15 @@ export component SettingsTab inherits ScrollView {
                         width: 34px;
                         height: 34px;
                         border-radius: 8px;
-                        background: #1e2438;
+                        background: Theme.sidebar_brand_bg;
                         border-width: 1px;
-                        border-color: #2c3550;
+                        border-color: Theme.sidebar_brand_border;
 
                         Image {
                             source: @image-url("../icons/clipboard.svg");
                             width: 17px;
                             height: 17px;
-                            colorize: #7082ff;
+                            colorize: Theme.brand_purple;
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
                         }
@@ -1268,13 +1268,13 @@ export component SettingsTab inherits ScrollView {
                         spacing: 3px;
                         Text {
                             text: "Live Clipboard Link Monitor";
-                            color: #ffffff;
+                            color: Theme.text_primary;
                             font-size: 15px;
                             font-weight: 700;
                         }
                         Text {
                             text: "Detects video and audio stream URLs automatically when copied in your browser.";
-                            color: #8c93a8;
+                            color: Theme.text_secondary;
                             font-size: 13px;
                         }
                     }
@@ -1308,10 +1308,10 @@ export component SettingsTab inherits ScrollView {
                 }
 
                 Rectangle {
-                    background: #0f121d;
+                    background: Theme.inner_bg;
                     border-radius: 8px;
                     border-width: 1px;
-                    border-color: #202638;
+                    border-color: Theme.inner_border;
 
                     HorizontalLayout {
                         padding-left: 12px;
