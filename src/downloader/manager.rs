@@ -578,6 +578,7 @@ impl DownloadManager {
                         }
 
                         info!("Job {} completed successfully with size {} bytes", id, final_size);
+                        let _ = crate::filesystem::organize_subtitles(&out_path).await;
                         let job_title = {
                             let mut queue = manager.queue.lock().await;
                             if let Some(j) = queue.get_job_mut(id) {

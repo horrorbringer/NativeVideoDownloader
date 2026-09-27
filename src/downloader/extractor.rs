@@ -1247,10 +1247,12 @@ where
         let p = parent.join(format!("{}.{}", filename_stem, ext));
         if p.exists() {
             info!("Extractor completed output resolved to: {:?}", p);
+            let _ = crate::filesystem::organize_subtitles(&p).await;
             return Ok(p);
         }
     }
 
+    let _ = crate::filesystem::organize_subtitles(destination_path).await;
     Ok(destination_path.to_path_buf())
 }
 
