@@ -33,14 +33,17 @@ export component DownloadsTab inherits VerticalLayout {
     // Live Bandwidth & Speed Graph Monitor Card
     Rectangle {
         background: Theme.graph_card_bg;
-        border-radius: 10px;
+        border-radius: 12px;
         border-width: 1px;
         border-color: Theme.graph_card_border;
-        height: root.show_speed_graph ? 114px : 42px;
+        height: root.show_speed_graph ? 124px : 44px;
         animate height { duration: 150ms; }
 
         VerticalLayout {
-            padding: 10px;
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 10px;
+            padding-bottom: 10px;
             spacing: 8px;
 
             // Header: Live Speed, Metrics, and Toggle
@@ -58,20 +61,32 @@ export component DownloadsTab inherits VerticalLayout {
 
                         VerticalLayout {
                             alignment: center;
+
+                            // Radar pulse live badge
                             Rectangle {
-                                width: 8px;
-                                height: 8px;
-                                border-radius: 4px;
-                                background: root.is_downloading_active ? #38bdf8 : #475569;
+                                width: 14px;
+                                height: 14px;
+                                border-radius: 7px;
+                                background: root.is_downloading_active ? #38bdf82a : transparent;
                                 animate background { duration: 200ms; }
+
+                                Rectangle {
+                                    width: 8px;
+                                    height: 8px;
+                                    border-radius: 4px;
+                                    background: root.is_downloading_active ? #38bdf8 : #475569;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    animate background { duration: 200ms; }
+                                }
                             }
                         }
 
                         Text {
                             text: root.current_total_speed_text;
                             color: root.is_downloading_active ? #38bdf8 : #94a3b8;
-                            font-size: 15px;
-                            font-weight: 700;
+                            font-size: 16px;
+                            font-weight: 800;
                             vertical-alignment: center;
                         }
                     }
@@ -79,16 +94,29 @@ export component DownloadsTab inherits VerticalLayout {
                     // Peak speed pill
                     Rectangle {
                         background: Theme.sidebar_status_bg;
-                        border-radius: 4px;
-                        height: 22px;
+                        border-radius: 5px;
+                        border-width: 1px;
+                        border-color: Theme.sidebar_status_border;
+                        height: 24px;
+
                         HorizontalLayout {
-                            padding-left: 7px;
-                            padding-right: 7px;
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 5px;
                             alignment: center;
+
+                            Image {
+                                source: @image-url("../icons/bolt.svg");
+                                width: 11px;
+                                height: 11px;
+                                colorize: #f59e0b;
+                                vertical-alignment: center;
+                            }
+
                             Text {
                                 text: "Peak: " + root.peak_speed_text;
                                 color: Theme.text_secondary;
-                                font-size: 10px;
+                                font-size: 11px;
                                 font-weight: 600;
                                 vertical-alignment: center;
                             }
@@ -98,16 +126,29 @@ export component DownloadsTab inherits VerticalLayout {
                     // Session total transferred pill
                     Rectangle {
                         background: Theme.sidebar_status_bg;
-                        border-radius: 4px;
-                        height: 22px;
+                        border-radius: 5px;
+                        border-width: 1px;
+                        border-color: Theme.sidebar_status_border;
+                        height: 24px;
+
                         HorizontalLayout {
-                            padding-left: 7px;
-                            padding-right: 7px;
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 5px;
                             alignment: center;
+
+                            Image {
+                                source: @image-url("../icons/download.svg");
+                                width: 11px;
+                                height: 11px;
+                                colorize: #a855f7;
+                                vertical-alignment: center;
+                            }
+
                             Text {
                                 text: "Session: " + root.session_downloaded_text;
                                 color: Theme.text_secondary;
-                                font-size: 10px;
+                                font-size: 11px;
                                 font-weight: 600;
                                 vertical-alignment: center;
                             }
@@ -120,7 +161,7 @@ export component DownloadsTab inherits VerticalLayout {
                     text: root.show_speed_graph ? "Hide Graph" : "Show Graph";
                     icon: root.show_speed_graph ? @image-url("../icons/x.svg") : @image-url("../icons/bolt.svg");
                     has_icon: true;
-                    height: 24px;
+                    height: 26px;
                     clicked => {
                         root.show_speed_graph = !root.show_speed_graph;
                     }
@@ -133,15 +174,31 @@ export component DownloadsTab inherits VerticalLayout {
 
                 Rectangle {
                     background: Theme.graph_bg;
-                    border-radius: 6px;
+                    border-radius: 8px;
                     border-width: 1px;
                     border-color: Theme.graph_border;
-                    height: 48px;
+                    height: 54px;
                     clip: true;
 
+                    // Subtle background level guide lines
+                    Rectangle {
+                        y: parent.height * 0.28;
+                        x: 0;
+                        width: parent.width;
+                        height: 1px;
+                        background: Theme.is_dark ? #ffffff08 : #0000000a;
+                    }
+                    Rectangle {
+                        y: parent.height * 0.62;
+                        x: 0;
+                        width: parent.width;
+                        height: 1px;
+                        background: Theme.is_dark ? #ffffff08 : #0000000a;
+                    }
+
                     HorizontalLayout {
-                        padding-left: 6px;
-                        padding-right: 6px;
+                        padding-left: 8px;
+                        padding-right: 8px;
                         padding-top: 4px;
                         padding-bottom: 4px;
                         spacing: 2px;
@@ -151,13 +208,28 @@ export component DownloadsTab inherits VerticalLayout {
                             alignment: end;
                             Rectangle {
                                 horizontal-stretch: 1;
-                                height: Math.max(3px, sample.ratio * 38px);
-                                border-radius: 2px;
-                                background: sample.ratio > 0.6 ? #60a5fa :
-                                            sample.ratio > 0.2 ? #3b82f6 :
-                                            sample.ratio > 0.01 ? #1d4ed8 : #1a2234;
+                                height: Math.max(3px, sample.ratio * 44px);
+                                border-top-left-radius: 2px;
+                                border-top-right-radius: 2px;
+                                border-bottom-left-radius: 1px;
+                                border-bottom-right-radius: 1px;
+                                background: sample.ratio > 0.7 ? (Theme.is_dark ? #38bdf8 : #0284c7) :
+                                            sample.ratio > 0.4 ? (Theme.is_dark ? #60a5fa : #2563eb) :
+                                            sample.ratio > 0.15 ? (Theme.is_dark ? #3b82f6 : #3b82f6) :
+                                            sample.ratio > 0.01 ? (Theme.is_dark ? #2563eb : #60a5fa) :
+                                            (Theme.is_dark ? #1a2032 : #e2e8f0);
                                 animate height { duration: 150ms; }
                                 animate background { duration: 150ms; }
+
+                                // Glowing active cap
+                                if sample.ratio > 0.05: Rectangle {
+                                    y: 0;
+                                    height: 2px;
+                                    horizontal-stretch: 1;
+                                    border-top-left-radius: 2px;
+                                    border-top-right-radius: 2px;
+                                    background: #ffffff99;
+                                }
                             }
                         }
                     }
@@ -166,31 +238,31 @@ export component DownloadsTab inherits VerticalLayout {
                 // Timeline markers
                 HorizontalLayout {
                     alignment: space-between;
-                    padding-left: 8px;
-                    padding-right: 8px;
+                    padding-left: 10px;
+                    padding-right: 10px;
 
                     Text {
                         text: "-30s";
                         color: Theme.text_muted;
-                        font-size: 9px;
+                        font-size: 10px;
                         font-weight: 600;
                     }
                     Text {
                         text: "-20s";
                         color: Theme.text_muted;
-                        font-size: 9px;
+                        font-size: 10px;
                         font-weight: 600;
                     }
                     Text {
                         text: "-10s";
                         color: Theme.text_muted;
-                        font-size: 9px;
+                        font-size: 10px;
                         font-weight: 600;
                     }
                     Text {
                         text: "Now";
-                        color: root.is_downloading_active ? (Theme.is_dark ? #38bdf8 : #0284c7) : Theme.text_muted;
-                        font-size: 9px;
+                        color: root.is_downloading_active ? #38bdf8 : Theme.text_muted;
+                        font-size: 10px;
                         font-weight: 700;
                     }
                 }
@@ -376,10 +448,13 @@ export component DownloadsTab inherits VerticalLayout {
         vertical-stretch: 1;
 
         VerticalLayout {
+            alignment: start;
             spacing: 10px;
-            padding-bottom: 8px;
+            padding-bottom: 12px;
 
             for item in root.download_items: Rectangle {
+                min-height: 104px;
+                max-height: 126px;
                 background: touch.has-hover ? Theme.card_hover : Theme.card_bg;
                 border-radius: 12px;
                 border-width: 1px;
@@ -390,56 +465,108 @@ export component DownloadsTab inherits VerticalLayout {
                 touch := TouchArea { }
 
                 VerticalLayout {
-                    padding: 16px;
-                    spacing: 12px;
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-top: 12px;
+                    padding-bottom: 12px;
+                    spacing: 8px;
+                    alignment: space-between;
 
+                    // Row 1: Header (Status Icon + Title + Status Pill | Action Buttons)
                     HorizontalLayout {
                         alignment: space-between;
+                        spacing: 12px;
 
-                        VerticalLayout {
-                            spacing: 6px;
-                            Text {
-                                text: item.title;
-                                color: Theme.text_primary;
-                                font-size: 15px;
-                                font-weight: 600;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            horizontal-stretch: 1;
+                            alignment: start;
+
+                            // Media & Status Icon Badge
+                            Rectangle {
+                                width: 32px;
+                                height: 32px;
+                                border-radius: 8px;
+                                background: item.status == "Completed" ? (Theme.is_dark ? #064e3b : #dcfce7) :
+                                            item.status == "Downloading" ? (Theme.is_dark ? #1e293b : #e0f2fe) :
+                                            item.status == "Paused" ? (Theme.is_dark ? #451a03 : #fef3c7) :
+                                            item.status == "Failed" ? (Theme.is_dark ? #450a0a : #fee2e2) :
+                                            (Theme.is_dark ? #1e1b4b : #f3e8ff);
+                                border-width: 1px;
+                                border-color: item.status == "Completed" ? #10b981 :
+                                              item.status == "Downloading" ? #3b82f6 :
+                                              item.status == "Paused" ? #f59e0b :
+                                              item.status == "Failed" ? #ef4444 : #8b5cf6;
+
+                                Image {
+                                    source: item.status == "Completed" ? @image-url("../icons/check.svg") :
+                                            item.status == "Downloading" ? @image-url("../icons/download.svg") :
+                                            item.status == "Paused" ? @image-url("../icons/pause.svg") :
+                                            item.status == "Failed" ? @image-url("../icons/x.svg") :
+                                            @image-url("../icons/history.svg");
+                                    width: 15px;
+                                    height: 15px;
+                                    colorize: item.status == "Completed" ? #10b981 :
+                                              item.status == "Downloading" ? #38bdf8 :
+                                              item.status == "Paused" ? #f59e0b :
+                                              item.status == "Failed" ? #ef4444 : #a855f7;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                }
                             }
 
-                            HorizontalLayout {
-                                alignment: start;
-                                Rectangle {
-                                    background: item.status == "Completed" ? #0e291b :
-                                                item.status == "Paused" ? #331e08 :
-                                                item.status == "Downloading" ? #0f2142 :
-                                                item.status == "Queued" ? #25103a : #331317;
-                                    border-radius: 4px;
-                                    border-width: 1px;
-                                    border-color: item.status == "Completed" ? #166534 :
-                                                  item.status == "Paused" ? #b45309 :
-                                                  item.status == "Downloading" ? #2563eb :
-                                                  item.status == "Queued" ? #7e22ce : #991b1b;
-                                    height: 22px;
+                            VerticalLayout {
+                                spacing: 3px;
+                                horizontal-stretch: 1;
+                                alignment: center;
 
-                                    HorizontalLayout {
-                                        padding-left: 8px;
-                                        padding-right: 8px;
-                                        alignment: center;
+                                Text {
+                                    text: item.title;
+                                    color: Theme.text_primary;
+                                    font-size: 14px;
+                                    font-weight: 700;
+                                    overflow: elide;
+                                }
 
-                                        Text {
-                                            text: item.status;
-                                            color: item.status == "Completed" ? #4ade80 :
-                                                   item.status == "Paused" ? #fcd34d :
-                                                   item.status == "Downloading" ? #60a5fa :
-                                                   item.status == "Queued" ? #c084fc : #f87171;
-                                            font-size: 11px;
-                                            font-weight: 700;
-                                            vertical-alignment: center;
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    alignment: start;
+
+                                    Rectangle {
+                                        background: item.status == "Completed" ? #0e291b :
+                                                    item.status == "Paused" ? #331e08 :
+                                                    item.status == "Downloading" ? #0f2142 :
+                                                    item.status == "Queued" ? #25103a : #331317;
+                                        border-radius: 4px;
+                                        border-width: 1px;
+                                        border-color: item.status == "Completed" ? #166534 :
+                                                      item.status == "Paused" ? #b45309 :
+                                                      item.status == "Downloading" ? #2563eb :
+                                                      item.status == "Queued" ? #7e22ce : #991b1b;
+                                        height: 18px;
+
+                                        HorizontalLayout {
+                                            padding-left: 6px;
+                                            padding-right: 6px;
+                                            alignment: center;
+
+                                            Text {
+                                                text: item.status;
+                                                color: item.status == "Completed" ? #4ade80 :
+                                                       item.status == "Paused" ? #fcd34d :
+                                                       item.status == "Downloading" ? #60a5fa :
+                                                       item.status == "Queued" ? #c084fc : #f87171;
+                                                font-size: 10px;
+                                                font-weight: 700;
+                                                vertical-alignment: center;
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
 
+                        // Right: Action Buttons
                         HorizontalLayout {
                             spacing: 6px;
                             alignment: end;
@@ -448,7 +575,7 @@ export component DownloadsTab inherits VerticalLayout {
                                 text: "Play";
                                 icon: @image-url("../icons/play.svg");
                                 has_icon: true;
-                                height: 30px;
+                                height: 28px;
                                 clicked => { root.open_download_file(item.output_path); }
                             }
 
@@ -456,7 +583,7 @@ export component DownloadsTab inherits VerticalLayout {
                                 text: "Finder";
                                 icon: @image-url("../icons/folder.svg");
                                 has_icon: true;
-                                height: 30px;
+                                height: 28px;
                                 clicked => { root.open_download_folder(item.output_path); }
                             }
 
@@ -464,7 +591,7 @@ export component DownloadsTab inherits VerticalLayout {
                                 text: "Pause";
                                 icon: @image-url("../icons/pause.svg");
                                 has_icon: true;
-                                height: 30px;
+                                height: 28px;
                                 clicked => { root.pause_download(item.id); }
                             }
 
@@ -472,7 +599,7 @@ export component DownloadsTab inherits VerticalLayout {
                                 text: "Resume";
                                 icon: @image-url("../icons/play.svg");
                                 has_icon: true;
-                                height: 30px;
+                                height: 28px;
                                 clicked => { root.resume_download(item.id); }
                             }
 
@@ -481,18 +608,20 @@ export component DownloadsTab inherits VerticalLayout {
                                 icon: @image-url("../icons/x.svg");
                                 has_icon: true;
                                 danger: true;
-                                height: 30px;
+                                height: 28px;
                                 clicked => { root.cancel_download(item.id); }
                             }
                         }
                     }
 
+                    // Row 2: Smooth High-Contrast Progress Bar
                     ProgressBar {
                         progress: item.progress;
                         status: item.status;
-                        height: 8px;
+                        height: 7px;
                     }
 
+                    // Row 3: Progress text & Speed / ETA Telemetry
                     HorizontalLayout {
                         alignment: space-between;
 
@@ -500,12 +629,59 @@ export component DownloadsTab inherits VerticalLayout {
                             text: item.size_text;
                             color: Theme.text_secondary;
                             font-size: 12px;
+                            font-weight: 500;
+                            vertical-alignment: center;
                         }
 
-                        Text {
-                            text: "Speed: " + item.speed_text + "  •  ETA: " + item.eta_text;
-                            color: Theme.text_secondary;
-                            font-size: 12px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: end;
+
+                            if item.status == "Downloading": Rectangle {
+                                background: Theme.is_dark ? #0c2038 : #e0f2fe;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #1e3a5f : #bae6fd;
+                                height: 20px;
+
+                                HorizontalLayout {
+                                    padding-left: 6px;
+                                    padding-right: 6px;
+                                    spacing: 4px;
+                                    alignment: center;
+
+                                    Image {
+                                        source: @image-url("../icons/download.svg");
+                                        width: 10px;
+                                        height: 10px;
+                                        colorize: #38bdf8;
+                                        vertical-alignment: center;
+                                    }
+
+                                    Text {
+                                        text: item.speed_text;
+                                        color: #38bdf8;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            if item.status == "Downloading": Text {
+                                text: "ETA: " + item.eta_text;
+                                color: Theme.text_secondary;
+                                font-size: 12px;
+                                font-weight: 500;
+                                vertical-alignment: center;
+                            }
+
+                            if item.status != "Downloading": Text {
+                                text: item.status == "Completed" ? "Completed" : (item.status == "Paused" ? "Paused" : item.status);
+                                color: Theme.text_muted;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                            }
                         }
                     }
                 }
