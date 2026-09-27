@@ -1873,7 +1873,10 @@ mod tests {
     fn test_clean_extractor_error() {
         let iq_err = "[iq.com] z1b52xonyk: No video formats found!; please report this issue on https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using yt-dlp -U";
         let cleaned = clean_extractor_error(iq_err);
-        assert!(cleaned.contains("iQIYI stream is DRM-protected"));
+        assert!(cleaned.contains("limits simultaneous VIP streams"));
+
+        let iq_vip_err = "[iq.com] z1b52xonyk: This video requires VIP membership";
+        assert!(clean_extractor_error(iq_vip_err).contains("DRM-protected or requires VIP login"));
 
         let drm_err = "ERROR: This video contains DRM protection (Widevine)";
         assert!(clean_extractor_error(drm_err).contains("DRM-protected"));
@@ -1937,11 +1940,14 @@ pub fn clean_extractor_error(raw_err: &str) -> String {
     if lower.contains("404") || lower.contains("not found") {
         return "Media stream not found (HTTP 404). The stream file was moved or removed.".to_string();
     }
-    if lower.contains("iq.com") || lower.contains("iqiyi") {
-        return "iQIYI stream is DRM-protected or requires VIP login. DRM-encrypted content cannot be downloaded.".to_string();
-    }
     if lower.contains("phantomjs") {
-        return "Stream requires an external JavaScript execution engine or is DRM-encrypted.".to_string();
+        return "Stream requires PhantomJS JavaScript engine for signature decryption.".to_string();
+    }
+    if (lower.contains("iq.com") || lower.contains("iqiyi")) && lower.contains("no video formats found") {
+        return "No video formats found from iQIYI. iQIYI limits simultaneous VIP streams: close active playback tabs in Chrome, wait 2-3 minutes, and retry.".to_string();
+    }
+    if (lower.contains("iq.com") || lower.contains("iqiyi")) && (lower.contains("drm") || lower.contains("vip")) {
+        return "iQIYI stream is DRM-protected or requires VIP login. DRM-encrypted content cannot be downloaded.".to_string();
     }
     if lower.contains("this video is only available for registered users")
         || lower.contains("sign in to confirm your age")
