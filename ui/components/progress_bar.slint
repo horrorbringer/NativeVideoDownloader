@@ -1,0 +1,31 @@
+import { Theme } from "../theme.slint";
+
+export component ProgressBar inherits Rectangle {
+    in property <float> progress: 0.0; // 0.0 to 1.0
+    in property <string> status: "Downloading";
+
+    height: 8px;
+    border-radius: 4px;
+    background: Theme.is_dark ? #181d2e : #e2e8f0;
+    border-width: 1px;
+    border-color: Theme.is_dark ? #242c44 : #cbd5e1;
+    clip: true;
+
+    // Inner progress fill bar
+    Rectangle {
+        x: 0;
+        y: 0;
+        height: parent.height;
+        width: root.progress >= 1.0 ? parent.width :
+               root.progress <= 0.0 ? (root.status == "Downloading" ? 6px : 0px) :
+               Math.max(6px, Math.min(parent.width, parent.width * root.progress));
+        border-radius: 3px;
+        background: root.status == "Completed" ? Theme.success_text :
+                    root.status == "Paused" ? Theme.warning_text :
+                    root.status == "Failed" ? Theme.error_text :
+                    Theme.brand_purple;
+
+        animate width { duration: 180ms; easing: ease-out; }
+        animate background { duration: 180ms; }
+    }
+}
