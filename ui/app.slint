@@ -102,6 +102,7 @@ export component AppWindow inherits Window {
     in-out property <bool> clipboard_monitor_enabled: true;
     in-out property <string> filename_template: "{title}.{ext}";
     in-out property <int> selected_asset_org_mode: 0;
+    in-out property <int> selected_sub_lang_index: 0;
     in-out property <int> selected_concurrent_fragments: 4;
 
     // Network & Custom Proxy properties
@@ -128,8 +129,9 @@ export component AppWindow inherits Window {
     callback set_embed_audio_metadata(bool);
     callback set_proxy(bool, string);
     callback test_proxy(string);
-    callback start_download(int, bool, bool, int, int, bool);
-    callback start_batch_download(string, int, bool, int, int, bool);
+    callback set_sub_lang(int);
+    callback start_download(int, bool, bool, int, int, bool, int);
+    callback start_batch_download(string, int, bool, int, int, bool, int);
     callback pause_download(string);
     callback resume_download(string);
     callback cancel_download(string);
@@ -466,6 +468,7 @@ export component AppWindow inherits Window {
                 embed_audio_metadata <=> root.embed_audio_metadata;
                 clipboard_detected_url_visible <=> root.clipboard_detected_url_visible;
                 clipboard_detected_url <=> root.clipboard_detected_url;
+                selected_sub_lang_index <=> root.selected_sub_lang_index;
 
                 analyze_url(url) => { root.analyze_url(url); }
                 clear_analysis() => { root.clear_analysis(); }
@@ -477,8 +480,8 @@ export component AppWindow inherits Window {
                 import_links_file() => { root.import_links_file(); }
                 analyze_clipboard_detected() => { root.analyze_clipboard_detected(); }
                 dismiss_clipboard_detected() => { root.dismiss_clipboard_detected(); }
-                start_download(fmt, subs, thumb, afmt, abr, meta) => { root.start_download(fmt, subs, thumb, afmt, abr, meta); }
-                start_batch_download(text, fmt, thumb, afmt, abr, meta) => { root.start_batch_download(text, fmt, thumb, afmt, abr, meta); }
+                start_download(fmt, subs, thumb, afmt, abr, meta, sub_lang) => { root.start_download(fmt, subs, thumb, afmt, abr, meta, sub_lang); }
+                start_batch_download(text, fmt, thumb, afmt, abr, meta, sub_lang) => { root.start_batch_download(text, fmt, thumb, afmt, abr, meta, sub_lang); }
                 dismiss_error() => { root.dismiss_error(); }
                 open_logs() => { root.active_tab = 3; }
             }
@@ -551,6 +554,7 @@ export component AppWindow inherits Window {
                 default_embed_audio_metadata <=> root.embed_audio_metadata;
                 filename_template <=> root.filename_template;
                 selected_asset_org_mode <=> root.selected_asset_org_mode;
+                selected_sub_lang_index <=> root.selected_sub_lang_index;
                 selected_concurrent_fragments <=> root.selected_concurrent_fragments;
 
                 browse_download_dir() => { root.browse_download_dir(); }
@@ -558,6 +562,7 @@ export component AppWindow inherits Window {
                 reset_download_dir() => { root.reset_download_dir(); }
                 set_filename_template(tpl) => { root.set_filename_template(tpl); }
                 set_asset_organization_mode(m) => { root.set_asset_organization_mode(m); }
+                set_sub_lang(idx) => { root.set_sub_lang(idx); }
                 set_speed_limit(idx) => { root.set_speed_limit(idx); }
                 set_max_concurrency(c) => { root.set_max_concurrency(c); }
                 set_cookies_browser(b) => { root.set_cookies_browser(b); }

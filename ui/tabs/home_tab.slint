@@ -25,6 +25,7 @@ export component HomeTab inherits ScrollView {
     in-out property <bool> has_subtitles: false;
     in-out property <string> subtitles_summary: "";
     in-out property <bool> download_subtitles: true;
+    in-out property <int> selected_sub_lang_index: 0;
     in-out property <bool> download_thumbnail: true;
     in-out property <bool> has_thumbnail: false;
     in-out property <image> thumbnail_image;
@@ -58,8 +59,8 @@ export component HomeTab inherits ScrollView {
     callback import_links_file();
     callback analyze_clipboard_detected();
     callback dismiss_clipboard_detected();
-    callback start_download(int, bool, bool, int, int, bool);
-    callback start_batch_download(string, int, bool, int, int, bool);
+    callback start_download(int, bool, bool, int, int, bool, int);
+    callback start_batch_download(string, int, bool, int, int, bool, int);
     callback dismiss_error();
     callback open_logs();
 
@@ -1147,6 +1148,78 @@ export component HomeTab inherits ScrollView {
                     }
                 }
 
+                // Subtitle Language Selection
+                if root.download_subtitles: VerticalLayout {
+                    spacing: 6px;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        Text {
+                            text: "Preferred Subtitle Language (Embed / Download):";
+                            color: Theme.text_secondary;
+                            font-size: 11px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+
+                        if root.has_subtitles: Text {
+                            text: "(" + root.subtitles_summary + ")";
+                            color: #64748b;
+                            font-size: 10px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+
+                        IconChip {
+                            text: "All Languages";
+                            selected: root.selected_sub_lang_index == 0;
+                            clicked => { root.selected_sub_lang_index = 0; }
+                        }
+                        IconChip {
+                            text: "English (en)";
+                            selected: root.selected_sub_lang_index == 1;
+                            clicked => { root.selected_sub_lang_index = 1; }
+                        }
+                        IconChip {
+                            text: "Chinese (zh)";
+                            selected: root.selected_sub_lang_index == 2;
+                            clicked => { root.selected_sub_lang_index = 2; }
+                        }
+                        IconChip {
+                            text: "Spanish (es)";
+                            selected: root.selected_sub_lang_index == 3;
+                            clicked => { root.selected_sub_lang_index = 3; }
+                        }
+                        IconChip {
+                            text: "Japanese (ja)";
+                            selected: root.selected_sub_lang_index == 4;
+                            clicked => { root.selected_sub_lang_index = 4; }
+                        }
+                        IconChip {
+                            text: "Korean (ko)";
+                            selected: root.selected_sub_lang_index == 5;
+                            clicked => { root.selected_sub_lang_index = 5; }
+                        }
+                        IconChip {
+                            text: "French (fr)";
+                            selected: root.selected_sub_lang_index == 6;
+                            clicked => { root.selected_sub_lang_index = 6; }
+                        }
+                        IconChip {
+                            text: "German (de)";
+                            selected: root.selected_sub_lang_index == 7;
+                            clicked => { root.selected_sub_lang_index = 7; }
+                        }
+                    }
+                }
+
                 HorizontalLayout {
                     alignment: end;
                     spacing: 10px;
@@ -1179,6 +1252,7 @@ export component HomeTab inherits ScrollView {
                                 root.selected_audio_format_index,
                                 root.selected_audio_bitrate_index,
                                 root.embed_audio_metadata,
+                                root.selected_sub_lang_index,
                             );
                         }
                     }
@@ -1425,6 +1499,7 @@ export component HomeTab inherits ScrollView {
                                 root.selected_audio_format_index,
                                 root.selected_audio_bitrate_index,
                                 root.embed_audio_metadata,
+                                root.selected_sub_lang_index,
                             );
                         }
                     }

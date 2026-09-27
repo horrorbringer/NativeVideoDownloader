@@ -1340,6 +1340,7 @@ pub async fn download_stream<F>(
     is_audio_only: bool,
     quality: Option<&str>,
     download_subtitles: bool,
+    subtitle_language: Option<&str>,
     download_thumbnail: bool,
     audio_format: Option<&str>,
     audio_bitrate: Option<&str>,
@@ -1424,10 +1425,11 @@ where
         }
     } else {
         if download_subtitles {
+            let sub_langs = subtitle_language.unwrap_or("all,-live_chat");
             cmd.arg("--write-subs")
                 .arg("--write-auto-subs")
                 .arg("--sub-langs")
-                .arg("all,-live_chat")
+                .arg(sub_langs)
                 .arg("--embed-subs");
         }
         if download_thumbnail {

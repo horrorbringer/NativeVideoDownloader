@@ -567,6 +567,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.set_selected_concurrent_fragments(saved_concurrent_fragments as i32);
     download_manager.set_concurrent_fragments(saved_concurrent_fragments).await;
 
+    // Restore saved preferred subtitle language preference (default: 0 / All Languages)
+    let saved_sub_lang: i32 = db
+        .get_setting("preferred_sub_lang")
+        .await
+        .unwrap_or(None)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    main_window.set_selected_sub_lang_index(saved_sub_lang);
+
     // Restore saved theme preference (defaults to true / dark mode)
     let saved_dark_mode: bool = db
         .get_setting("dark_mode")
@@ -1194,6 +1203,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     });
 
+    // Callback: Set preferred subtitle language & persist
+    let db_sub_lang = db.clone();
+    let weak_sub_lang = main_window.as_weak();
+    main_window.on_set_sub_lang(move |idx| {
+        let db = db_sub_lang.clone();
+        let weak = weak_sub_lang.clone();
+        tokio::spawn(async move {
+            let _ = db.set_setting("preferred_sub_lang", &idx.to_string()).await;
+            info!("Saved preferred subtitle language setting index: {}", idx);
+            let lang_label = match idx {
+                1 => "English (en)",
+                2 => "Chinese (zh)",
+                3 => "Spanish (es)",
+                4 => "Japanese (ja)",
+                5 => "Korean (ko)",
+                6 => "French (fr)",
+                7 => "German (de)",
+                _ => "All Languages",
+            };
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_selected_sub_lang_index(idx);
+                win.set_status_message(format!("Default subtitle language set to: {}", lang_label).into());
+            });
+        });
+    });
+
     // Callback: Toggle Theme (Dark / Light) & persist
     let db_theme = db.clone();
     let weak_theme = main_window.as_weak();
@@ -1383,20 +1418,35 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
     }
 }
 
+/// Helper: Map subtitle language index to yt-dlp --sub-langs filter pattern
+fn map_subtitle_lang_index(idx: i32) -> &'static str {
+    match idx {
+        1 => "en.*,en",
+        2 => "zh.*,zh-Hans,zh-Hant",
+        3 => "es.*,es",
+        4 => "ja.*,ja",
+        5 => "ko.*,ko",
+        6 => "fr.*,fr",
+        7 => "de.*,de",
+        _ => "all,-live_chat",
+    }
+}
+
     // Callback: Start Download (add to queue)
     let window_weak_dl = main_window.as_weak();
     let meta_clone_dl = current_metadata.clone();
     let mgr_clone_dl = download_manager.clone();
     let current_dir_dl = current_download_dir.clone();
 
-    main_window.on_start_download(move |format_idx, download_subs, download_thumb, audio_fmt_idx, audio_br_idx, embed_meta| {
+    main_window.on_start_download(move |format_idx, download_subs, download_thumb, audio_fmt_idx, audio_br_idx, embed_meta, sub_lang_idx| {
         let (is_audio_only, quality) = map_format_index(format_idx);
         let audio_format = if is_audio_only { Some(map_audio_format(audio_fmt_idx).to_string()) } else { None };
         let audio_bitrate = if is_audio_only { Some(map_audio_bitrate(audio_br_idx).to_string()) } else { None };
+        let sub_lang = if download_subs { Some(map_subtitle_lang_index(sub_lang_idx).to_string()) } else { None };
 
         info!(
-            "User triggered 'Start Download' with format_idx: {} (audio: {}, format: {:?}, bitrate: {:?}, embed_meta: {}, subs: {}, thumb: {})",
-            format_idx, is_audio_only, audio_format, audio_bitrate, embed_meta, download_subs, download_thumb
+            "User triggered 'Start Download' with format_idx: {} (audio: {}, format: {:?}, bitrate: {:?}, embed_meta: {}, subs: {}, sub_lang: {:?}, thumb: {})",
+            format_idx, is_audio_only, audio_format, audio_bitrate, embed_meta, download_subs, sub_lang, download_thumb
         );
 
         let selected_indices: Option<HashSet<usize>> = window_weak_dl.upgrade().map(|win| {
@@ -1457,6 +1507,7 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
                             is_audio_only,
                             quality.clone(),
                             download_subs,
+                            sub_lang.clone(),
                             download_thumb,
                             metadata.thumbnail_url.clone(),
                             audio_fmt_clone.clone(),
@@ -1490,6 +1541,7 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
                     is_audio_only,
                     quality,
                     download_subs,
+                    sub_lang,
                     download_thumb,
                     metadata.thumbnail_url.clone(),
                     audio_fmt_clone,
@@ -1524,11 +1576,12 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
     let mgr_clone_batch = download_manager.clone();
     let current_dir_batch = current_download_dir.clone();
 
-    main_window.on_start_batch_download(move |raw_text, format_idx, download_thumb, audio_fmt_idx, audio_br_idx, embed_meta| {
+    main_window.on_start_batch_download(move |raw_text, format_idx, download_thumb, audio_fmt_idx, audio_br_idx, embed_meta, sub_lang_idx| {
         let text_val = raw_text.to_string();
         let (is_audio_only, quality) = map_format_index(format_idx);
         let audio_format = if is_audio_only { Some(map_audio_format(audio_fmt_idx).to_string()) } else { None };
         let audio_bitrate = if is_audio_only { Some(map_audio_bitrate(audio_br_idx).to_string()) } else { None };
+        let sub_lang = Some(map_subtitle_lang_index(sub_lang_idx).to_string());
         let weak = window_weak_batch.clone();
         let mgr = mgr_clone_batch.clone();
         let dir_lock = current_dir_batch.clone();
@@ -1573,6 +1626,7 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
                         is_audio_only,
                         quality.clone(),
                         true,
+                        sub_lang.clone(),
                         download_thumb,
                         None,
                         audio_format.clone(),
@@ -1762,6 +1816,7 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
                     false,
                     None,
                     true,
+                    None,
                     true,
                     None,
                     None,
