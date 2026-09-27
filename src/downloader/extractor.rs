@@ -960,6 +960,9 @@ pub async fn download_stream<F>(
     is_audio_only: bool,
     quality: Option<&str>,
     download_subtitles: bool,
+    audio_format: Option<&str>,
+    audio_bitrate: Option<&str>,
+    embed_artwork: bool,
     speed_limit: Option<&str>,
     cookies_browser: Option<&str>,
     cancel_token: CancellationToken,
@@ -981,7 +984,7 @@ where
 
     let filename_stem = match raw_name.rsplit_once('.') {
         Some((stem, ext))
-            if ["mp4", "webm", "mkv", "avi", "mov", "m4a", "mp3", "part"]
+            if ["mp4", "webm", "mkv", "avi", "mov", "m4a", "mp3", "part", "flac", "wav", "opus", "aac"]
                 .contains(&ext.to_lowercase().as_str()) =>
         {
             stem
@@ -1010,7 +1013,19 @@ where
     }
 
     if is_audio_only {
-        cmd.arg("-x").arg("--audio-format").arg("mp3");
+        cmd.arg("-x");
+        let fmt = audio_format.unwrap_or("mp3");
+        cmd.arg("--audio-format").arg(fmt);
+
+        if let Some(br) = audio_bitrate {
+            if !br.is_empty() && fmt != "flac" && fmt != "wav" {
+                cmd.arg("--audio-quality").arg(br);
+            }
+        }
+
+        if embed_artwork {
+            cmd.arg("--embed-thumbnail").arg("--embed-metadata");
+        }
     } else {
         if download_subtitles {
             cmd.arg("--write-subs")

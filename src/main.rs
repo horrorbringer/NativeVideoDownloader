@@ -771,8 +771,29 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
         1 => (false, Some("1080p".to_string())),
         2 => (false, Some("720p".to_string())),
         3 => (false, Some("480p".to_string())),
-        4 => (true, None), // Audio Only (MP3)
+        4 => (true, None), // Audio Only
         _ => (false, None), // Best quality video
+    }
+}
+
+/// Helper: Map audio format index to container name
+fn map_audio_format(idx: i32) -> &'static str {
+    match idx {
+        1 => "m4a",
+        2 => "flac",
+        3 => "wav",
+        4 => "opus",
+        _ => "mp3",
+    }
+}
+
+/// Helper: Map audio bitrate index to bitrate value
+fn map_audio_bitrate(idx: i32) -> &'static str {
+    match idx {
+        1 => "256K",
+        2 => "192K",
+        3 => "128K",
+        _ => "320K",
     }
 }
 
@@ -782,11 +803,14 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
     let mgr_clone_dl = download_manager.clone();
     let current_dir_dl = current_download_dir.clone();
 
-    main_window.on_start_download(move |format_idx, download_subs| {
+    main_window.on_start_download(move |format_idx, download_subs, audio_fmt_idx, audio_br_idx, embed_meta| {
         let (is_audio_only, quality) = map_format_index(format_idx);
+        let audio_format = if is_audio_only { Some(map_audio_format(audio_fmt_idx).to_string()) } else { None };
+        let audio_bitrate = if is_audio_only { Some(map_audio_bitrate(audio_br_idx).to_string()) } else { None };
+
         info!(
-            "User triggered 'Start Download' with format_idx: {} (audio_only: {}, quality: {:?}, subs: {})",
-            format_idx, is_audio_only, quality, download_subs
+            "User triggered 'Start Download' with format_idx: {} (audio: {}, format: {:?}, bitrate: {:?}, embed_meta: {}, subs: {})",
+            format_idx, is_audio_only, audio_format, audio_bitrate, embed_meta, download_subs
         );
 
         let selected_indices: Option<HashSet<usize>> = window_weak_dl.upgrade().map(|win| {
@@ -802,6 +826,8 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
         let meta_arc = meta_clone_dl.clone();
         let mgr = mgr_clone_dl.clone();
         let dir_lock = current_dir_dl.clone();
+        let audio_fmt_clone = audio_format.clone();
+        let audio_br_clone = audio_bitrate.clone();
 
         tokio::spawn(async move {
             let maybe_meta = meta_arc.lock().await.clone();
@@ -838,6 +864,9 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
                             is_audio_only,
                             quality.clone(),
                             download_subs,
+                            audio_fmt_clone.clone(),
+                            audio_br_clone.clone(),
+                            embed_meta,
                         )
                         .await
                     {
@@ -864,6 +893,9 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
                     is_audio_only,
                     quality,
                     download_subs,
+                    audio_fmt_clone,
+                    audio_br_clone,
+                    embed_meta,
                 )
                 .await
             {
@@ -893,9 +925,11 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
     let mgr_clone_batch = download_manager.clone();
     let current_dir_batch = current_download_dir.clone();
 
-    main_window.on_start_batch_download(move |raw_text, format_idx| {
+    main_window.on_start_batch_download(move |raw_text, format_idx, audio_fmt_idx, audio_br_idx, embed_meta| {
         let text_val = raw_text.to_string();
         let (is_audio_only, quality) = map_format_index(format_idx);
+        let audio_format = if is_audio_only { Some(map_audio_format(audio_fmt_idx).to_string()) } else { None };
+        let audio_bitrate = if is_audio_only { Some(map_audio_bitrate(audio_br_idx).to_string()) } else { None };
         let weak = window_weak_batch.clone();
         let mgr = mgr_clone_batch.clone();
         let dir_lock = current_dir_batch.clone();
@@ -940,6 +974,9 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
                         is_audio_only,
                         quality.clone(),
                         true,
+                        audio_format.clone(),
+                        audio_bitrate.clone(),
+                        embed_meta,
                     )
                     .await
                 {
@@ -1104,7 +1141,7 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
 
             let is_extractor = downloader::is_streaming_platform(&url);
             match mgr
-                .add_download(url, title, &download_dir, None, is_extractor, false, None, true)
+                .add_download(url, title, &download_dir, None, is_extractor, false, None, true, None, None, false)
                 .await
             {
                 Ok(id) => {

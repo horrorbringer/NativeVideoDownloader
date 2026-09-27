@@ -293,6 +293,9 @@ impl Database {
                     false,
                     None,
                     true,
+                    None,
+                    None,
+                    false,
                 );
                 job.id = id;
                 job.status = DownloadStatus::Paused; // Restore in paused state

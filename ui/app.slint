@@ -70,6 +70,11 @@ export component AppWindow inherits Window {
     in-out property <bool> has_thumbnail: false;
     in-out property <image> thumbnail_image;
 
+    // Dedicated Audio Extractor properties
+    in-out property <int> selected_audio_format_index: 0;
+    in-out property <int> selected_audio_bitrate_index: 0;
+    in-out property <bool> embed_audio_metadata: true;
+
     // Input properties
     in-out property <string> input_url_text: "";
     in-out property <string> batch_urls_text: "";
@@ -84,8 +89,8 @@ export component AppWindow inherits Window {
     callback analyze_url(string);
     callback paste_from_clipboard();
     callback paste_batch_from_clipboard();
-    callback start_download(int, bool);
-    callback start_batch_download(string, int);
+    callback start_download(int, bool, int, int, bool);
+    callback start_batch_download(string, int, int, int, bool);
     callback pause_download(string);
     callback resume_download(string);
     callback cancel_download(string);
@@ -366,6 +371,9 @@ export component AppWindow inherits Window {
                 download_subtitles <=> root.download_subtitles;
                 has_thumbnail: root.has_thumbnail;
                 thumbnail_image: root.thumbnail_image;
+                selected_audio_format_index <=> root.selected_audio_format_index;
+                selected_audio_bitrate_index <=> root.selected_audio_bitrate_index;
+                embed_audio_metadata <=> root.embed_audio_metadata;
 
                 analyze_url(url) => { root.analyze_url(url); }
                 clear_analysis() => { root.clear_analysis(); }
@@ -374,8 +382,8 @@ export component AppWindow inherits Window {
                 apply_episode_range(range) => { root.apply_episode_range(range); }
                 paste_from_clipboard() => { root.paste_from_clipboard(); }
                 paste_batch_from_clipboard() => { root.paste_batch_from_clipboard(); }
-                start_download(fmt, subs) => { root.start_download(fmt, subs); }
-                start_batch_download(text, fmt) => { root.start_batch_download(text, fmt); }
+                start_download(fmt, subs, afmt, abr, meta) => { root.start_download(fmt, subs, afmt, abr, meta); }
+                start_batch_download(text, fmt, afmt, abr, meta) => { root.start_batch_download(text, fmt, afmt, abr, meta); }
                 dismiss_error() => { root.dismiss_error(); }
                 open_logs() => { root.active_tab = 3; }
             }

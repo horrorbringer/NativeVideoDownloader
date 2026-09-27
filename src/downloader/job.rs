@@ -24,6 +24,9 @@ pub struct DownloadJob {
     pub is_audio_only: bool,
     pub quality: Option<String>,
     pub download_subtitles: bool,
+    pub audio_format: Option<String>,
+    pub audio_bitrate: Option<String>,
+    pub embed_artwork: bool,
 }
 
 impl DownloadJob {
@@ -36,6 +39,9 @@ impl DownloadJob {
         is_audio_only: bool,
         quality: Option<String>,
         download_subtitles: bool,
+        audio_format: Option<String>,
+        audio_bitrate: Option<String>,
+        embed_artwork: bool,
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -55,6 +61,9 @@ impl DownloadJob {
             is_audio_only,
             quality,
             download_subtitles,
+            audio_format,
+            audio_bitrate,
+            embed_artwork,
         }
     }
 

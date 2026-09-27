@@ -156,6 +156,9 @@ impl DownloadManager {
         is_audio_only: bool,
         quality: Option<String>,
         download_subtitles: bool,
+        audio_format: Option<String>,
+        audio_bitrate: Option<String>,
+        embed_artwork: bool,
     ) -> Result<Uuid, AppError> {
         let destination = validate_destination_path(output_dir, &title)?;
         let job = DownloadJob::new(
@@ -167,6 +170,9 @@ impl DownloadManager {
             is_audio_only,
             quality,
             download_subtitles,
+            audio_format,
+            audio_bitrate,
+            embed_artwork,
         );
         let id = job.id;
 
@@ -309,7 +315,18 @@ impl DownloadManager {
         let manager = self.clone();
 
         tokio::spawn(async move {
-            let (url, destination, _total_bytes, is_extractor, is_audio_only, quality, download_subtitles) = {
+            let (
+                url,
+                destination,
+                _total_bytes,
+                is_extractor,
+                is_audio_only,
+                quality,
+                download_subtitles,
+                audio_format,
+                audio_bitrate,
+                embed_artwork,
+            ) = {
                 let mut queue = manager.queue.lock().await;
                 let job = match queue.get_job_mut(id) {
                     Some(j) => j,
@@ -327,6 +344,9 @@ impl DownloadManager {
                     job.is_audio_only,
                     job.quality.clone(),
                     job.download_subtitles,
+                    job.audio_format.clone(),
+                    job.audio_bitrate.clone(),
+                    job.embed_artwork,
                 )
             };
 
@@ -360,6 +380,9 @@ impl DownloadManager {
                         is_audio_only,
                         quality.as_deref(),
                         download_subtitles,
+                        audio_format.as_deref(),
+                        audio_bitrate.as_deref(),
+                        embed_artwork,
                         active_speed_limit.as_deref(),
                         active_cookies_browser.as_deref(),
                         cancel_token,

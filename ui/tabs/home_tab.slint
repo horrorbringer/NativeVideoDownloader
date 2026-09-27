@@ -26,6 +26,11 @@ export component HomeTab inherits ScrollView {
     in-out property <bool> has_thumbnail: false;
     in-out property <image> thumbnail_image;
 
+    // Dedicated Audio Extractor options
+    in-out property <int> selected_audio_format_index: 0;
+    in-out property <int> selected_audio_bitrate_index: 0;
+    in-out property <bool> embed_audio_metadata: true;
+
     callback analyze_url(string);
     callback clear_analysis();
     callback toggle_episode(int);
@@ -33,8 +38,8 @@ export component HomeTab inherits ScrollView {
     callback apply_episode_range(string);
     callback paste_from_clipboard();
     callback paste_batch_from_clipboard();
-    callback start_download(int, bool);
-    callback start_batch_download(string, int);
+    callback start_download(int, bool, int, int, bool);
+    callback start_batch_download(string, int, int, int, bool);
     callback dismiss_error();
     callback open_logs();
 
@@ -662,12 +667,140 @@ export component HomeTab inherits ScrollView {
                         has_icon: true;
                         selected: root.selected_format_index == 3;
                         clicked => { root.selected_format_index = 3; }
-                                IconChip {
-                        text: "Audio (MP3)";
+                    IconChip {
+                        text: "Extract Audio";
                         icon: @image-url("../icons/music.svg");
                         has_icon: true;
                         selected: root.selected_format_index == 4;
                         clicked => { root.selected_format_index = 4; }
+                    }
+                }
+
+                // Dedicated Audio Extraction Panel (active when Extract Audio is selected)
+                if root.selected_format_index == 4: Rectangle {
+                    background: #111420;
+                    border-radius: 10px;
+                    border-width: 1px;
+                    border-color: #272f47;
+
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 10px;
+
+                        // Audio Format Choice
+                        HorizontalLayout {
+                            alignment: space-between;
+                            Text {
+                                text: "Audio Container:";
+                                color: #949db2;
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                IconChip {
+                                    text: "MP3";
+                                    selected: root.selected_audio_format_index == 0;
+                                    clicked => { root.selected_audio_format_index = 0; }
+                                }
+                                IconChip {
+                                    text: "M4A (AAC)";
+                                    selected: root.selected_audio_format_index == 1;
+                                    clicked => { root.selected_audio_format_index = 1; }
+                                }
+                                IconChip {
+                                    text: "FLAC (Lossless)";
+                                    selected: root.selected_audio_format_index == 2;
+                                    clicked => { root.selected_audio_format_index = 2; }
+                                }
+                                IconChip {
+                                    text: "WAV";
+                                    selected: root.selected_audio_format_index == 3;
+                                    clicked => { root.selected_audio_format_index = 3; }
+                                }
+                                IconChip {
+                                    text: "OPUS";
+                                    selected: root.selected_audio_format_index == 4;
+                                    clicked => { root.selected_audio_format_index = 4; }
+                                }
+                            }
+                        }
+
+                        // Bitrate Selection (for MP3, M4A, OPUS)
+                        if root.selected_audio_format_index != 2 && root.selected_audio_format_index != 3: HorizontalLayout {
+                            alignment: space-between;
+                            Text {
+                                text: "Audio Bitrate:";
+                                color: #949db2;
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                IconChip {
+                                    text: "320 kbps (Extreme)";
+                                    selected: root.selected_audio_bitrate_index == 0;
+                                    clicked => { root.selected_audio_bitrate_index = 0; }
+                                }
+                                IconChip {
+                                    text: "256 kbps (High)";
+                                    selected: root.selected_audio_bitrate_index == 1;
+                                    clicked => { root.selected_audio_bitrate_index = 1; }
+                                }
+                                IconChip {
+                                    text: "192 kbps (Standard)";
+                                    selected: root.selected_audio_bitrate_index == 2;
+                                    clicked => { root.selected_audio_bitrate_index = 2; }
+                                }
+                                IconChip {
+                                    text: "128 kbps (Compact)";
+                                    selected: root.selected_audio_bitrate_index == 3;
+                                    clicked => { root.selected_audio_bitrate_index = 3; }
+                                }
+                            }
+                        }
+
+                        // Embed Artwork & Tags
+                        Rectangle {
+                            background: root.embed_audio_metadata ? #121c32 : #131622;
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: root.embed_audio_metadata ? #2563eb : #212638;
+                            height: 32px;
+
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 8px;
+                                alignment: start;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: @image-url("../icons/sparkles.svg");
+                                        width: 14px;
+                                        height: 14px;
+                                        colorize: root.embed_audio_metadata ? #60a5fa : #8c93a8;
+                                    }
+                                }
+
+                                Text {
+                                    text: root.embed_audio_metadata
+                                        ? "Embed Album Cover Art & ID3 Metadata: Enabled"
+                                        : "Embed Album Cover Art & ID3 Metadata: Disabled";
+                                    color: root.embed_audio_metadata ? #60a5fa : #8c93a8;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            TouchArea {
+                                clicked => { root.embed_audio_metadata = !root.embed_audio_metadata; }
+                            }
+                        }
                     }
                 }
 
@@ -749,7 +882,13 @@ export component HomeTab inherits ScrollView {
                         enabled: !root.is_playlist || root.selected_episodes_count > 0;
                         height: 38px;
                         clicked => {
-                            root.start_download(root.selected_format_index, root.download_subtitles);
+                            root.start_download(
+                                root.selected_format_index,
+                                root.download_subtitles,
+                                root.selected_audio_format_index,
+                                root.selected_audio_bitrate_index,
+                                root.embed_audio_metadata,
+                            );
                         }
                     }
                 }
@@ -958,7 +1097,13 @@ export component HomeTab inherits ScrollView {
                         primary: true;
                         height: 38px;
                         clicked => {
-                            root.start_batch_download(root.batch_urls_text, root.selected_format_index);
+                            root.start_batch_download(
+                                root.batch_urls_text,
+                                root.selected_format_index,
+                                root.selected_audio_format_index,
+                                root.selected_audio_bitrate_index,
+                                root.embed_audio_metadata,
+                            );
                         }
                     }
                 }
