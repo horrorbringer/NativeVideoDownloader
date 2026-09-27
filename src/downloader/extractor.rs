@@ -751,6 +751,12 @@ pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str
     let page_title = extract_html_title(&html);
     let page_thumbnail = extract_html_thumbnail(&html, page_url);
 
+    // 0. Check Next.js drama/series collection (__NEXT_DATA__) (e.g. kuaikaw.cn)
+    if let Some(drama_meta) = extract_next_data_drama(&html, page_url) {
+        info!("Successfully extracted Next.js drama collection: '{}' ({} episodes)", drama_meta.title, drama_meta.playlist_count);
+        return Ok(drama_meta);
+    }
+
     // 1. Check MacCMS player_aaaa configuration (used by donghuafun, animevietsub, etc.)
     if let Some(maccms) = extract_maccms_player(&html) {
         info!("Found MacCMS embedded player: {:?}", maccms.video_url);
@@ -1270,6 +1276,108 @@ fn parse_episodes_from_html_scan(html: &str, base_url: &str) -> Vec<crate::model
     entries
 }
 
+/// Extracts short drama series playlist and direct MP4/M3U8 streams from Next.js (__NEXT_DATA__) drama sites (e.g., kuaikaw.cn)
+pub fn extract_next_data_drama(html: &str, page_url: &str) -> Option<VideoMetadata> {
+    let script_start = html.find(r#"<script id="__NEXT_DATA__""#)?;
+    let tag_end = html[script_start..].find('>')? + script_start + 1;
+    let script_end = html[tag_end..].find("</script>")? + tag_end;
+    let json_str = &html[tag_end..script_end];
+
+    let v: serde_json::Value = serde_json::from_str(json_str).ok()?;
+    let page_props = v.get("props")?.get("pageProps")?;
+
+    let book_info = page_props.get("bookInfoVo");
+    let series_title = book_info
+        .and_then(|b| b.get("bookName"))
+        .and_then(|n| n.as_str())
+        .unwrap_or("Short Drama Series");
+    let thumbnail_url = book_info
+        .and_then(|b| b.get("coverWap"))
+        .and_then(|c| c.as_str())
+        .map(|s| s.to_string());
+
+    let chapters = page_props.get("chapterList")?.as_array()?;
+    if chapters.is_empty() {
+        return None;
+    }
+
+    // Attempt to extract requested chapterId from page_url or pageProps
+    let target_chapter_id = page_props
+        .get("chapterId")
+        .and_then(|c| c.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            page_url.trim_end_matches('/').split('/').last().map(|s| s.to_string())
+        })
+        .unwrap_or_default();
+
+    let mut entries = Vec::new();
+    let mut primary_stream_url = String::new();
+    let mut primary_title = format!("{} (Episode 1)", series_title);
+
+    for (idx, ch) in chapters.iter().enumerate() {
+        let ch_id = ch.get("chapterId").and_then(|c| c.as_str()).unwrap_or("");
+        let ch_name = ch
+            .get("chapterName")
+            .and_then(|c| c.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("Episode {}", idx + 1));
+
+        let stream_url = ch.get("chapterVideoVo")
+            .and_then(|v| {
+                v.get("mp4")
+                    .or_else(|| v.get("mp4720p"))
+                    .or_else(|| v.get("m3u8"))
+                    .or_else(|| v.get("m3u8720p"))
+            })
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string());
+
+        if let Some(stream) = stream_url {
+            let ep_title = format!("{} - {}", series_title, ch_name);
+            if ch_id == target_chapter_id || (primary_stream_url.is_empty() && idx == 0) {
+                primary_stream_url = stream.clone();
+                primary_title = ep_title.clone();
+            }
+            entries.push(crate::models::PlaylistEntry {
+                title: ep_title,
+                url: stream,
+            });
+        }
+    }
+
+    if entries.is_empty() {
+        return None;
+    }
+
+    if primary_stream_url.is_empty() {
+        primary_stream_url = entries[0].url.clone();
+    }
+
+    let count = entries.len();
+    Some(VideoMetadata {
+        url: primary_stream_url,
+        title: if count > 1 { series_title.to_string() } else { primary_title },
+        content_length: None,
+        content_type: Some("video/mp4".to_string()),
+        supports_ranges: true,
+        is_extractor: true,
+        duration_seconds: None,
+        resolution: Some(format!("{} Free Episodes • 720p HD", count)),
+        ext: Some("mp4".to_string()),
+        is_playlist: count > 1,
+        playlist_count: count,
+        playlist_entries: entries,
+        has_subtitles: false,
+        subtitles_summary: String::new(),
+        thumbnail_url,
+        fps: Some(30.0),
+        vcodec: Some("H.264".to_string()),
+        acodec: Some("AAC".to_string()),
+        ..Default::default()
+    })
+}
+
 /// Helper to search HTML for embedded video links (<video src=...>, <source src=...>, og:video, or .m3u8/.mp4 URLs)
 fn extract_stream_from_html(html: &str, base_url: &str) -> Option<String> {
     // 1. Check og:video or og:video:url
@@ -1416,6 +1524,14 @@ pub async fn resolve_playable_stream_url(url: &str, proxy: Option<&str>) -> Stri
     if let Ok(resp) = client.get(url).send().await {
         if resp.status().is_success() {
             if let Ok(html) = resp.text().await {
+                // 0. Check Next.js drama stream (__NEXT_DATA__)
+                if let Some(drama) = extract_next_data_drama(&html, url) {
+                    info!("Resolved Next.js drama playable stream URL: {} -> {}", url, drama.url);
+                    if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
+                        cache.insert(url.to_string(), drama.url.clone());
+                    }
+                    return drama.url;
+                }
                 // 1. Check MacCMS player_aaaa configuration (used by donghuafun, animevietsub, etc.)
                 if let Some(maccms) = extract_maccms_player(&html) {
                     info!("Resolved MacCMS playable stream URL: {} -> {}", url, maccms.video_url);
@@ -1797,6 +1913,61 @@ mod tests {
             assert!(cache.is_empty());
         }
         assert!(!dummy_cookie.exists());
+    }
+
+    #[test]
+    fn test_extract_next_data_drama() {
+        let sample_html = r#"
+        <!DOCTYPE html><html><head><title>Test Drama</title></head><body>
+        <script id="__NEXT_DATA__" type="application/json">
+        {
+          "props": {
+            "pageProps": {
+              "chapterId": "609419256",
+              "bookInfoVo": {
+                "bookId": "41000131810",
+                "bookName": "雪夜逃婚",
+                "coverWap": "https://example.com/cover.jpg"
+              },
+              "chapterList": [
+                {
+                  "chapterId": "609419256",
+                  "chapterName": "第一集",
+                  "chapterIndex": 1,
+                  "isCharge": "0",
+                  "chapterVideoVo": {
+                    "mp4": "https://cdn.example.com/ep1.mp4"
+                  }
+                },
+                {
+                  "chapterId": "609419257",
+                  "chapterName": "第二集",
+                  "chapterIndex": 2,
+                  "isCharge": "0",
+                  "chapterVideoVo": {
+                    "mp4": "https://cdn.example.com/ep2.mp4"
+                  }
+                }
+              ]
+            }
+          }
+        }
+        </script>
+        </body></html>
+        "#;
+
+        let meta = extract_next_data_drama(sample_html, "https://www.kuaikaw.cn/episode/41000131810/609419256");
+        assert!(meta.is_some());
+        let m = meta.unwrap();
+        assert_eq!(m.title, "雪夜逃婚");
+        assert_eq!(m.playlist_count, 2);
+        assert!(m.is_playlist);
+        assert_eq!(m.url, "https://cdn.example.com/ep1.mp4");
+        assert_eq!(m.thumbnail_url, Some("https://example.com/cover.jpg".to_string()));
+        assert_eq!(m.playlist_entries[0].title, "雪夜逃婚 - 第一集");
+        assert_eq!(m.playlist_entries[0].url, "https://cdn.example.com/ep1.mp4");
+        assert_eq!(m.playlist_entries[1].title, "雪夜逃婚 - 第二集");
+        assert_eq!(m.playlist_entries[1].url, "https://cdn.example.com/ep2.mp4");
     }
 
     #[test]
