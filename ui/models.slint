@@ -11,7 +11,11 @@ export struct DownloadItemData {
     can_pause: bool,
     can_resume: bool,
     can_cancel: bool,
+    is_queued: bool,
+    can_move_up: bool,
+    can_move_down: bool,
 }
+
 
 export struct HistoryItemData {
     id: string,

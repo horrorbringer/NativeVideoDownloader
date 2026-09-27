@@ -16,9 +16,11 @@ export component DownloadsTab inherits VerticalLayout {
     in-out property <string> session_downloaded_text: "0 B";
     in-out property <bool> show_speed_graph: true;
     in-out property <bool> is_downloading_active: false;
+    in-out property <int> selected_speed_limit_index: 0;
 
     callback pause_all();
     callback resume_all();
+    callback cancel_all();
     callback clear_completed();
     callback clear_failed();
     callback set_queue_filter(int);
@@ -28,6 +30,10 @@ export component DownloadsTab inherits VerticalLayout {
     callback pause_download(string);
     callback resume_download(string);
     callback cancel_download(string);
+    callback move_job_up(string);
+    callback move_job_down(string);
+    callback prioritize_job(string);
+    callback set_speed_limit(int);
 
     spacing: 12px;
 
@@ -161,14 +167,123 @@ export component DownloadsTab inherits VerticalLayout {
                     }
                 }
 
-                // Show/Hide Graph Button
-                ActionButton {
-                    text: root.show_speed_graph ? "Hide Graph" : "Show Graph";
-                    icon: root.show_speed_graph ? @image-url("../icons/x.svg") : @image-url("../icons/bolt.svg");
-                    has_icon: true;
-                    height: 26px;
-                    clicked => {
-                        root.show_speed_graph = !root.show_speed_graph;
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    // Dynamic Bandwidth Limiter Presets
+                    HorizontalLayout {
+                        spacing: 3px;
+                        alignment: center;
+
+                        Text {
+                            text: "Cap:";
+                            color: Theme.text_muted;
+                            font-size: 11px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+
+                        Rectangle {
+                            background: root.selected_speed_limit_index == 0 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
+                            border-radius: 4px;
+                            height: 22px;
+                            Text {
+                                text: "Max";
+                                color: root.selected_speed_limit_index == 0 ? #ffffff : Theme.text_secondary;
+                                font-size: 10px;
+                                font-weight: 700;
+                                x: 6px;
+                                vertical-alignment: center;
+                            }
+                            width: 34px;
+                            TouchArea {
+                                clicked => { root.set_speed_limit(0); }
+                            }
+                        }
+
+                        Rectangle {
+                            background: root.selected_speed_limit_index == 1 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
+                            border-radius: 4px;
+                            height: 22px;
+                            Text {
+                                text: "2M";
+                                color: root.selected_speed_limit_index == 1 ? #ffffff : Theme.text_secondary;
+                                font-size: 10px;
+                                font-weight: 700;
+                                x: 6px;
+                                vertical-alignment: center;
+                            }
+                            width: 28px;
+                            TouchArea {
+                                clicked => { root.set_speed_limit(1); }
+                            }
+                        }
+
+                        Rectangle {
+                            background: root.selected_speed_limit_index == 2 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
+                            border-radius: 4px;
+                            height: 22px;
+                            Text {
+                                text: "5M";
+                                color: root.selected_speed_limit_index == 2 ? #ffffff : Theme.text_secondary;
+                                font-size: 10px;
+                                font-weight: 700;
+                                x: 6px;
+                                vertical-alignment: center;
+                            }
+                            width: 28px;
+                            TouchArea {
+                                clicked => { root.set_speed_limit(2); }
+                            }
+                        }
+
+                        Rectangle {
+                            background: root.selected_speed_limit_index == 3 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
+                            border-radius: 4px;
+                            height: 22px;
+                            Text {
+                                text: "10M";
+                                color: root.selected_speed_limit_index == 3 ? #ffffff : Theme.text_secondary;
+                                font-size: 10px;
+                                font-weight: 700;
+                                x: 4px;
+                                vertical-alignment: center;
+                            }
+                            width: 32px;
+                            TouchArea {
+                                clicked => { root.set_speed_limit(3); }
+                            }
+                        }
+
+                        Rectangle {
+                            background: root.selected_speed_limit_index == 4 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
+                            border-radius: 4px;
+                            height: 22px;
+                            Text {
+                                text: "20M";
+                                color: root.selected_speed_limit_index == 4 ? #ffffff : Theme.text_secondary;
+                                font-size: 10px;
+                                font-weight: 700;
+                                x: 4px;
+                                vertical-alignment: center;
+                            }
+                            width: 32px;
+                            TouchArea {
+                                clicked => { root.set_speed_limit(4); }
+                            }
+                        }
+                    }
+
+                    // Show/Hide Graph Button
+                    ActionButton {
+                        text: root.show_speed_graph ? "Hide Graph" : "Show Graph";
+                        icon: root.show_speed_graph ? @image-url("../icons/x.svg") : @image-url("../icons/bolt.svg");
+                        has_icon: true;
+                        height: 26px;
+                        clicked => {
+                            root.show_speed_graph = !root.show_speed_graph;
+                        }
                     }
                 }
             }
@@ -304,6 +419,15 @@ export component DownloadsTab inherits VerticalLayout {
                 has_icon: true;
                 height: 32px;
                 clicked => { root.resume_all(); }
+            }
+
+            ActionButton {
+                text: "Cancel All";
+                icon: @image-url("../icons/x.svg");
+                has_icon: true;
+                danger: true;
+                height: 32px;
+                clicked => { root.cancel_all(); }
             }
 
             ActionButton {
@@ -583,6 +707,27 @@ export component DownloadsTab inherits VerticalLayout {
                         HorizontalLayout {
                             spacing: 6px;
                             alignment: end;
+
+                            if item.is_queued: ActionButton {
+                                text: "⚡ Top";
+                                has_icon: false;
+                                height: 28px;
+                                clicked => { root.prioritize_job(item.id); }
+                            }
+
+                            if item.can_move_up: ActionButton {
+                                text: "▲";
+                                has_icon: false;
+                                height: 28px;
+                                clicked => { root.move_job_up(item.id); }
+                            }
+
+                            if item.can_move_down: ActionButton {
+                                text: "▼";
+                                has_icon: false;
+                                height: 28px;
+                                clicked => { root.move_job_down(item.id); }
+                            }
 
                             if item.is_completed: ActionButton {
                                 text: "Play";

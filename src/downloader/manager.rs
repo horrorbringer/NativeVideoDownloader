@@ -410,6 +410,53 @@ impl DownloadManager {
         self.notify_update().await;
     }
 
+    pub async fn cancel_all(self: &Arc<Self>) {
+        let ids: Vec<Uuid> = {
+            let queue = self.queue.lock().await;
+            queue
+                .all_jobs()
+                .iter()
+                .filter(|j| matches!(j.status, DownloadStatus::Downloading | DownloadStatus::Queued | DownloadStatus::Paused))
+                .map(|j| j.id)
+                .collect()
+        };
+        for id in ids {
+            self.cancel_job(id).await;
+        }
+    }
+
+    pub async fn move_job_up(&self, id: Uuid) -> bool {
+        let mut queue = self.queue.lock().await;
+        let moved = queue.move_job_up(id);
+        drop(queue);
+        if moved {
+            self.notify_update().await;
+        }
+        moved
+    }
+
+    pub async fn move_job_down(&self, id: Uuid) -> bool {
+        let mut queue = self.queue.lock().await;
+        let moved = queue.move_job_down(id);
+        drop(queue);
+        if moved {
+            self.notify_update().await;
+        }
+        moved
+    }
+
+    pub async fn prioritize_job(self: &Arc<Self>, id: Uuid) -> bool {
+        let mut queue = self.queue.lock().await;
+        let moved = queue.prioritize_job(id);
+        drop(queue);
+        if moved {
+            self.notify_update().await;
+            self.process_queue().await;
+        }
+        moved
+    }
+
+
     pub async fn process_queue(self: &Arc<Self>) {
         let max = *self.max_concurrency.read().await;
         loop {

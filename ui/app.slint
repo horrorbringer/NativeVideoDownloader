@@ -1,4 +1,5 @@
 import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData } from "models.slint";
+import { ActionButton } from "components/action_button.slint";
 import { NavButton } from "components/nav_button.slint";
 import { HomeTab } from "tabs/home_tab.slint";
 import { DownloadsTab } from "tabs/downloads_tab.slint";
@@ -134,6 +135,8 @@ export component AppWindow inherits Window {
     // Live Clipboard Link Monitor properties
     in-out property <bool> clipboard_detected_url_visible: false;
     in-out property <string> clipboard_detected_url: "";
+    in-out property <bool> notifications_enabled: true;
+    in-out property <bool> notification_sound_enabled: true;
 
     // Callbacks
     callback analyze_url(string);
@@ -157,8 +160,12 @@ export component AppWindow inherits Window {
     callback cancel_download(string);
     callback pause_all();
     callback resume_all();
+    callback cancel_all();
     callback clear_completed();
     callback clear_failed();
+    callback move_job_up(string);
+    callback move_job_down(string);
+    callback prioritize_job(string);
     callback clear_cache();
     callback set_queue_filter(int);
     callback search_queue(string);
@@ -184,6 +191,8 @@ export component AppWindow inherits Window {
     callback set_max_concurrency(int);
     callback set_cookies_browser(int);
     callback test_notification();
+    callback set_notifications_enabled(bool);
+    callback set_notification_sound_enabled(bool);
     callback update_extractor();
     callback set_concurrent_fragments(int);
 
@@ -458,6 +467,94 @@ export component AppWindow inherits Window {
                 }
             }
 
+            // Global Live Clipboard Detected Link Banner
+            if root.clipboard_detected_url_visible: Rectangle {
+                background: Theme.card_bg;
+                border-radius: 10px;
+                border-width: 1px;
+                border-color: #3b82f6;
+
+                HorizontalLayout {
+                    padding: 10px;
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: 12px;
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 10px;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 28px;
+                                height: 28px;
+                                border-radius: 14px;
+                                background: #1e2942;
+                                border-width: 1px;
+                                border-color: #3b82f6;
+
+                                Image {
+                                    source: @image-url("icons/clipboard.svg");
+                                    width: 14px;
+                                    height: 14px;
+                                    colorize: #60a5fa;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 2px;
+                            alignment: center;
+
+                            Text {
+                                text: "Copied Media Link Detected";
+                                color: #60a5fa;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+
+                            Text {
+                                text: root.clipboard_detected_url;
+                                color: Theme.text_secondary;
+                                font-size: 12px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: center;
+
+                        ActionButton {
+                            text: "Inspect & Download";
+                            icon: @image-url("icons/download.svg");
+                            has_icon: true;
+                            primary: true;
+                            height: 30px;
+                            clicked => {
+                                root.analyze_clipboard_detected();
+                            }
+                        }
+
+                        ActionButton {
+                            text: "Dismiss";
+                            icon: @image-url("icons/x.svg");
+                            has_icon: true;
+                            height: 30px;
+                            clicked => {
+                                root.dismiss_clipboard_detected();
+                            }
+                        }
+                    }
+                }
+            }
+
             // Tab Content Router
             if root.active_tab == 0: HomeTab {
                 has_error <=> root.has_error;
@@ -542,11 +639,17 @@ export component AppWindow inherits Window {
                 session_downloaded_text: root.session_downloaded_text;
                 show_speed_graph <=> root.show_speed_graph;
                 is_downloading_active: root.is_downloading_active;
+                selected_speed_limit_index <=> root.selected_speed_limit_index;
 
                 pause_all() => { root.pause_all(); }
                 resume_all() => { root.resume_all(); }
+                cancel_all() => { root.cancel_all(); }
                 clear_completed() => { root.clear_completed(); }
                 clear_failed() => { root.clear_failed(); }
+                move_job_up(id) => { root.move_job_up(id); }
+                move_job_down(id) => { root.move_job_down(id); }
+                prioritize_job(id) => { root.prioritize_job(id); }
+                set_speed_limit(idx) => { root.set_speed_limit(idx); }
                 set_queue_filter(idx) => { root.set_queue_filter(idx); }
                 search_queue(q) => { root.search_queue(q); }
                 open_download_file(p) => { root.open_download_file(p); }
@@ -637,6 +740,10 @@ export component AppWindow inherits Window {
                 set_proxy(en, p) => { root.set_proxy(en, p); }
                 test_proxy(p) => { root.test_proxy(p); }
                 test_notification() => { root.test_notification(); }
+                notifications_enabled <=> root.notifications_enabled;
+                notification_sound_enabled <=> root.notification_sound_enabled;
+                set_notifications_enabled(en) => { root.set_notifications_enabled(en); }
+                set_notification_sound_enabled(en) => { root.set_notification_sound_enabled(en); }
                 update_extractor() => { root.update_extractor(); }
                 clear_cache() => { root.clear_cache(); }
                 set_concurrent_fragments(n) => { root.set_concurrent_fragments(n); }

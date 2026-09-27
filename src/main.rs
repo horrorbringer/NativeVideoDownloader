@@ -602,6 +602,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.set_theme_mode(saved_theme_mode.to_i32());
     main_window.set_is_dark_mode(initial_is_dark);
 
+    // Restore saved notification preferences
+    let saved_notifs_enabled = db
+        .get_setting("notifications_enabled")
+        .await
+        .unwrap_or(None)
+        .map(|v| v == "true")
+        .unwrap_or(true);
+    let saved_sound_enabled = db
+        .get_setting("notification_sound_enabled")
+        .await
+        .unwrap_or(None)
+        .map(|v| v == "true")
+        .unwrap_or(true);
+    notifications::set_notifications_enabled(saved_notifs_enabled);
+    notifications::set_sound_enabled(saved_sound_enabled);
+    main_window.set_notifications_enabled(saved_notifs_enabled);
+    main_window.set_notification_sound_enabled(saved_sound_enabled);
+
     // Initialize speed samples for the graph with 60 idle points (30s rolling window @ 2 Hz)
     let initial_samples: Vec<SpeedSampleData> = (0..60)
         .map(|_| SpeedSampleData {
@@ -789,12 +807,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })
                     .collect();
 
+                let total_filtered = filtered_jobs.len();
                 let items: Vec<DownloadItemData> = filtered_jobs
                     .into_iter()
-                    .map(|j| {
+                    .enumerate()
+                    .map(|(idx, j)| {
                         let is_dl = j.status == DownloadStatus::Downloading;
                         let is_paused = j.status == DownloadStatus::Paused;
-                        let is_active = is_dl || is_paused || j.status == DownloadStatus::Queued;
+                        let is_queued = j.status == DownloadStatus::Queued;
+                        let is_active = is_dl || is_paused || is_queued;
                         let is_completed = j.status == DownloadStatus::Completed;
                         let output_path = j.output_path.to_string_lossy().to_string();
                         let size_text = j.size_display();
@@ -814,6 +835,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             can_pause: is_dl,
                             can_resume: is_paused || matches!(j.status, DownloadStatus::Failed(_)),
                             can_cancel: is_active,
+                            is_queued,
+                            can_move_up: is_queued && idx > 0,
+                            can_move_down: is_queued && idx + 1 < total_filtered,
                         }
                     })
                     .collect();
@@ -1070,6 +1094,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let url = win.get_clipboard_detected_url().to_string();
             win.set_clipboard_detected_url_visible(false);
             if !url.is_empty() {
+                win.set_active_tab(0);
                 win.set_batch_mode(false);
                 win.set_input_url_text(url.clone().into());
                 win.set_status_message(format!("Analyzing copied link: {}", url).into());
@@ -1963,6 +1988,48 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
         });
     });
 
+    // Callback: Cancel all active/queued downloads
+    let mgr_cancel_all = download_manager.clone();
+    main_window.on_cancel_all(move || {
+        let mgr = mgr_cancel_all.clone();
+        tokio::spawn(async move {
+            mgr.cancel_all().await;
+        });
+    });
+
+    // Callback: Move job up in queue
+    let mgr_move_up = download_manager.clone();
+    main_window.on_move_job_up(move |id_str| {
+        if let Ok(id) = Uuid::parse_str(&id_str) {
+            let mgr = mgr_move_up.clone();
+            tokio::spawn(async move {
+                mgr.move_job_up(id).await;
+            });
+        }
+    });
+
+    // Callback: Move job down in queue
+    let mgr_move_down = download_manager.clone();
+    main_window.on_move_job_down(move |id_str| {
+        if let Ok(id) = Uuid::parse_str(&id_str) {
+            let mgr = mgr_move_down.clone();
+            tokio::spawn(async move {
+                mgr.move_job_down(id).await;
+            });
+        }
+    });
+
+    // Callback: Prioritize job to top of queue
+    let mgr_prio = download_manager.clone();
+    main_window.on_prioritize_job(move |id_str| {
+        if let Ok(id) = Uuid::parse_str(&id_str) {
+            let mgr = mgr_prio.clone();
+            tokio::spawn(async move {
+                mgr.prioritize_job(id).await;
+            });
+        }
+    });
+
     // Callback: Set Queue Status Filter
     let filter_set = queue_filter_idx.clone();
     let mgr_set_filter = download_manager.clone();
@@ -2293,6 +2360,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
             let _ = db.set_setting("speed_limit", limit_str).await;
             info!("Updated bandwidth speed limit: {}", label);
             let _ = weak.upgrade_in_event_loop(move |window| {
+                window.set_selected_speed_limit_index(idx);
                 window.set_status_message(format!("Download speed limit set to: {}", label).into());
             });
         });
@@ -2425,14 +2493,41 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
     // Callback: Test Desktop Notification
     let weak_test_notif = main_window.as_weak();
     main_window.on_test_notification(move || {
-        notifications::send_notification(
-            "Native Video Downloader",
-            "Notification Test",
-            "System notifications and audio alerts are functioning perfectly!",
-            false,
-        );
+        notifications::send_test_notification();
         let _ = weak_test_notif.upgrade_in_event_loop(|win| {
             win.set_status_message("Sent test desktop notification".into());
+        });
+    });
+
+    // Callback: Toggle Desktop Notifications
+    let db_notif_en = db.clone();
+    let weak_notif_en = main_window.as_weak();
+    main_window.on_set_notifications_enabled(move |enabled| {
+        notifications::set_notifications_enabled(enabled);
+        let db = db_notif_en.clone();
+        let weak = weak_notif_en.clone();
+        tokio::spawn(async move {
+            let _ = db.set_setting("notifications_enabled", if enabled { "true" } else { "false" }).await;
+            let msg = if enabled { "Desktop notifications enabled" } else { "Desktop notifications disabled" };
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(msg.into());
+            });
+        });
+    });
+
+    // Callback: Toggle Notification Audio Chime
+    let db_sound_en = db.clone();
+    let weak_sound_en = main_window.as_weak();
+    main_window.on_set_notification_sound_enabled(move |enabled| {
+        notifications::set_sound_enabled(enabled);
+        let db = db_sound_en.clone();
+        let weak = weak_sound_en.clone();
+        tokio::spawn(async move {
+            let _ = db.set_setting("notification_sound_enabled", if enabled { "true" } else { "false" }).await;
+            let msg = if enabled { "Notification audio chimes enabled" } else { "Notification audio chimes muted" };
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(msg.into());
+            });
         });
     });
 
