@@ -1379,6 +1379,9 @@ mod tests {
 
         let geo_err = "ERROR: This video is not available in your country";
         assert!(clean_extractor_error(geo_err).to_lowercase().contains("geo-restricted"));
+
+        let exit_err = "Application error: Extractor process finished with exit code Some(1)";
+        assert!(clean_extractor_error(exit_err).contains("Stream extraction failed"));
     }
 }
 
@@ -1421,8 +1424,18 @@ pub fn parse_episode_range(input: &str, total: usize) -> std::collections::HashS
 
 /// Translates low-level or platform-specific extractor errors into clear, actionable user messages
 pub fn clean_extractor_error(raw_err: &str) -> String {
-    let lower = raw_err.to_lowercase();
+    let raw_trimmed = raw_err.trim_start_matches("Application error: ");
+    let lower = raw_trimmed.to_lowercase();
 
+    if lower.contains("exit code") || lower.contains("extractor process finished") {
+        return "Stream extraction failed. The source media stream may be expired, protected, or unreachable.".to_string();
+    }
+    if lower.contains("403") || lower.contains("forbidden") {
+        return "Access forbidden (HTTP 403). The video server may require fresh cookies or anti-leech headers.".to_string();
+    }
+    if lower.contains("404") || lower.contains("not found") {
+        return "Media stream not found (HTTP 404). The stream file was moved or removed.".to_string();
+    }
     if lower.contains("iq.com") || lower.contains("iqiyi") {
         return "iQIYI stream is DRM-protected or requires VIP login. DRM-encrypted content cannot be downloaded.".to_string();
     }
@@ -1450,16 +1463,16 @@ pub fn clean_extractor_error(raw_err: &str) -> String {
     }
 
     // Strip verbose yt-dlp issue template boilerplate
-    let clean = raw_err
+    let clean = raw_trimmed
         .split("; please report this issue")
         .next()
-        .unwrap_or(raw_err)
+        .unwrap_or(raw_trimmed)
         .split("; confirm you are on the latest version")
         .next()
-        .unwrap_or(raw_err)
+        .unwrap_or(raw_trimmed)
         .trim();
 
-    format!("Extractor: {}", clean)
+    clean.to_string()
 }
 
 /// Updates the yt-dlp binary to the latest official release via `yt-dlp -U`

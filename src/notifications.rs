@@ -5,15 +5,25 @@ pub fn send_notification(title: &str, subtitle: &str, message: &str, is_error: b
     info!("Dispatching desktop notification: [{}] {}", title, message);
     let title = title.to_string();
     let subtitle = subtitle.to_string();
-    let message = message.to_string();
+    // Cleanly truncate message if too long so notification card remains concise
+    let mut message = message.trim().to_string();
+    if message.chars().count() > 180 {
+        message = format!("{}...", message.chars().take(177).collect::<String>());
+    }
 
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "macos")]
         {
             let sound = if is_error { "Basso" } else { "Glass" };
+            let formatted_subtitle = if is_error {
+                format!("⚠️ {}", subtitle)
+            } else {
+                format!("✅ {}", subtitle)
+            };
+
             // Escape double quotes and backslashes for AppleScript string literals
             let safe_title = title.replace('\\', "\\\\").replace('"', "\\\"");
-            let safe_subtitle = subtitle.replace('\\', "\\\\").replace('"', "\\\"");
+            let safe_subtitle = formatted_subtitle.replace('\\', "\\\\").replace('"', "\\\"");
             let safe_msg = message.replace('\\', "\\\\").replace('"', "\\\"");
 
             let script = format!(

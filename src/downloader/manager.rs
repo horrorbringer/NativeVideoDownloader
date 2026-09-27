@@ -636,10 +636,11 @@ impl DownloadManager {
                                     "Media download".to_string()
                                 }
                             };
+                            let clean_err = crate::downloader::extractor::clean_extractor_error(&err_str);
                             crate::notifications::send_notification(
                                 "Native Video Downloader",
                                 "Download Failed",
-                                &format!("\"{}\" failed: {}", job_title, err_str),
+                                &format!("\"{}\" failed: {}", job_title, clean_err),
                                 true,
                             );
                             let _ = manager.db.mark_failed(id, &err_str).await;

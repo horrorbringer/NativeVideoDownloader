@@ -20,6 +20,7 @@ export component HomeTab inherits ScrollView {
     in-out property <[EpisodeItemData]> playlist_episodes: [];
     in-out property <int> selected_episodes_count: 0;
     in-out property <string> episode_range_input: "";
+    in-out property <bool> episodes_expanded: false;
     in-out property <int> selected_format_index: 0;
     in-out property <bool> has_subtitles: false;
     in-out property <string> subtitles_summary: "";
@@ -213,25 +214,37 @@ export component HomeTab inherits ScrollView {
             }
         }
 
-        // Mode switcher: Single URL vs Batch URLs
+        // Mode switcher: Single URL vs Batch URLs & Quick Import
         HorizontalLayout {
-            spacing: 8px;
-            alignment: start;
+            alignment: space-between;
 
-            IconChip {
-                text: "Single URL";
-                icon: @image-url("../icons/link.svg");
-                has_icon: true;
-                selected: !root.batch_mode;
-                clicked => { root.batch_mode = false; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+
+                IconChip {
+                    text: "Single URL";
+                    icon: @image-url("../icons/link.svg");
+                    has_icon: true;
+                    selected: !root.batch_mode;
+                    clicked => { root.batch_mode = false; }
+                }
+
+                IconChip {
+                    text: "Batch URLs (Bulk)";
+                    icon: @image-url("../icons/layers.svg");
+                    has_icon: true;
+                    selected: root.batch_mode;
+                    clicked => { root.batch_mode = true; }
+                }
             }
 
-            IconChip {
-                text: "Batch URLs (Bulk)";
-                icon: @image-url("../icons/layers.svg");
+            ActionButton {
+                text: "Import File (.txt / .m3u)";
+                icon: @image-url("../icons/folder.svg");
                 has_icon: true;
-                selected: root.batch_mode;
-                clicked => { root.batch_mode = true; }
+                height: 32px;
+                clicked => { root.import_links_file(); }
             }
         }
 
@@ -273,7 +286,7 @@ export component HomeTab inherits ScrollView {
                 }
 
                 HorizontalLayout {
-                    spacing: 10px;
+                    spacing: 8px;
 
                     url_input := LineEdit {
                         horizontal-stretch: 1;
@@ -304,16 +317,6 @@ export component HomeTab inherits ScrollView {
                         height: 38px;
                         clicked => {
                             root.paste_from_clipboard();
-                        }
-                    }
-
-                    ActionButton {
-                        text: "Import File";
-                        icon: @image-url("../icons/folder.svg");
-                        has_icon: true;
-                        height: 38px;
-                        clicked => {
-                            root.import_links_file();
                         }
                     }
 
@@ -605,6 +608,7 @@ export component HomeTab inherits ScrollView {
                             }
                         }
 
+                        // Min/Max controls & Range selection toolbar
                         HorizontalLayout {
                             spacing: 6px;
                             alignment: end;
@@ -622,7 +626,7 @@ export component HomeTab inherits ScrollView {
                             }
 
                             range_box := LineEdit {
-                                width: 90px;
+                                width: 85px;
                                 height: 26px;
                                 font_size: 11px;
                                 placeholder_text: "1-10, 15";
@@ -635,6 +639,15 @@ export component HomeTab inherits ScrollView {
                                 height: 26px;
                                 clicked => { root.apply_episode_range(range_box.text); }
                             }
+
+                            // Min / Max View Button for episode list
+                            ActionButton {
+                                text: root.episodes_expanded ? "Min View" : "Max View";
+                                icon: root.episodes_expanded ? @image-url("../icons/minimize.svg") : @image-url("../icons/maximize.svg");
+                                has_icon: true;
+                                height: 26px;
+                                clicked => { root.episodes_expanded = !root.episodes_expanded; }
+                            }
                         }
                     }
 
@@ -643,7 +656,8 @@ export component HomeTab inherits ScrollView {
                         border-radius: 8px;
                         border-width: 1px;
                         border-color: Theme.inner_border;
-                        height: 140px;
+                        height: root.episodes_expanded ? 280px : 140px;
+                        animate height { duration: 150ms; }
                         clip: true;
 
                         ScrollView {
@@ -779,6 +793,7 @@ export component HomeTab inherits ScrollView {
                         has_icon: true;
                         selected: root.selected_format_index == 3;
                         clicked => { root.selected_format_index = 3; }
+                    }
                     IconChip {
                         text: "Extract Audio";
                         icon: @image-url("../icons/music.svg");
@@ -1252,6 +1267,5 @@ export component HomeTab inherits ScrollView {
             }
         }
     }
-}
 }
 }
