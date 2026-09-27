@@ -1173,49 +1173,99 @@ export component HomeTab inherits ScrollView {
                         }
                     }
 
-                    HorizontalLayout {
+                    VerticalLayout {
                         spacing: 6px;
-                        alignment: start;
 
-                        IconChip {
-                            text: "All Languages";
-                            selected: root.selected_sub_lang_index == 0;
-                            clicked => { root.selected_sub_lang_index = 0; }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+
+                            IconChip {
+                                text: "All Languages";
+                                selected: root.selected_sub_lang_index == 0;
+                                clicked => { root.selected_sub_lang_index = 0; }
+                            }
+                            IconChip {
+                                text: "English (en)";
+                                selected: root.selected_sub_lang_index == 1;
+                                clicked => { root.selected_sub_lang_index = 1; }
+                            }
+                            IconChip {
+                                text: "Khmer (km)";
+                                selected: root.selected_sub_lang_index == 2;
+                                clicked => { root.selected_sub_lang_index = 2; }
+                            }
+                            IconChip {
+                                text: "Thai (th)";
+                                selected: root.selected_sub_lang_index == 3;
+                                clicked => { root.selected_sub_lang_index = 3; }
+                            }
+                            IconChip {
+                                text: "Vietnamese (vi)";
+                                selected: root.selected_sub_lang_index == 4;
+                                clicked => { root.selected_sub_lang_index = 4; }
+                            }
+                            IconChip {
+                                text: "Indonesian (id)";
+                                selected: root.selected_sub_lang_index == 5;
+                                clicked => { root.selected_sub_lang_index = 5; }
+                            }
+                            IconChip {
+                                text: "Burmese (my)";
+                                selected: root.selected_sub_lang_index == 6;
+                                clicked => { root.selected_sub_lang_index = 6; }
+                            }
+                            IconChip {
+                                text: "Chinese (zh)";
+                                selected: root.selected_sub_lang_index == 7;
+                                clicked => { root.selected_sub_lang_index = 7; }
+                            }
                         }
-                        IconChip {
-                            text: "English (en)";
-                            selected: root.selected_sub_lang_index == 1;
-                            clicked => { root.selected_sub_lang_index = 1; }
-                        }
-                        IconChip {
-                            text: "Chinese (zh)";
-                            selected: root.selected_sub_lang_index == 2;
-                            clicked => { root.selected_sub_lang_index = 2; }
-                        }
-                        IconChip {
-                            text: "Spanish (es)";
-                            selected: root.selected_sub_lang_index == 3;
-                            clicked => { root.selected_sub_lang_index = 3; }
-                        }
-                        IconChip {
-                            text: "Japanese (ja)";
-                            selected: root.selected_sub_lang_index == 4;
-                            clicked => { root.selected_sub_lang_index = 4; }
-                        }
-                        IconChip {
-                            text: "Korean (ko)";
-                            selected: root.selected_sub_lang_index == 5;
-                            clicked => { root.selected_sub_lang_index = 5; }
-                        }
-                        IconChip {
-                            text: "French (fr)";
-                            selected: root.selected_sub_lang_index == 6;
-                            clicked => { root.selected_sub_lang_index = 6; }
-                        }
-                        IconChip {
-                            text: "German (de)";
-                            selected: root.selected_sub_lang_index == 7;
-                            clicked => { root.selected_sub_lang_index = 7; }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+
+                            IconChip {
+                                text: "Japanese (ja)";
+                                selected: root.selected_sub_lang_index == 8;
+                                clicked => { root.selected_sub_lang_index = 8; }
+                            }
+                            IconChip {
+                                text: "Korean (ko)";
+                                selected: root.selected_sub_lang_index == 9;
+                                clicked => { root.selected_sub_lang_index = 9; }
+                            }
+                            IconChip {
+                                text: "Spanish (es)";
+                                selected: root.selected_sub_lang_index == 10;
+                                clicked => { root.selected_sub_lang_index = 10; }
+                            }
+                            IconChip {
+                                text: "French (fr)";
+                                selected: root.selected_sub_lang_index == 11;
+                                clicked => { root.selected_sub_lang_index = 11; }
+                            }
+                            IconChip {
+                                text: "German (de)";
+                                selected: root.selected_sub_lang_index == 12;
+                                clicked => { root.selected_sub_lang_index = 12; }
+                            }
+                            IconChip {
+                                text: "Russian (ru)";
+                                selected: root.selected_sub_lang_index == 13;
+                                clicked => { root.selected_sub_lang_index = 13; }
+                            }
+                            IconChip {
+                                text: "Portuguese (pt)";
+                                selected: root.selected_sub_lang_index == 14;
+                                clicked => { root.selected_sub_lang_index = 14; }
+                            }
+                            IconChip {
+                                text: "Arabic (ar)";
+                                selected: root.selected_sub_lang_index == 15;
+                                clicked => { root.selected_sub_lang_index = 15; }
+                            }
                         }
                     }
                 }

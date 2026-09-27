@@ -706,7 +706,7 @@ pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str
         info!("Found MacCMS embedded player: {:?}", maccms.video_url);
         if is_streaming_platform(&maccms.video_url) {
             info!("Inspecting extracted streaming platform source: {}", maccms.video_url);
-            if let Ok(mut meta) = Box::pin(inspect_video(&maccms.video_url)).await {
+            if let Ok(mut meta) = Box::pin(inspect_video_with_options(&maccms.video_url, None, proxy)).await {
                 if let Some(t) = maccms.title.or(page_title.clone()) {
                     meta.title = t;
                 }
@@ -744,7 +744,7 @@ pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str
     for iframe_url in extract_iframes_from_html(&html, page_url) {
         if is_streaming_platform(&iframe_url) {
             info!("Inspecting embedded iframe streaming source: {}", iframe_url);
-            if let Ok(mut meta) = Box::pin(inspect_video(&iframe_url)).await {
+            if let Ok(mut meta) = Box::pin(inspect_video_with_options(&iframe_url, None, proxy)).await {
                 if let Some(t) = page_title.clone() {
                     meta.title = t;
                 }
@@ -757,8 +757,29 @@ pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str
     }
 
     // 3. Check for series/playlist collection (e.g. MacCMS vod/detail pages or episode anthology lists)
-    if let Some(playlist_meta) = extract_playlist_from_detail_html(&html, page_url) {
+    if let Some(mut playlist_meta) = extract_playlist_from_detail_html(&html, page_url) {
         info!("Successfully extracted series collection from webpage: '{}' ({} episodes)", playlist_meta.title, playlist_meta.playlist_count);
+
+        // Probe first episode to detect stream quality and multi-language subtitle tracks for the series
+        if let Some(first_ep) = playlist_meta.playlist_entries.first() {
+            let sample_stream = resolve_playable_stream_url(&first_ep.url, proxy).await;
+            if sample_stream != first_ep.url || is_streaming_platform(&sample_stream) {
+                if let Ok(ep_meta) = Box::pin(inspect_video_with_options(&sample_stream, None, proxy)).await {
+                    playlist_meta.has_subtitles = ep_meta.has_subtitles;
+                    playlist_meta.subtitles_summary = ep_meta.subtitles_summary;
+                    playlist_meta.fps = ep_meta.fps;
+                    playlist_meta.vcodec = ep_meta.vcodec;
+                    playlist_meta.acodec = ep_meta.acodec;
+                    if let Some(res) = ep_meta.resolution {
+                        playlist_meta.resolution = Some(format!("{} Episodes Series • {}", playlist_meta.playlist_count, res));
+                    }
+                    if playlist_meta.thumbnail_url.is_none() {
+                        playlist_meta.thumbnail_url = ep_meta.thumbnail_url;
+                    }
+                }
+            }
+        }
+
         return Ok(playlist_meta);
     }
 

@@ -305,6 +305,9 @@ fn run_url_analysis(
                     window.set_playlist_count(playlist_count);
                     window.set_has_subtitles(has_subs);
                     window.set_subtitles_summary(subs_summary.into());
+                    if has_subs {
+                        window.set_download_subtitles(true);
+                    }
                     window.set_video_title(title.into());
                     window.set_video_resolution(format_display.into());
                     window.set_video_duration(details_str.into());
@@ -1214,12 +1217,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Saved preferred subtitle language setting index: {}", idx);
             let lang_label = match idx {
                 1 => "English (en)",
-                2 => "Chinese (zh)",
-                3 => "Spanish (es)",
-                4 => "Japanese (ja)",
-                5 => "Korean (ko)",
-                6 => "French (fr)",
-                7 => "German (de)",
+                2 => "Khmer (km)",
+                3 => "Thai (th)",
+                4 => "Vietnamese (vi)",
+                5 => "Indonesian / Malay (id/ms)",
+                6 => "Burmese (my)",
+                7 => "Chinese (zh)",
+                8 => "Japanese (ja)",
+                9 => "Korean (ko)",
+                10 => "Spanish (es)",
+                11 => "French (fr)",
+                12 => "German (de)",
+                13 => "Russian (ru)",
+                14 => "Portuguese (pt)",
+                15 => "Arabic (ar)",
                 _ => "All Languages",
             };
             let _ = weak.upgrade_in_event_loop(move |win| {
@@ -1421,13 +1432,21 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
 /// Helper: Map subtitle language index to yt-dlp --sub-langs filter pattern
 fn map_subtitle_lang_index(idx: i32) -> &'static str {
     match idx {
-        1 => "en.*,en",
-        2 => "zh.*,zh-Hans,zh-Hant",
-        3 => "es.*,es",
-        4 => "ja.*,ja",
-        5 => "ko.*,ko",
-        6 => "fr.*,fr",
-        7 => "de.*,de",
+        1 => "en.*,en,und",
+        2 => "km.*,km",
+        3 => "th.*,th",
+        4 => "vi.*,vi",
+        5 => "id.*,id,ms.*,ms",
+        6 => "my.*,my",
+        7 => "zh.*,zh-Hans,zh-Hant",
+        8 => "ja.*,ja",
+        9 => "ko.*,ko",
+        10 => "es.*,es",
+        11 => "fr.*,fr",
+        12 => "de.*,de",
+        13 => "ru.*,ru",
+        14 => "pt.*,pt",
+        15 => "ar.*,ar",
         _ => "all,-live_chat",
     }
 }
