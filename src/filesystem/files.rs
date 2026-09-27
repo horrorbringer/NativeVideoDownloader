@@ -90,6 +90,119 @@ pub async fn pick_directory() -> Option<PathBuf> {
     .flatten()
 }
 
+/// Prompts user with native desktop file chooser dialog for text / link files
+pub async fn pick_file() -> Option<PathBuf> {
+    tokio::task::spawn_blocking(|| {
+        #[cfg(target_os = "macos")]
+        {
+            let output = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg("POSIX path of (choose file with prompt \"Select Links File (.txt, .m3u, .csv):\")")
+                .output()
+                .ok()?;
+            if output.status.success() {
+                let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path_str.is_empty() {
+                    return Some(PathBuf::from(path_str));
+                }
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let script = "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = 'Select Links File'; $f.Filter = 'Text & Playlist Files (*.txt;*.m3u;*.m3u8;*.csv)|*.txt;*.m3u;*.m3u8;*.csv|All Files (*.*)|*.*'; if ($f.ShowDialog() -eq 'OK') { $f.FileName }";
+            let output = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", script])
+                .output()
+                .ok()?;
+            if output.status.success() {
+                let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path_str.is_empty() {
+                    return Some(PathBuf::from(path_str));
+                }
+            }
+        }
+        #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+        {
+            let output = std::process::Command::new("zenity")
+                .args([
+                    "--file-selection",
+                    "--title=Select Links File",
+                    "--file-filter=Text & Playlist Files (*.txt, *.m3u, *.m3u8, *.csv) | *.txt *.m3u *.m3u8 *.csv",
+                ])
+                .output()
+                .ok()?;
+            if output.status.success() {
+                let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path_str.is_empty() {
+                    return Some(PathBuf::from(path_str));
+                }
+            }
+        }
+        None
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// Extracts all unique valid http/https URLs from a text file, playlist, or document
+pub fn parse_links_from_text(content: &str) -> Vec<String> {
+    let mut links = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+        // Skip comment-only lines in m3u or scripts
+        if line.starts_with('#') || line.starts_with("//") {
+            continue;
+        }
+
+        // Search for http:// or https:// substrings in the line
+        let mut remainder = line;
+        while let Some(start_idx) = remainder.find("http://").or_else(|| remainder.find("https://")) {
+            let slice = &remainder[start_idx..];
+
+            // Delimiters that terminate a URL
+            let end_idx = slice
+                .find(|c: char| {
+                    c.is_whitespace()
+                        || c == '"'
+                        || c == '\''
+                        || c == '<'
+                        || c == '>'
+                        || c == '`'
+                        || c == '['
+                        || c == ']'
+                })
+                .unwrap_or(slice.len());
+
+            let mut candidate = &slice[..end_idx];
+
+            // Strip trailing punctuation like '.', ',', ';', ')'
+            while candidate.ends_with('.')
+                || candidate.ends_with(',')
+                || candidate.ends_with(';')
+                || (candidate.ends_with(')') && !candidate.contains('('))
+            {
+                candidate = &candidate[..candidate.len() - 1];
+            }
+
+            if let Ok(url) = reqwest::Url::parse(candidate) {
+                let url_str = url.to_string();
+                if (url_str.starts_with("http://") || url_str.starts_with("https://"))
+                    && seen.insert(url_str.clone())
+                {
+                    links.push(url_str);
+                }
+            }
+
+            remainder = &slice[end_idx..];
+        }
+    }
+
+    links
+}
+
 /// Validates that a path is safe, creates parent directories, and resolves duplicate filenames
 pub fn validate_destination_path(dir: &Path, filename: &str) -> Result<PathBuf> {
     let sanitized = sanitize_filename(filename);
@@ -444,6 +557,29 @@ mod tests {
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_parse_links_from_text() {
+        let sample = r#"
+#EXTM3U
+#EXTINF:-1,Sample Stream
+https://example.com/live/stream.m3u8
+// comment line
+Check this link: https://www.youtube.com/watch?v=dQw4w9WgXcQ.
+"https://vimeo.com/12345678"
+[Markdown Link](https://dailymotion.com/video/x7xyz)
+https://example.com/live/stream.m3u8
+http://bilibili.com/video/BV1xx411c7mD, extra text
+"#;
+
+        let links = parse_links_from_text(sample);
+        assert_eq!(links.len(), 5);
+        assert_eq!(links[0], "https://example.com/live/stream.m3u8");
+        assert_eq!(links[1], "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+        assert_eq!(links[2], "https://vimeo.com/12345678");
+        assert_eq!(links[3], "https://dailymotion.com/video/x7xyz");
+        assert_eq!(links[4], "http://bilibili.com/video/BV1xx411c7mD");
     }
 }
 

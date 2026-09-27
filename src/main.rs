@@ -765,6 +765,95 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // Callback: Import links from a .txt, .m3u, or .csv file
+    let weak_import = main_window.as_weak();
+    let meta_import = current_metadata.clone();
+    let client_import = network_client.clone();
+    let cookies_import = current_cookies_browser.clone();
+    main_window.on_import_links_file(move || {
+        let weak = weak_import.clone();
+        let meta = meta_import.clone();
+        let client = client_import.clone();
+        let cookies = cookies_import.clone();
+        tokio::spawn(async move {
+            let Some(file_path) = filesystem::pick_file().await else {
+                return;
+            };
+
+            let file_name = file_path
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "links file".to_string());
+
+            match tokio::fs::read_to_string(&file_path).await {
+                Ok(content) => {
+                    let links = filesystem::parse_links_from_text(&content);
+                    if links.is_empty() {
+                        let _ = weak.upgrade_in_event_loop(move |win| {
+                            win.set_has_error(true);
+                            win.set_error_message(
+                                format!(
+                                    "No valid video or audio URLs found in '{}'. Supported formats: .txt, .m3u, .csv with http:// or https:// links.",
+                                    file_name
+                                )
+                                .into(),
+                            );
+                            win.set_status_message(format!("Import failed: no URLs found in {}", file_name).into());
+                        });
+                    } else if links.len() == 1 {
+                        let single_url = links[0].clone();
+                        let _ = weak.upgrade_in_event_loop(move |win| {
+                            win.set_batch_mode(false);
+                            win.set_input_url_text(single_url.clone().into());
+                            win.set_has_error(false);
+                            win.set_error_message("".into());
+                            win.set_status_message(
+                                format!("Imported 1 link from '{}' - analyzing...", file_name).into(),
+                            );
+                        });
+                        run_url_analysis(
+                            links[0].clone(),
+                            weak.clone(),
+                            meta.clone(),
+                            client.clone(),
+                            cookies.clone(),
+                        );
+                    } else {
+                        let count = links.len();
+                        let batch_text = links.join("\n");
+                        let _ = weak.upgrade_in_event_loop(move |win| {
+                            win.set_batch_mode(true);
+                            let current = win.get_batch_urls_text().to_string();
+                            let combined = if current.trim().is_empty() {
+                                batch_text
+                            } else {
+                                format!("{}\n{}", current.trim_end(), batch_text)
+                            };
+                            win.set_batch_urls_text(combined.into());
+                            win.set_has_error(false);
+                            win.set_error_message("".into());
+                            win.set_status_message(
+                                format!(
+                                    "Successfully imported {} links from '{}' into batch queue",
+                                    count, file_name
+                                )
+                                .into(),
+                            );
+                        });
+                    }
+                }
+                Err(err) => {
+                    tracing::error!("Failed to read imported file: {}", err);
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_has_error(true);
+                        win.set_error_message(format!("Failed to read file '{}': {}", file_name, err).into());
+                        win.set_status_message("Error reading imported links file".into());
+                    });
+                }
+            }
+        });
+    });
+
 /// Helper: Map UI format index to (is_audio_only, quality_spec)
 fn map_format_index(idx: i32) -> (bool, Option<String>) {
     match idx {

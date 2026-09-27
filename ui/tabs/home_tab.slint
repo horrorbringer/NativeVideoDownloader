@@ -38,6 +38,7 @@ export component HomeTab inherits ScrollView {
     callback apply_episode_range(string);
     callback paste_from_clipboard();
     callback paste_batch_from_clipboard();
+    callback import_links_file();
     callback start_download(int, bool, int, int, bool);
     callback start_batch_download(string, int, int, int, bool);
     callback dismiss_error();
@@ -210,6 +211,16 @@ export component HomeTab inherits ScrollView {
                         height: 38px;
                         clicked => {
                             root.paste_from_clipboard();
+                        }
+                    }
+
+                    ActionButton {
+                        text: "Import File";
+                        icon: @image-url("../icons/folder.svg");
+                        has_icon: true;
+                        height: 38px;
+                        clicked => {
+                            root.import_links_file();
                         }
                     }
 
@@ -901,7 +912,7 @@ export component HomeTab inherits ScrollView {
             border-radius: 12px;
             border-width: 1px;
             border-color: #22283a;
-            height: 150px;
+            height: 175px;
 
             VerticalLayout {
                 alignment: center;
@@ -910,17 +921,17 @@ export component HomeTab inherits ScrollView {
                 HorizontalLayout {
                     alignment: center;
                     Rectangle {
-                        width: 48px;
-                        height: 48px;
-                        border-radius: 24px;
+                        width: 44px;
+                        height: 44px;
+                        border-radius: 22px;
                         background: #1d2234;
                         border-width: 1px;
                         border-color: #2b334d;
 
                         Image {
                             source: @image-url("../icons/sparkles.svg");
-                            width: 24px;
-                            height: 24px;
+                            width: 22px;
+                            height: 22px;
                             colorize: #7082ff;
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
@@ -929,19 +940,33 @@ export component HomeTab inherits ScrollView {
                 }
 
                 VerticalLayout {
-                    spacing: 5px;
+                    spacing: 4px;
                     Text {
-                        text: "Ready to Download Media";
+                        text: "Ready to Analyze & Download Media";
                         color: #ffffff;
                         font-size: 15px;
                         font-weight: 700;
                         horizontal-alignment: center;
                     }
                     Text {
-                        text: "Paste any video, playlist, or streaming audio link above to inspect available qualities";
+                        text: "Paste any video/audio stream link above or import a .txt / .m3u links file";
                         color: #8c93a8;
                         font-size: 13px;
                         horizontal-alignment: center;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: center;
+                    ActionButton {
+                        text: "Import Links File (.txt / .m3u)...";
+                        icon: @image-url("../icons/folder.svg");
+                        has_icon: true;
+                        primary: true;
+                        height: 32px;
+                        clicked => {
+                            root.import_links_file();
+                        }
                     }
                 }
 
@@ -1036,13 +1061,29 @@ export component HomeTab inherits ScrollView {
                         font-weight: 600;
                         vertical-alignment: center;
                     }
-                    ActionButton {
-                        text: "Paste Clipboard";
-                        icon: @image-url("../icons/clipboard.svg");
-                        has_icon: true;
-                        height: 30px;
-                        clicked => {
-                            root.paste_batch_from_clipboard();
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+
+                        ActionButton {
+                            text: "Import File (.txt)";
+                            icon: @image-url("../icons/folder.svg");
+                            has_icon: true;
+                            height: 30px;
+                            clicked => {
+                                root.import_links_file();
+                            }
+                        }
+
+                        ActionButton {
+                            text: "Paste Clipboard";
+                            icon: @image-url("../icons/clipboard.svg");
+                            has_icon: true;
+                            height: 30px;
+                            clicked => {
+                                root.paste_batch_from_clipboard();
+                            }
                         }
                     }
                 }

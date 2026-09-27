@@ -89,6 +89,7 @@ export component AppWindow inherits Window {
     callback analyze_url(string);
     callback paste_from_clipboard();
     callback paste_batch_from_clipboard();
+    callback import_links_file();
     callback start_download(int, bool, int, int, bool);
     callback start_batch_download(string, int, int, int, bool);
     callback pause_download(string);
@@ -382,6 +383,7 @@ export component AppWindow inherits Window {
                 apply_episode_range(range) => { root.apply_episode_range(range); }
                 paste_from_clipboard() => { root.paste_from_clipboard(); }
                 paste_batch_from_clipboard() => { root.paste_batch_from_clipboard(); }
+                import_links_file() => { root.import_links_file(); }
                 start_download(fmt, subs, afmt, abr, meta) => { root.start_download(fmt, subs, afmt, abr, meta); }
                 start_batch_download(text, fmt, afmt, abr, meta) => { root.start_batch_download(text, fmt, afmt, abr, meta); }
                 dismiss_error() => { root.dismiss_error(); }
