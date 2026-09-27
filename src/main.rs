@@ -71,6 +71,7 @@ fn run_url_analysis(
     meta_clone: Arc<Mutex<Option<VideoMetadata>>>,
     client_clone: Arc<NetworkClient>,
     cookies_browser_clone: Arc<tokio::sync::RwLock<Option<String>>>,
+    proxy_clone: Arc<tokio::sync::RwLock<Option<String>>>,
 ) {
     let url_str = url_str.trim().to_string();
     info!("Received URL analysis request: {}", url_str);
@@ -108,11 +109,12 @@ fn run_url_analysis(
 
     tokio::spawn(async move {
         let cookies_browser = cookies_browser_clone.read().await.clone();
+        let proxy = proxy_clone.read().await.clone();
         let inspect_result = if downloader::is_streaming_platform(&url_str) {
             let _ = weak_for_async.upgrade_in_event_loop(|w| {
                 w.set_status_message("Analyzing streaming platform media (yt-dlp)...".into());
             });
-            downloader::inspect_video_with_cookies(&url_str, cookies_browser.as_deref()).await
+            downloader::inspect_video_with_options(&url_str, cookies_browser.as_deref(), proxy.as_deref()).await
         } else {
             match client.inspect_url(&url_str).await {
                 Ok(meta) if downloader::is_valid_direct_media(&meta) => Ok(meta),
@@ -126,11 +128,11 @@ fn run_url_analysis(
                             "Web source detected. Extracting media stream...".into(),
                         );
                     });
-                    downloader::inspect_video_with_cookies(&url_str, cookies_browser.as_deref()).await
+                    downloader::inspect_video_with_options(&url_str, cookies_browser.as_deref(), proxy.as_deref()).await
                 }
                 Err(err) => {
                     // Try extractor as fallback
-                    match downloader::inspect_video_with_cookies(&url_str, cookies_browser.as_deref()).await {
+                    match downloader::inspect_video_with_options(&url_str, cookies_browser.as_deref(), proxy.as_deref()).await {
                         Ok(extracted) => Ok(extracted),
                         Err(_) => Err(err),
                     }
@@ -415,6 +417,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     download_manager.set_cookies_browser(manager_cookies.clone()).await;
     let current_cookies_browser = Arc::new(tokio::sync::RwLock::new(manager_cookies));
 
+    // Restore saved proxy settings
+    let saved_proxy_enabled = db.get_setting("proxy_enabled").await.unwrap_or(None).map(|v| v == "true").unwrap_or(false);
+    let saved_proxy_url = db.get_setting("proxy_url").await.unwrap_or(None).unwrap_or_default();
+    let initial_proxy = if saved_proxy_enabled && !saved_proxy_url.is_empty() {
+        Some(saved_proxy_url.clone())
+    } else {
+        None
+    };
+    main_window.set_proxy_enabled(saved_proxy_enabled);
+    main_window.set_proxy_url_input(saved_proxy_url.clone().into());
+    if let Some(ref p) = initial_proxy {
+        main_window.set_proxy_status_message(format!("Active Proxy: {}", p).into());
+        main_window.set_proxy_is_connected(true);
+    } else {
+        main_window.set_proxy_status_message("Direct connection (proxy disabled)".into());
+        main_window.set_proxy_is_connected(false);
+    }
+    network_client.set_proxy(initial_proxy.clone());
+    download_manager.set_proxy(initial_proxy.clone()).await;
+    let current_proxy = Arc::new(tokio::sync::RwLock::new(initial_proxy));
+
     // Initialize speed samples for the graph with 30 idle points
     let initial_samples: Vec<SpeedSampleData> = (0..30)
         .map(|_| SpeedSampleData {
@@ -622,6 +645,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let meta_clone = current_metadata.clone();
     let client_clone = network_client.clone();
     let cookies_for_analyze = current_cookies_browser.clone();
+    let proxy_for_analyze = current_proxy.clone();
 
     main_window.on_analyze_url(move |url| {
         run_url_analysis(
@@ -630,6 +654,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             meta_clone.clone(),
             client_clone.clone(),
             cookies_for_analyze.clone(),
+            proxy_for_analyze.clone(),
         );
     });
 
@@ -782,11 +807,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let meta_analyze_clip = current_metadata.clone();
     let client_analyze_clip = network_client.clone();
     let cookies_analyze_clip = current_cookies_browser.clone();
+    let proxy_analyze_clip = current_proxy.clone();
     main_window.on_analyze_clipboard_detected(move || {
         let weak = weak_analyze_clip.clone();
         let meta = meta_analyze_clip.clone();
         let client = client_analyze_clip.clone();
         let cookies = cookies_analyze_clip.clone();
+        let proxy = proxy_analyze_clip.clone();
         let _ = weak_analyze_clip.upgrade_in_event_loop(move |win| {
             let url = win.get_clipboard_detected_url().to_string();
             win.set_clipboard_detected_url_visible(false);
@@ -794,7 +821,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 win.set_batch_mode(false);
                 win.set_input_url_text(url.clone().into());
                 win.set_status_message(format!("Analyzing copied link: {}", url).into());
-                run_url_analysis(url, weak, meta, client, cookies);
+                run_url_analysis(url, weak, meta, client, cookies, proxy);
             }
         });
     });
@@ -829,6 +856,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let meta_paste = current_metadata.clone();
     let client_paste = network_client.clone();
     let cookies_paste = current_cookies_browser.clone();
+    let proxy_paste = current_proxy.clone();
     main_window.on_paste_from_clipboard(move || {
         if let Some(text) = filesystem::read_clipboard_text() {
             let weak = weak_paste.clone();
@@ -840,6 +868,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     meta_paste.clone(),
                     client_paste.clone(),
                     cookies_paste.clone(),
+                    proxy_paste.clone(),
                 );
             } else {
                 let _ = weak.upgrade_in_event_loop(move |win| {
@@ -876,11 +905,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let meta_import = current_metadata.clone();
     let client_import = network_client.clone();
     let cookies_import = current_cookies_browser.clone();
+    let proxy_import = current_proxy.clone();
     main_window.on_import_links_file(move || {
         let weak = weak_import.clone();
         let meta = meta_import.clone();
         let client = client_import.clone();
         let cookies = cookies_import.clone();
+        let proxy = proxy_import.clone();
         tokio::spawn(async move {
             let Some(file_path) = filesystem::pick_file().await else {
                 return;
@@ -923,6 +954,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             meta.clone(),
                             client.clone(),
                             cookies.clone(),
+                            proxy.clone(),
                         );
                     } else {
                         let count = links.len();
@@ -1545,6 +1577,82 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
             info!("Updated browser cookies authentication: {}", label);
             let _ = weak.upgrade_in_event_loop(move |window| {
                 window.set_status_message(format!("Browser cookies: {}", label).into());
+            });
+        });
+    });
+
+    // Callback: Set Network Proxy
+    let db_proxy = db.clone();
+    let mgr_proxy = download_manager.clone();
+    let client_proxy = network_client.clone();
+    let weak_proxy = main_window.as_weak();
+    let proxy_lock = current_proxy.clone();
+    main_window.on_set_proxy(move |enabled, proxy_str| {
+        let db = db_proxy.clone();
+        let mgr = mgr_proxy.clone();
+        let client = client_proxy.clone();
+        let weak = weak_proxy.clone();
+        let lock = proxy_lock.clone();
+        let p_trimmed = proxy_str.trim().to_string();
+
+        tokio::spawn(async move {
+            let proxy_opt = if enabled && !p_trimmed.is_empty() {
+                Some(p_trimmed.clone())
+            } else {
+                None
+            };
+
+            mgr.set_proxy(proxy_opt.clone()).await;
+            client.set_proxy(proxy_opt.clone());
+            *lock.write().await = proxy_opt.clone();
+
+            let _ = db.set_setting("proxy_enabled", if enabled { "true" } else { "false" }).await;
+            let _ = db.set_setting("proxy_url", &p_trimmed).await;
+
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                if let Some(ref p) = proxy_opt {
+                    window.set_proxy_status_message(format!("Active Proxy: {}", p).into());
+                    window.set_proxy_is_connected(true);
+                    window.set_status_message(format!("Custom proxy enabled: {}", p).into());
+                } else {
+                    window.set_proxy_status_message("Direct connection (proxy disabled)".into());
+                    window.set_proxy_is_connected(false);
+                    window.set_status_message("Proxy disabled - using direct network connection".into());
+                }
+            });
+        });
+    });
+
+    // Callback: Test Proxy Connectivity & Latency
+    let weak_test_proxy = main_window.as_weak();
+    main_window.on_test_proxy(move |proxy_str| {
+        let weak = weak_test_proxy.clone();
+        let proxy_url = proxy_str.trim().to_string();
+        if proxy_url.is_empty() {
+            return;
+        }
+
+        let _ = weak.upgrade_in_event_loop(|win| {
+            win.set_is_testing_proxy(true);
+            win.set_proxy_status_message("Testing proxy ping...".into());
+        });
+
+        tokio::spawn(async move {
+            let res = NetworkClient::test_proxy_connection(&proxy_url).await;
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_is_testing_proxy(false);
+                match res {
+                    Ok(latency_ms) => {
+                        win.set_proxy_status_message(format!("Proxy Connected (Latency: {}ms)", latency_ms).into());
+                        win.set_proxy_is_connected(true);
+                        win.set_status_message(format!("Proxy test succeeded: {}ms round-trip latency", latency_ms).into());
+                    }
+                    Err(err) => {
+                        win.set_proxy_status_message(format!("Connection Failed: {}", err).into());
+                        win.set_proxy_is_connected(false);
+                        win.set_status_message(format!("Proxy test failed: {}", err).into());
+                    }
+                }
             });
         });
     });

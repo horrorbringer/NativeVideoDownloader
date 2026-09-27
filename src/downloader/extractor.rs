@@ -224,15 +224,28 @@ fn create_ytdlp_cmd(ytdlp_bin: &Path) -> Command {
     cmd
 }
 
-/// Inspects a video or album/playlist streaming URL to fetch metadata with optional browser cookies
-pub async fn inspect_video_with_cookies(url: &str, cookies_browser: Option<&str>) -> Result<VideoMetadata> {
+/// Inspects a video or album/playlist streaming URL to fetch metadata with optional browser cookies and proxy
+pub async fn inspect_video_with_options(
+    url: &str,
+    cookies_browser: Option<&str>,
+    proxy: Option<&str>,
+) -> Result<VideoMetadata> {
     let ytdlp_bin = ensure_ytdlp_installed().await?;
 
-    info!("Inspecting streaming URL with yt-dlp: {} (cookies: {:?})", url, cookies_browser);
+    info!(
+        "Inspecting streaming URL with yt-dlp: {} (cookies: {:?}, proxy: {:?})",
+        url, cookies_browser, proxy
+    );
     let mut cmd = create_ytdlp_cmd(&ytdlp_bin);
     if let Some(b) = cookies_browser {
         if !b.is_empty() {
             cmd.arg("--cookies-from-browser").arg(b);
+        }
+    }
+    if let Some(p) = proxy {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            cmd.arg("--proxy").arg(trimmed);
         }
     }
     let output = cmd
@@ -246,7 +259,7 @@ pub async fn inspect_video_with_cookies(url: &str, cookies_browser: Option<&str>
 
     if !output.status.success() {
         // Attempt fallback: Scrape HTML for embedded video/m3u8 sources
-        if let Ok(scraped_meta) = scrape_page_for_media(url).await {
+        if let Ok(scraped_meta) = scrape_page_for_media_with_proxy(url, proxy).await {
             info!("Successfully scraped media from webpage: {:?}", scraped_meta);
             return Ok(scraped_meta);
         }
@@ -381,20 +394,35 @@ pub async fn inspect_video_with_cookies(url: &str, cookies_browser: Option<&str>
     })
 }
 
-/// Convenience wrapper for inspecting streaming URL without explicit browser cookies
-pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
-    inspect_video_with_cookies(url, None).await
+/// Convenience wrapper for inspecting streaming URL with browser cookies
+#[allow(dead_code)]
+pub async fn inspect_video_with_cookies(url: &str, cookies_browser: Option<&str>) -> Result<VideoMetadata> {
+    inspect_video_with_options(url, cookies_browser, None).await
 }
 
-/// Scrapes a generic webpage's HTML to locate embedded video tags, OpenGraph video, or .m3u8/.mp4 stream URLs
-pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
-    info!("Scraping webpage HTML for media sources: {}", page_url);
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+/// Convenience wrapper for inspecting streaming URL without explicit browser cookies or proxy
+#[allow(dead_code)]
+pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
+    inspect_video_with_options(url, None, None).await
+}
 
+/// Scrapes a generic webpage's HTML to locate embedded video tags, OpenGraph video, or .m3u8/.mp4 stream URLs with optional proxy
+pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str>) -> Result<VideoMetadata> {
+    info!("Scraping webpage HTML for media sources: {} (proxy: {:?})", page_url, proxy);
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+    if let Some(p) = proxy {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            if let Ok(prx) = reqwest::Proxy::all(trimmed) {
+                builder = builder.proxy(prx);
+            }
+        }
+    }
+
+    let client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client.get(page_url).send().await?;
     if !resp.status().is_success() {
         return Err(AppError::Generic(format!("HTTP {}", resp.status())));
@@ -518,6 +546,12 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
         subtitles_summary: String::new(),
         thumbnail_url: page_thumbnail,
     })
+}
+
+/// Convenience wrapper for scraping webpage HTML without explicit proxy
+#[allow(dead_code)]
+pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
+    scrape_page_for_media_with_proxy(page_url, None).await
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -992,6 +1026,7 @@ pub async fn download_stream<F>(
     embed_artwork: bool,
     speed_limit: Option<&str>,
     cookies_browser: Option<&str>,
+    proxy: Option<&str>,
     cancel_token: CancellationToken,
     mut on_progress: F,
 ) -> Result<PathBuf>
@@ -1036,6 +1071,14 @@ where
         if !browser.is_empty() {
             info!("Applying browser cookies from {} to yt-dlp download", browser);
             cmd.arg("--cookies-from-browser").arg(browser);
+        }
+    }
+
+    if let Some(prx) = proxy {
+        let trimmed = prx.trim();
+        if !trimmed.is_empty() {
+            info!("Applying proxy {} to yt-dlp download", trimmed);
+            cmd.arg("--proxy").arg(trimmed);
         }
     }
 

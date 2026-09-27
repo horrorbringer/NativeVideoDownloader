@@ -1,4 +1,4 @@
-import { ScrollView } from "std-widgets.slint";
+import { ScrollView, LineEdit } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
 
@@ -9,6 +9,13 @@ export component SettingsTab inherits ScrollView {
     in-out property <int> selected_cookies_browser_index: 0;
     in-out property <bool> clipboard_monitor_enabled: true;
 
+    // Network & Custom Proxy properties
+    in-out property <bool> proxy_enabled: false;
+    in-out property <string> proxy_url_input: "";
+    in-out property <string> proxy_status_message: "";
+    in-out property <bool> proxy_is_connected: false;
+    in-out property <bool> is_testing_proxy: false;
+
     callback browse_download_dir();
     callback open_current_download_dir();
     callback reset_download_dir();
@@ -16,6 +23,8 @@ export component SettingsTab inherits ScrollView {
     callback set_max_concurrency(int);
     callback set_cookies_browser(int);
     callback set_clipboard_monitor(bool);
+    callback set_proxy(bool, string);
+    callback test_proxy(string);
     callback test_notification();
     callback update_extractor();
 
@@ -465,7 +474,199 @@ export component SettingsTab inherits ScrollView {
             }
         }
 
-        // 4. System & Desktop Notifications
+        // 4. Network & Custom Proxy
+        Rectangle {
+            background: #161926;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #242c40;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 8px;
+                        background: #1e2438;
+                        border-width: 1px;
+                        border-color: #2c3550;
+
+                        Image {
+                            source: @image-url("../icons/link.svg");
+                            width: 17px;
+                            height: 17px;
+                            colorize: #7082ff;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 3px;
+                        Text {
+                            text: "Network & Custom Proxy";
+                            color: #ffffff;
+                            font-size: 15px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Route media analysis, scrapers, and downloads through an HTTP, HTTPS, or SOCKS5 proxy.";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    IconChip {
+                        text: "Direct Connection";
+                        icon: @image-url("../icons/bolt.svg");
+                        has_icon: true;
+                        selected: !root.proxy_enabled;
+                        clicked => {
+                            root.proxy_enabled = false;
+                            root.set_proxy(false, "");
+                        }
+                    }
+
+                    IconChip {
+                        text: "Custom Proxy";
+                        icon: @image-url("../icons/link.svg");
+                        has_icon: true;
+                        selected: root.proxy_enabled;
+                        clicked => {
+                            root.proxy_enabled = true;
+                            root.set_proxy(true, root.proxy_url_input);
+                        }
+                    }
+                }
+
+                if root.proxy_enabled: VerticalLayout {
+                    spacing: 10px;
+
+                    HorizontalLayout {
+                        spacing: 10px;
+
+                        proxy_input := LineEdit {
+                            horizontal-stretch: 1;
+                            text <=> root.proxy_url_input;
+                            placeholder_text: "http://127.0.0.1:7890 or socks5://127.0.0.1:1080";
+                            font_size: 13px;
+                            height: 36px;
+                            accepted => {
+                                root.set_proxy(true, self.text);
+                            }
+                        }
+
+                        ActionButton {
+                            text: root.is_testing_proxy ? "Testing..." : "Test Proxy";
+                            icon: @image-url("../icons/refresh.svg");
+                            has_icon: true;
+                            enabled: !root.is_testing_proxy && root.proxy_url_input != "";
+                            height: 36px;
+                            clicked => {
+                                root.test_proxy(root.proxy_url_input);
+                            }
+                        }
+
+                        ActionButton {
+                            text: "Save";
+                            icon: @image-url("../icons/check.svg");
+                            has_icon: true;
+                            primary: true;
+                            height: 36px;
+                            clicked => {
+                                root.set_proxy(true, root.proxy_url_input);
+                            }
+                        }
+                    }
+
+                    // Presets
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        Text {
+                            text: "Presets:";
+                            color: #64748b;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+
+                        IconChip {
+                            text: "127.0.0.1:7890 (Clash)";
+                            selected: root.proxy_url_input == "http://127.0.0.1:7890";
+                            clicked => {
+                                root.proxy_url_input = "http://127.0.0.1:7890";
+                                root.set_proxy(true, root.proxy_url_input);
+                            }
+                        }
+
+                        IconChip {
+                            text: "127.0.0.1:1080 (SOCKS5)";
+                            selected: root.proxy_url_input == "socks5://127.0.0.1:1080";
+                            clicked => {
+                                root.proxy_url_input = "socks5://127.0.0.1:1080";
+                                root.set_proxy(true, root.proxy_url_input);
+                            }
+                        }
+
+                        IconChip {
+                            text: "127.0.0.1:10808 (V2Ray)";
+                            selected: root.proxy_url_input == "http://127.0.0.1:10808";
+                            clicked => {
+                                root.proxy_url_input = "http://127.0.0.1:10808";
+                                root.set_proxy(true, root.proxy_url_input);
+                            }
+                        }
+                    }
+                }
+
+                // Proxy status chip
+                if root.proxy_status_message != "": Rectangle {
+                    background: #0f172a;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: #1e293b;
+                    height: 28px;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        alignment: start;
+                        spacing: 6px;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 6px;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: root.proxy_is_connected ? #22c55e : #ef4444;
+                            }
+                        }
+
+                        Text {
+                            text: root.proxy_status_message;
+                            color: #cbd5e1;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. System & Desktop Notifications
         Rectangle {
             background: #161926;
             border-radius: 12px;

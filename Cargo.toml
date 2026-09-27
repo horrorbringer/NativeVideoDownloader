@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 slint = "1"
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["rustls-tls", "stream"] }
+reqwest = { version = "0.12", features = ["rustls-tls", "stream", "socks"] }
 tokio-util = "0.7"
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }

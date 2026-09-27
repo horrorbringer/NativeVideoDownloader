@@ -86,6 +86,13 @@ export component AppWindow inherits Window {
     in-out property <int> selected_cookies_browser_index: 0;
     in-out property <bool> clipboard_monitor_enabled: true;
 
+    // Network & Custom Proxy properties
+    in-out property <bool> proxy_enabled: false;
+    in-out property <string> proxy_url_input: "";
+    in-out property <string> proxy_status_message: "";
+    in-out property <bool> proxy_is_connected: false;
+    in-out property <bool> is_testing_proxy: false;
+
     // Live Clipboard Link Monitor properties
     in-out property <bool> clipboard_detected_url_visible: false;
     in-out property <string> clipboard_detected_url: "";
@@ -98,6 +105,8 @@ export component AppWindow inherits Window {
     callback analyze_clipboard_detected();
     callback dismiss_clipboard_detected();
     callback set_clipboard_monitor(bool);
+    callback set_proxy(bool, string);
+    callback test_proxy(string);
     callback start_download(int, bool, int, int, bool);
     callback start_batch_download(string, int, int, int, bool);
     callback pause_download(string);
@@ -459,6 +468,11 @@ export component AppWindow inherits Window {
                 selected_concurrency <=> root.selected_concurrency;
                 selected_cookies_browser_index <=> root.selected_cookies_browser_index;
                 clipboard_monitor_enabled <=> root.clipboard_monitor_enabled;
+                proxy_enabled <=> root.proxy_enabled;
+                proxy_url_input <=> root.proxy_url_input;
+                proxy_status_message <=> root.proxy_status_message;
+                proxy_is_connected <=> root.proxy_is_connected;
+                is_testing_proxy <=> root.is_testing_proxy;
 
                 browse_download_dir() => { root.browse_download_dir(); }
                 open_current_download_dir() => { root.open_current_download_dir(); }
@@ -467,6 +481,8 @@ export component AppWindow inherits Window {
                 set_max_concurrency(c) => { root.set_max_concurrency(c); }
                 set_cookies_browser(b) => { root.set_cookies_browser(b); }
                 set_clipboard_monitor(e) => { root.set_clipboard_monitor(e); }
+                set_proxy(en, p) => { root.set_proxy(en, p); }
+                test_proxy(p) => { root.test_proxy(p); }
                 test_notification() => { root.test_notification(); }
                 update_extractor() => { root.update_extractor(); }
             }

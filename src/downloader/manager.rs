@@ -41,6 +41,7 @@ pub struct DownloadManager {
     db: Arc<Database>,
     speed_limit: Arc<RwLock<Option<String>>>,
     cookies_browser: Arc<RwLock<Option<String>>>,
+    proxy: Arc<RwLock<Option<String>>>,
     on_update: Mutex<Option<StatusUpdateCallback>>,
 }
 
@@ -54,6 +55,7 @@ impl DownloadManager {
             db,
             speed_limit: Arc::new(RwLock::new(None)),
             cookies_browser: Arc::new(RwLock::new(None)),
+            proxy: Arc::new(RwLock::new(None)),
             on_update: Mutex::new(None),
         }
     }
@@ -92,6 +94,16 @@ impl DownloadManager {
 
     pub async fn get_cookies_browser(&self) -> Option<String> {
         let guard = self.cookies_browser.read().await;
+        guard.clone()
+    }
+
+    pub async fn set_proxy(&self, proxy: Option<String>) {
+        let mut guard = self.proxy.write().await;
+        *guard = proxy;
+    }
+
+    pub async fn get_proxy(&self) -> Option<String> {
+        let guard = self.proxy.read().await;
         guard.clone()
     }
 
@@ -370,6 +382,7 @@ impl DownloadManager {
                 let active_speed_limit = manager.get_speed_limit().await;
                 let active_speed_limit_bytes = parse_speed_limit_bytes(active_speed_limit.as_deref());
                 let active_cookies_browser = manager.get_cookies_browser().await;
+                let active_proxy = manager.get_proxy().await;
 
                 let mgr_progress = manager.clone();
                 let download_res = if is_extractor {
@@ -385,6 +398,7 @@ impl DownloadManager {
                         embed_artwork,
                         active_speed_limit.as_deref(),
                         active_cookies_browser.as_deref(),
+                        active_proxy.as_deref(),
                         cancel_token,
                         move |progress| {
                             let mgr = mgr_progress.clone();
@@ -601,6 +615,23 @@ mod tests {
         assert_eq!(mgr.get_cookies_browser().await, Some("firefox".to_string()));
         mgr.set_cookies_browser(None).await;
         assert_eq!(mgr.get_cookies_browser().await, None);
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn test_proxy_config() {
+        let db_path = std::env::temp_dir().join(format!("test_mgr_proxy_{}.db", Uuid::new_v4()));
+        let db = Arc::new(Database::init(&db_path).await.unwrap());
+        let mgr = DownloadManager::new(3, db.clone());
+
+        assert_eq!(mgr.get_proxy().await, None);
+        mgr.set_proxy(Some("http://127.0.0.1:7890".to_string())).await;
+        assert_eq!(mgr.get_proxy().await, Some("http://127.0.0.1:7890".to_string()));
+        mgr.set_proxy(Some("socks5://127.0.0.1:1080".to_string())).await;
+        assert_eq!(mgr.get_proxy().await, Some("socks5://127.0.0.1:1080".to_string()));
+        mgr.set_proxy(None).await;
+        assert_eq!(mgr.get_proxy().await, None);
 
         let _ = std::fs::remove_file(db_path);
     }

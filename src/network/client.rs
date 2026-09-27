@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use reqwest::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_TYPE, RANGE};
 use tokio::io::AsyncWriteExt;
@@ -10,31 +11,102 @@ use crate::error::{AppError, Result};
 use crate::filesystem::{cleanup_part_file, finalize_part_file, part_path_for};
 use crate::models::{DownloadProgress, VideoMetadata};
 
+fn build_http_client(proxy_url: Option<&str>) -> reqwest::Client {
+    let mut builder = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+    if let Some(proxy_str) = proxy_url {
+        let trimmed = proxy_str.trim();
+        if !trimmed.is_empty() {
+            match reqwest::Proxy::all(trimmed) {
+                Ok(proxy) => {
+                    builder = builder.proxy(proxy);
+                    info!("NetworkClient configured with proxy: {}", trimmed);
+                }
+                Err(err) => {
+                    warn!("Failed to parse proxy URL '{}': {}", trimmed, err);
+                }
+            }
+        }
+    }
+
+    builder.build().unwrap_or_else(|_| reqwest::Client::new())
+}
+
+#[derive(Clone)]
 pub struct NetworkClient {
-    client: reqwest::Client,
+    client: Arc<RwLock<reqwest::Client>>,
+    proxy_url: Arc<RwLock<Option<String>>>,
 }
 
 impl NetworkClient {
     pub fn new() -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .connect_timeout(Duration::from_secs(10))
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        Self {
+            client: Arc::new(RwLock::new(build_http_client(None))),
+            proxy_url: Arc::new(RwLock::new(None)),
+        }
+    }
 
-        Self { client }
+    /// Sets or clears the active proxy URL for all future network operations
+    pub fn set_proxy(&self, proxy: Option<String>) {
+        let client = build_http_client(proxy.as_deref());
+        *self.client.write().unwrap() = client;
+        *self.proxy_url.write().unwrap() = proxy;
+    }
+
+    /// Returns the currently active proxy URL if set
+    #[allow(dead_code)]
+    pub fn get_proxy(&self) -> Option<String> {
+        self.proxy_url.read().unwrap().clone()
+    }
+
+    /// Tests connection through a specified proxy URL and returns ping round-trip time in milliseconds
+    pub async fn test_proxy_connection(proxy_url: &str) -> Result<u128> {
+        let trimmed = proxy_url.trim();
+        let proxy = reqwest::Proxy::all(trimmed)
+            .map_err(|e| AppError::Generic(format!("Invalid proxy URL syntax: {}", e)))?;
+
+        let client = reqwest::Client::builder()
+            .proxy(proxy)
+            .timeout(Duration::from_secs(8))
+            .connect_timeout(Duration::from_secs(5))
+            .build()
+            .map_err(|e| AppError::Generic(format!("Failed to build proxy client: {}", e)))?;
+
+        let start = std::time::Instant::now();
+        // Try Cloudflare DNS or Google to test round-trip latency
+        let resp = client.head("https://1.1.1.1").send().await;
+        match resp {
+            Ok(_) => Ok(start.elapsed().as_millis()),
+            Err(_) => {
+                // Secondary check: Google
+                let resp2 = client.head("https://www.google.com").send().await;
+                match resp2 {
+                    Ok(_) => Ok(start.elapsed().as_millis()),
+                    Err(e) => Err(AppError::Generic(format!("Proxy unreachable: {}", e))),
+                }
+            }
+        }
+    }
+
+    /// Returns a copy of the current reqwest::Client
+    #[allow(dead_code)]
+    pub fn get_client(&self) -> reqwest::Client {
+        self.client.read().unwrap().clone()
     }
 
     /// Inspects a media URL to fetch content length, content type, and range support
     pub async fn inspect_url(&self, url: &str) -> Result<VideoMetadata> {
-        let resp_res = self.client.head(url).send().await;
+        let client = self.client.read().unwrap().clone();
+        let resp_res = client.head(url).send().await;
 
         let resp = match resp_res {
             Ok(r) if r.status().is_success() => r,
             _ => {
                 // Fallback: send GET with Range 0-0 in case HEAD is disallowed
-                self.client
+                client
                     .get(url)
                     .header(RANGE, "bytes=0-0")
                     .send()
@@ -127,7 +199,8 @@ impl NetworkClient {
             0
         };
 
-        let request_builder = self.client.get(url);
+        let client = self.client.read().unwrap().clone();
+        let request_builder = client.get(url);
         let request_builder = if existing_bytes > 0 {
             info!("Attempting resume for {:?} from byte offset {}", destination_path, existing_bytes);
             request_builder.header(RANGE, format!("bytes={}-", existing_bytes))
