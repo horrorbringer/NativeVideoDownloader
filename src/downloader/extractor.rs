@@ -726,7 +726,7 @@ pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
 
 /// Scrapes a generic webpage's HTML to locate embedded video tags, OpenGraph video, or .m3u8/.mp4 stream URLs with optional proxy
 pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str>) -> Result<VideoMetadata> {
-    info!("Scraping webpage HTML for media sources: {} (proxy: {:?})", page_url, proxy);
+    info!("Universal media sniffer analyzing page: {} (proxy: {:?})", page_url, proxy);
     let mut builder = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
@@ -748,161 +748,35 @@ pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str
 
     let html = resp.text().await?;
 
-    let page_title = extract_html_title(&html);
-    let page_thumbnail = extract_html_thumbnail(&html, page_url);
+    // 1. Run Universal Media Sniffer across structured JSON, HTML5 video, MacCMS, and script streams
+    if let Some(meta) = universal_sniff_media_from_html(&html, page_url) {
+        info!("Universal sniffer discovered media source: '{}' (playlist: {}, url: {})", meta.title, meta.is_playlist, meta.url);
 
-    // 0. Check Next.js drama/series collection (__NEXT_DATA__) (e.g. kuaikaw.cn)
-    if let Some(drama_meta) = extract_next_data_drama(&html, page_url) {
-        info!("Successfully extracted Next.js drama collection: '{}' ({} episodes)", drama_meta.title, drama_meta.playlist_count);
-        return Ok(drama_meta);
-    }
-
-    // 1. Check MacCMS player_aaaa configuration (used by donghuafun, animevietsub, etc.)
-    if let Some(maccms) = extract_maccms_player(&html) {
-        info!("Found MacCMS embedded player: {:?}", maccms.video_url);
-        if is_streaming_platform(&maccms.video_url) {
-            info!("Inspecting extracted streaming platform source: {}", maccms.video_url);
-            if let Ok(mut meta) = Box::pin(inspect_video_with_options(&maccms.video_url, None, proxy)).await {
-                if let Some(t) = maccms.title.or(page_title.clone()) {
-                    meta.title = t;
+        // If series playlist, probe first episode to detect stream quality in background
+        if meta.is_playlist && !meta.playlist_entries.is_empty() {
+            let remaining_eps: Vec<String> = meta.playlist_entries.iter().skip(1).map(|e| e.url.clone()).collect();
+            let proxy_opt = proxy.map(|s| s.to_string());
+            tokio::spawn(async move {
+                for ep_url in remaining_eps {
+                    resolve_playable_stream_url(&ep_url, proxy_opt.as_deref()).await;
                 }
-                if meta.thumbnail_url.is_none() {
-                    meta.thumbnail_url = page_thumbnail.clone();
-                }
-                return Ok(meta);
-            }
-        }
-        if maccms.video_url.contains(".m3u8") || maccms.video_url.contains(".mp4") || maccms.video_url.contains(".webm") {
-            let title = maccms.title.or(page_title.clone()).unwrap_or_else(|| "web_video".to_string());
-            let ext = if maccms.video_url.contains(".m3u8") { "mp4".to_string() } else { "mp4".to_string() };
-            return Ok(VideoMetadata {
-                url: maccms.video_url,
-                title,
-                content_length: None,
-                content_type: Some(format!("video/{}", ext)),
-                supports_ranges: true,
-                is_extractor: true,
-                duration_seconds: None,
-                resolution: Some("Web Stream".to_string()),
-                ext: Some(ext),
-                is_playlist: false,
-                playlist_count: 0,
-                playlist_entries: Vec::new(),
-                has_subtitles: false,
-                subtitles_summary: String::new(),
-                thumbnail_url: page_thumbnail.clone(),
-                ..Default::default()
             });
         }
+
+        return Ok(meta);
     }
 
     // 2. Check embedded iframes for known streaming platforms
     for iframe_url in extract_iframes_from_html(&html, page_url) {
         if is_streaming_platform(&iframe_url) {
             info!("Inspecting embedded iframe streaming source: {}", iframe_url);
-            if let Ok(mut meta) = Box::pin(inspect_video_with_options(&iframe_url, None, proxy)).await {
-                if let Some(t) = page_title.clone() {
-                    meta.title = t;
-                }
-                if meta.thumbnail_url.is_none() {
-                    meta.thumbnail_url = page_thumbnail.clone();
-                }
+            if let Ok(meta) = Box::pin(inspect_video_with_options(&iframe_url, None, proxy)).await {
                 return Ok(meta);
             }
         }
     }
 
-    // 3. Check for series/playlist collection (e.g. MacCMS vod/detail pages or episode anthology lists)
-    if let Some(mut playlist_meta) = extract_playlist_from_detail_html(&html, page_url) {
-        info!("Successfully extracted series collection from webpage: '{}' ({} episodes)", playlist_meta.title, playlist_meta.playlist_count);
-
-        // Probe first episode to detect stream quality and multi-language subtitle tracks for the series
-        if let Some(first_ep) = playlist_meta.playlist_entries.first() {
-            let sample_stream = resolve_playable_stream_url(&first_ep.url, proxy).await;
-            if sample_stream != first_ep.url || is_streaming_platform(&sample_stream) {
-                if let Ok(ep_meta) = Box::pin(inspect_video_with_options(&sample_stream, None, proxy)).await {
-                    playlist_meta.has_subtitles = ep_meta.has_subtitles;
-                    playlist_meta.subtitles_summary = ep_meta.subtitles_summary;
-                    playlist_meta.fps = ep_meta.fps;
-                    playlist_meta.vcodec = ep_meta.vcodec;
-                    playlist_meta.acodec = ep_meta.acodec;
-                    if let Some(res) = ep_meta.resolution {
-                        playlist_meta.resolution = Some(format!("{} Episodes Series • {}", playlist_meta.playlist_count, res));
-                    }
-                    if playlist_meta.thumbnail_url.is_none() {
-                        playlist_meta.thumbnail_url = ep_meta.thumbnail_url;
-                    }
-                }
-            }
-        }
-
-        // Pre-resolve remaining episodes in background so when user starts downloading any episode,
-        // it starts instantly without needing to make network requests to parse HTML pages!
-        let remaining_eps: Vec<String> = playlist_meta.playlist_entries.iter().skip(1).map(|e| e.url.clone()).collect();
-        let proxy_opt = proxy.map(|s| s.to_string());
-        tokio::spawn(async move {
-            for ep_url in remaining_eps {
-                resolve_playable_stream_url(&ep_url, proxy_opt.as_deref()).await;
-            }
-        });
-
-        return Ok(playlist_meta);
-    }
-
-    // 4. Check for direct <source src>, <video src>, OpenGraph video, or .m3u8/.mp4
-    let title = page_title
-        .or_else(|| {
-            page_url
-                .split('/')
-                .last()
-                .and_then(|s| s.split('?').next())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-        })
-        .unwrap_or_else(|| "web_video".to_string());
-
-    let stream_url = extract_stream_from_html(&html, page_url)
-        .ok_or_else(|| AppError::Generic("No direct video, series playlist, or m3u8 stream found in webpage HTML".to_string()))?;
-
-    // If stream_url itself is a streaming platform link
-    if is_streaming_platform(&stream_url) {
-        if let Ok(mut meta) = Box::pin(inspect_video(&stream_url)).await {
-            meta.title = title;
-            if meta.thumbnail_url.is_none() {
-                meta.thumbnail_url = page_thumbnail.clone();
-            }
-            return Ok(meta);
-        }
-    }
-
-    info!("Scraper found stream source: {}", stream_url);
-
-    let ext = if stream_url.contains(".m3u8") {
-        "mp4".to_string() // HLS will be merged to MP4
-    } else if stream_url.contains(".webm") {
-        "webm".to_string()
-    } else {
-        "mp4".to_string()
-    };
-
-    Ok(VideoMetadata {
-        url: stream_url,
-        title,
-        content_length: None,
-        content_type: Some(format!("video/{}", ext)),
-        supports_ranges: true,
-        is_extractor: true,
-        duration_seconds: None,
-        resolution: Some("Web Stream".to_string()),
-        ext: Some(ext),
-        is_playlist: false,
-        playlist_count: 0,
-        playlist_entries: Vec::new(),
-        has_subtitles: false,
-        subtitles_summary: String::new(),
-        thumbnail_url: page_thumbnail,
-        ..Default::default()
-    })
+    Err(AppError::Generic("No playable video stream or series playlist found on webpage".to_string()))
 }
 
 /// Convenience wrapper for scraping webpage HTML without explicit proxy
@@ -1276,6 +1150,339 @@ fn parse_episodes_from_html_scan(html: &str, base_url: &str) -> Vec<crate::model
     entries
 }
 
+/// Helper to determine if a string is a media stream candidate (.mp4, .m3u8, .flv, .webm, etc.)
+pub fn is_media_stream_candidate(url: &str) -> bool {
+    let u = url.trim();
+    if u.is_empty() || u.starts_with("javascript:") || u.starts_with("data:") {
+        return false;
+    }
+    let lower = u.to_lowercase();
+    // Exclude static images, styles, javascript, trackers, ads
+    if lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".png")
+        || lower.ends_with(".gif") || lower.ends_with(".webp") || lower.ends_with(".svg")
+        || lower.ends_with(".css") || lower.ends_with(".js")
+        || lower.contains("doubleclick") || lower.contains("google-analytics")
+        || lower.contains("/analytics") || lower.contains("adsystem")
+        || lower.contains("banner") || lower.contains("/ad/")
+    {
+        return false;
+    }
+    // Must contain typical streaming extensions or media markers
+    lower.contains(".mp4")
+        || lower.contains(".m3u8")
+        || lower.contains(".webm")
+        || lower.contains(".flv")
+        || lower.contains(".mov")
+        || lower.contains(".ts")
+        || lower.contains("mime=video")
+}
+
+/// Helper to sanitize and normalize video stream URLs
+pub fn clean_stream_url(raw: &str, base_url: &str) -> String {
+    let unescaped = raw.trim()
+        .replace(r"\u0026", "&")
+        .replace(r"\u002F", "/")
+        .replace(r"\/", "/")
+        .replace("&amp;", "&");
+    let cleaned = html_escape_clean(&unescaped);
+    resolve_relative_url(base_url, &cleaned)
+}
+
+/// Recursively traverses a JSON value to discover playable media streams
+pub fn find_streams_in_json(val: &serde_json::Value, streams: &mut Vec<String>, base_url: &str) {
+    match val {
+        serde_json::Value::Object(map) => {
+            for (k, v) in map {
+                let k_lower = k.to_lowercase();
+                if k_lower.contains("url")
+                    || k_lower.contains("video")
+                    || k_lower.contains("stream")
+                    || k_lower.contains("play")
+                    || k_lower.contains("file")
+                    || k_lower.contains("source")
+                    || k_lower.contains("src")
+                    || k_lower.contains("mp4")
+                    || k_lower.contains("m3u8")
+                {
+                    if let Some(s) = v.as_str() {
+                        if is_media_stream_candidate(s) {
+                            let resolved = clean_stream_url(s, base_url);
+                            if !streams.contains(&resolved) {
+                                streams.push(resolved);
+                            }
+                        }
+                    }
+                }
+                find_streams_in_json(v, streams, base_url);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                find_streams_in_json(item, streams, base_url);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Recursively scans JSON for a suitable title
+pub fn extract_title_from_json(val: &serde_json::Value) -> Option<String> {
+    match val {
+        serde_json::Value::Object(map) => {
+            for key in &["bookname", "seriesname", "vod_name", "videoname", "title", "name", "headline"] {
+                for (k, v) in map {
+                    if k.to_lowercase() == *key {
+                        if let Some(s) = v.as_str() {
+                            let trimmed = s.trim();
+                            if !trimmed.is_empty() {
+                                return Some(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            for v in map.values() {
+                if let Some(t) = extract_title_from_json(v) {
+                    return Some(t);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                if let Some(t) = extract_title_from_json(item) {
+                    return Some(t);
+                }
+            }
+        }
+        _ => {}
+    }
+    None
+}
+
+/// Recursively scans JSON for a thumbnail / poster image
+pub fn extract_thumbnail_from_json(val: &serde_json::Value, base_url: &str) -> Option<String> {
+    match val {
+        serde_json::Value::Object(map) => {
+            for key in &["coverwap", "cover", "poster", "vod_pic", "thumbnail", "image"] {
+                for (k, v) in map {
+                    if k.to_lowercase() == *key {
+                        if let Some(s) = v.as_str() {
+                            let trimmed = s.trim();
+                            if !trimmed.is_empty() && (trimmed.starts_with("http") || trimmed.starts_with("//") || trimmed.starts_with('/')) {
+                                return Some(clean_stream_url(trimmed, base_url));
+                            }
+                        }
+                    }
+                }
+            }
+            for v in map.values() {
+                if let Some(t) = extract_thumbnail_from_json(v, base_url) {
+                    return Some(t);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                if let Some(t) = extract_thumbnail_from_json(item, base_url) {
+                    return Some(t);
+                }
+            }
+        }
+        _ => {}
+    }
+    None
+}
+
+/// Sniffs embedded JSON states (__NEXT_DATA__, __NUXT_DATA__, player configs, etc.)
+pub fn sniff_embedded_json_streams(html: &str, base_url: &str) -> Option<VideoMetadata> {
+    // 1. First, check dedicated structured scrapers (e.g. Next.js drama with chapters)
+    if let Some(drama) = extract_next_data_drama(html, base_url) {
+        return Some(drama);
+    }
+
+    // 2. Scan script tags for JSON blocks
+    let mut cursor = 0;
+    while let Some(script_idx) = html[cursor..].find("<script") {
+        let actual_start = cursor + script_idx;
+        let Some(tag_open_end) = html[actual_start..].find('>') else { break; };
+        let content_start = actual_start + tag_open_end + 1;
+        let Some(script_close) = html[content_start..].find("</script>") else { break; };
+        let content_end = content_start + script_close;
+        let script_body = html[content_start..content_end].trim();
+
+        // Search for JSON boundaries within script body
+        let mut json_candidates = Vec::new();
+
+        if (script_body.starts_with('{') && script_body.ends_with('}'))
+            || (script_body.starts_with('[') && script_body.ends_with(']'))
+        {
+            json_candidates.push(script_body);
+        } else {
+            // Find assignments
+            for marker in &["=", ":"] {
+                let mut search_pos = 0;
+                while let Some(eq_idx) = script_body[search_pos..].find(marker) {
+                    let after_eq = script_body[search_pos + eq_idx + marker.len()..].trim_start();
+                    if after_eq.starts_with('{') || after_eq.starts_with('[') {
+                        let is_obj = after_eq.starts_with('{');
+                        let open_ch = if is_obj { '{' } else { '[' };
+                        let close_ch = if is_obj { '}' } else { ']' };
+                        let mut depth = 0;
+                        let mut matched_len = 0;
+                        for (i, c) in after_eq.char_indices() {
+                            if c == open_ch {
+                                depth += 1;
+                            } else if c == close_ch {
+                                depth -= 1;
+                                if depth == 0 {
+                                    matched_len = i + 1;
+                                    break;
+                                }
+                            }
+                        }
+                        if matched_len > 0 {
+                            json_candidates.push(&after_eq[..matched_len]);
+                        }
+                    }
+                    search_pos += eq_idx + 1;
+                    if search_pos >= script_body.len() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        for candidate in json_candidates {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(candidate) {
+                let mut streams = Vec::new();
+                find_streams_in_json(&v, &mut streams, base_url);
+                if !streams.is_empty() {
+                    let title = extract_title_from_json(&v)
+                        .or_else(|| extract_html_title(html))
+                        .unwrap_or_else(|| "Web Stream Video".to_string());
+                    let thumbnail_url = extract_thumbnail_from_json(&v, base_url)
+                        .or_else(|| extract_html_thumbnail(html, base_url));
+                    let count = streams.len();
+                    let primary_url = streams[0].clone();
+                    let ext = if primary_url.contains(".m3u8") { "m3u8" } else { "mp4" };
+
+                    let entries: Vec<crate::models::PlaylistEntry> = streams
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, u)| crate::models::PlaylistEntry {
+                            title: format!("{} - Episode {}", title, i + 1),
+                            url: u,
+                        })
+                        .collect();
+
+                    return Some(VideoMetadata {
+                        url: primary_url,
+                        title: if count > 1 { format!("{} ({} Episodes)", title, count) } else { title },
+                        content_length: None,
+                        content_type: Some(format!("video/{}", ext)),
+                        supports_ranges: true,
+                        is_extractor: true,
+                        duration_seconds: None,
+                        resolution: Some(if count > 1 { format!("{} Streams Sniffed", count) } else { "Universal Web Stream".to_string() }),
+                        ext: Some(ext.to_string()),
+                        is_playlist: count > 1,
+                        playlist_count: count,
+                        playlist_entries: entries,
+                        has_subtitles: false,
+                        subtitles_summary: String::new(),
+                        thumbnail_url,
+                        fps: Some(30.0),
+                        vcodec: Some("H.264".to_string()),
+                        acodec: Some("AAC".to_string()),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        cursor = content_end + 9;
+        if cursor >= html.len() {
+            break;
+        }
+    }
+
+    None
+}
+
+/// Universal Media Sniffer: Automatically extracts media streams (.mp4, .m3u8, etc.)
+/// from any website's embedded JSON, HTML5 tags, MacCMS configs, player scripts, or regex patterns.
+pub fn universal_sniff_media_from_html(html: &str, page_url: &str) -> Option<VideoMetadata> {
+    // 1. Structured JSON (Next.js __NEXT_DATA__, Nuxt, player configs, state objects)
+    if let Some(json_meta) = sniff_embedded_json_streams(html, page_url) {
+        return Some(json_meta);
+    }
+
+    // 2. Series playlist on detail pages (e.g. MacCMS anthology-list-play)
+    if let Some(detail_meta) = extract_playlist_from_detail_html(html, page_url) {
+        return Some(detail_meta);
+    }
+
+    // 3. MacCMS player (DPlayer / Artplayer / player_aaaa)
+    if let Some(maccms) = extract_maccms_player(html) {
+        let title = maccms.title
+            .or_else(|| extract_html_title(html))
+            .unwrap_or_else(|| "MacCMS Video".to_string());
+        let thumbnail = extract_html_thumbnail(html, page_url);
+        let ext = if maccms.video_url.contains(".m3u8") { "m3u8" } else { "mp4" };
+        return Some(VideoMetadata {
+            url: maccms.video_url,
+            title,
+            content_length: None,
+            content_type: Some(format!("video/{}", ext)),
+            supports_ranges: true,
+            is_extractor: true,
+            duration_seconds: None,
+            resolution: Some("MacCMS Stream".to_string()),
+            ext: Some(ext.to_string()),
+            is_playlist: false,
+            playlist_count: 0,
+            playlist_entries: Vec::new(),
+            has_subtitles: false,
+            subtitles_summary: String::new(),
+            thumbnail_url: thumbnail,
+            fps: Some(30.0),
+            vcodec: Some("H.264".to_string()),
+            acodec: Some("AAC".to_string()),
+            ..Default::default()
+        });
+    }
+
+    // 3. Embedded HTML5 tags (<video src>, <source src>, og:video, raw script URLs)
+    if let Some(raw_stream) = extract_stream_from_html(html, page_url) {
+        let title = extract_html_title(html).unwrap_or_else(|| "Web Video".to_string());
+        let thumbnail = extract_html_thumbnail(html, page_url);
+        let ext = if raw_stream.contains(".m3u8") { "m3u8" } else { "mp4" };
+        return Some(VideoMetadata {
+            url: raw_stream,
+            title,
+            content_length: None,
+            content_type: Some(format!("video/{}", ext)),
+            supports_ranges: true,
+            is_extractor: true,
+            duration_seconds: None,
+            resolution: Some("Sniffed Web Media".to_string()),
+            ext: Some(ext.to_string()),
+            is_playlist: false,
+            playlist_count: 0,
+            playlist_entries: Vec::new(),
+            has_subtitles: false,
+            subtitles_summary: String::new(),
+            thumbnail_url: thumbnail,
+            fps: Some(30.0),
+            vcodec: Some("H.264".to_string()),
+            acodec: Some("AAC".to_string()),
+            ..Default::default()
+        });
+    }
+
+    None
+}
+
 /// Extracts short drama series playlist and direct MP4/M3U8 streams from Next.js (__NEXT_DATA__) drama sites (e.g., kuaikaw.cn)
 pub fn extract_next_data_drama(html: &str, page_url: &str) -> Option<VideoMetadata> {
     let script_start = html.find(r#"<script id="__NEXT_DATA__""#)?;
@@ -1524,13 +1731,13 @@ pub async fn resolve_playable_stream_url(url: &str, proxy: Option<&str>) -> Stri
     if let Ok(resp) = client.get(url).send().await {
         if resp.status().is_success() {
             if let Ok(html) = resp.text().await {
-                // 0. Check Next.js drama stream (__NEXT_DATA__)
-                if let Some(drama) = extract_next_data_drama(&html, url) {
-                    info!("Resolved Next.js drama playable stream URL: {} -> {}", url, drama.url);
+                // 0. Check Universal Media Sniffer
+                if let Some(sniffed) = universal_sniff_media_from_html(&html, url) {
+                    info!("Resolved universal stream URL: {} -> {}", url, sniffed.url);
                     if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
-                        cache.insert(url.to_string(), drama.url.clone());
+                        cache.insert(url.to_string(), sniffed.url.clone());
                     }
-                    return drama.url;
+                    return sniffed.url;
                 }
                 // 1. Check MacCMS player_aaaa configuration (used by donghuafun, animevietsub, etc.)
                 if let Some(maccms) = extract_maccms_player(&html) {
@@ -2214,6 +2421,63 @@ mod tests {
 
         let exit_err = "Application error: Extractor process finished with exit code Some(1)";
         assert!(clean_extractor_error(exit_err).contains("Stream extraction failed"));
+    }
+
+    #[test]
+    fn test_is_media_stream_candidate() {
+        assert!(is_media_stream_candidate("https://example.com/video.mp4"));
+        assert!(is_media_stream_candidate("https://cdn.net/hls/master.m3u8?token=xyz"));
+        assert!(is_media_stream_candidate("https://stream.io/file.webm"));
+        assert!(is_media_stream_candidate("https://video.org/chunk.ts"));
+        assert!(!is_media_stream_candidate("https://example.com/image.jpg"));
+        assert!(!is_media_stream_candidate("https://tracker.doubleclick.net/ad.js"));
+        assert!(!is_media_stream_candidate("https://site.com/style.css"));
+    }
+
+    #[test]
+    fn test_universal_sniff_media_from_html_json_state() {
+        let sample = r#"
+            <!DOCTYPE html>
+            <html>
+            <head><title>Custom Player Page</title></head>
+            <body>
+            <script>
+                window.__INITIAL_STATE__ = {
+                    "video": {
+                        "title": "Universal Mystery Episode 1",
+                        "playUrl": "https://media.org/content/ep1.mp4",
+                        "poster": "https://media.org/poster.jpg"
+                    }
+                };
+            </script>
+            </body>
+            </html>
+        "#;
+        let meta = universal_sniff_media_from_html(sample, "https://mystery.tv/watch/1").expect("Must sniff stream");
+        assert_eq!(meta.url, "https://media.org/content/ep1.mp4");
+        assert_eq!(meta.title, "Universal Mystery Episode 1");
+        assert_eq!(meta.ext, Some("mp4".to_string()));
+        assert_eq!(meta.thumbnail_url, Some("https://media.org/poster.jpg".to_string()));
+    }
+
+    #[test]
+    fn test_universal_sniff_media_from_html_player_config() {
+        let sample = r#"
+            <html>
+            <body>
+            <script>
+                const playerConfig = {
+                    "source": "https://cdn.livebroadcast.com/live/hls/master.m3u8",
+                    "name": "Live Event Stream"
+                };
+            </script>
+            </body>
+            </html>
+        "#;
+        let meta = universal_sniff_media_from_html(sample, "https://livebroadcast.com").expect("Must sniff m3u8");
+        assert_eq!(meta.url, "https://cdn.livebroadcast.com/live/hls/master.m3u8");
+        assert_eq!(meta.ext, Some("m3u8".to_string()));
+        assert_eq!(meta.title, "Live Event Stream");
     }
 }
 
