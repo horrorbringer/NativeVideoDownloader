@@ -95,6 +95,11 @@ impl DownloadJob {
     }
 
     pub fn size_display(&self) -> String {
+        if self.status == DownloadStatus::Completed {
+            let total = self.total_bytes.unwrap_or(self.downloaded_bytes);
+            return format!("{} (100%)", DownloadProgress::format_size(total));
+        }
+
         let current = DownloadProgress::format_size(self.downloaded_bytes);
         let pct = (self.progress_ratio * 100.0).round() as u32;
         match self.total_bytes {
@@ -113,6 +118,9 @@ impl DownloadJob {
     }
 
     pub fn speed_display(&self) -> String {
+        if self.status == DownloadStatus::Completed {
+            return "Finished".to_string();
+        }
         let p = DownloadProgress {
             downloaded_bytes: self.downloaded_bytes,
             total_bytes: self.total_bytes,
@@ -124,6 +132,9 @@ impl DownloadJob {
     }
 
     pub fn eta_display(&self) -> String {
+        if self.status == DownloadStatus::Completed {
+            return "Complete".to_string();
+        }
         let p = DownloadProgress {
             downloaded_bytes: self.downloaded_bytes,
             total_bytes: self.total_bytes,

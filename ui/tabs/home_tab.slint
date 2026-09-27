@@ -451,13 +451,15 @@ export component HomeTab inherits ScrollView {
                             alignment: center;
                             spacing: 6px;
 
-                            Image {
-                                source: root.is_playlist ? @image-url("../icons/tv.svg") :
-                                        root.selected_format_index == 4 ? @image-url("../icons/music.svg") : @image-url("../icons/video.svg");
-                                width: 26px;
-                                height: 26px;
-                                colorize: Theme.brand_purple;
-                                horizontal-alignment: center;
+                            HorizontalLayout {
+                                alignment: center;
+                                Image {
+                                    source: root.is_playlist ? @image-url("../icons/tv.svg") :
+                                            root.selected_format_index == 4 ? @image-url("../icons/music.svg") : @image-url("../icons/video.svg");
+                                    width: 26px;
+                                    height: 26px;
+                                    colorize: Theme.brand_purple;
+                                }
                             }
 
                             Text {
@@ -524,6 +526,7 @@ export component HomeTab inherits ScrollView {
 
                                     VerticalLayout {
                                         alignment: center;
+                                        width: 12px;
                                         Image {
                                             source: @image-url("../icons/download.svg");
                                             width: 12px;
@@ -557,6 +560,7 @@ export component HomeTab inherits ScrollView {
 
                                     VerticalLayout {
                                         alignment: center;
+                                        width: 12px;
                                         Image {
                                             source: @image-url("../icons/monitor.svg");
                                             width: 12px;
@@ -590,6 +594,7 @@ export component HomeTab inherits ScrollView {
 
                                     VerticalLayout {
                                         alignment: center;
+                                        width: 12px;
                                         Image {
                                             source: @image-url("../icons/bolt.svg");
                                             width: 12px;
@@ -623,6 +628,7 @@ export component HomeTab inherits ScrollView {
 
                                     VerticalLayout {
                                         alignment: center;
+                                        width: 12px;
                                         Image {
                                             source: @image-url("../icons/video.svg");
                                             width: 12px;
@@ -656,6 +662,7 @@ export component HomeTab inherits ScrollView {
 
                                     VerticalLayout {
                                         alignment: center;
+                                        width: 12px;
                                         Image {
                                             source: @image-url("../icons/history.svg");
                                             width: 12px;
@@ -1062,6 +1069,7 @@ export component HomeTab inherits ScrollView {
 
                             VerticalLayout {
                                 alignment: center;
+                                width: 14px;
                                 Image {
                                     source: @image-url("../icons/subtitles.svg");
                                     width: 14px;
@@ -1099,6 +1107,7 @@ export component HomeTab inherits ScrollView {
 
                             VerticalLayout {
                                 alignment: center;
+                                width: 14px;
                                 Image {
                                     source: @image-url("../icons/sparkles.svg");
                                     width: 14px;

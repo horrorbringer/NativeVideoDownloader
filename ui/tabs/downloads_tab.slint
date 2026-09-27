@@ -203,32 +203,37 @@ export component DownloadsTab inherits VerticalLayout {
                         padding-bottom: 4px;
                         spacing: 2px;
 
-                        for sample in root.speed_samples: VerticalLayout {
+                        for sample in root.speed_samples: HorizontalLayout {
                             horizontal-stretch: 1;
-                            alignment: end;
-                            Rectangle {
-                                horizontal-stretch: 1;
-                                height: Math.max(3px, sample.ratio * 44px);
-                                border-top-left-radius: 2px;
-                                border-top-right-radius: 2px;
-                                border-bottom-left-radius: 1px;
-                                border-bottom-right-radius: 1px;
-                                background: sample.ratio > 0.7 ? (Theme.is_dark ? #38bdf8 : #0284c7) :
-                                            sample.ratio > 0.4 ? (Theme.is_dark ? #60a5fa : #2563eb) :
-                                            sample.ratio > 0.15 ? (Theme.is_dark ? #3b82f6 : #3b82f6) :
-                                            sample.ratio > 0.01 ? (Theme.is_dark ? #2563eb : #60a5fa) :
-                                            (Theme.is_dark ? #1a2032 : #e2e8f0);
-                                animate height { duration: 150ms; }
-                                animate background { duration: 150ms; }
+                            alignment: center;
 
-                                // Glowing active cap
-                                if sample.ratio > 0.05: Rectangle {
-                                    y: 0;
-                                    height: 2px;
-                                    horizontal-stretch: 1;
-                                    border-top-left-radius: 2px;
-                                    border-top-right-radius: 2px;
-                                    background: #ffffff99;
+                            VerticalLayout {
+                                alignment: end;
+
+                                Rectangle {
+                                    width: 3px;
+                                    height: Math.max(3px, sample.ratio * 44px);
+                                    border-top-left-radius: 1.5px;
+                                    border-top-right-radius: 1.5px;
+                                    border-bottom-left-radius: 1px;
+                                    border-bottom-right-radius: 1px;
+                                    background: sample.ratio > 0.7 ? (Theme.is_dark ? #38bdf8 : #0284c7) :
+                                                sample.ratio > 0.4 ? (Theme.is_dark ? #60a5fa : #2563eb) :
+                                                sample.ratio > 0.15 ? (Theme.is_dark ? #3b82f6 : #3b82f6) :
+                                                sample.ratio > 0.01 ? (Theme.is_dark ? #2563eb : #60a5fa) :
+                                                (Theme.is_dark ? #1a2032 : #e2e8f0);
+                                    animate height { duration: 150ms; }
+                                    animate background { duration: 150ms; }
+
+                                    // Glowing active cap
+                                    if sample.ratio > 0.05: Rectangle {
+                                        y: 0;
+                                        width: 3px;
+                                        height: 2px;
+                                        border-top-left-radius: 1.5px;
+                                        border-top-right-radius: 1.5px;
+                                        background: #ffffff99;
+                                    }
                                 }
                             }
                         }

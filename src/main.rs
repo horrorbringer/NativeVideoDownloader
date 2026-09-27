@@ -11,7 +11,7 @@ use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
@@ -606,6 +606,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let speed_hist_sync = speed_history.clone();
     let peak_speed_sync = peak_speed_bytes.clone();
     let session_bytes_sync = session_downloaded_bytes.clone();
+    let db_for_sync = db.clone();
+    let last_completed_count = Arc::new(AtomicUsize::new(0));
+    let was_downloading = Arc::new(AtomicBool::new(false));
 
     download_manager
         .set_update_listener(move || {
@@ -619,6 +622,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let speed_hist_lock = speed_hist_sync.clone();
             let peak_lock = peak_speed_sync.clone();
             let session_lock = session_bytes_sync.clone();
+            let db_sync = db_for_sync.clone();
+            let completed_tracker = last_completed_count.clone();
+            let was_dl_tracker = was_downloading.clone();
 
             // Skip queuing redundant frames if a frame render is already pending, but flag for follow-up
             if rendering_flag.swap(true, Ordering::SeqCst) {
@@ -633,6 +639,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .iter()
                     .filter(|j| j.status == DownloadStatus::Downloading)
                     .count() as i32;
+
+                let completed_count = jobs
+                    .iter()
+                    .filter(|j| j.status == DownloadStatus::Completed)
+                    .count();
+
+                let prev_completed = completed_tracker.swap(completed_count, Ordering::Relaxed);
+                if completed_count > 0 && completed_count != prev_completed {
+                    let db_clone = db_sync.clone();
+                    let weak_clone = weak.clone();
+                    tokio::spawn(async move {
+                        refresh_history(&db_clone, None, weak_clone).await;
+                    });
+                }
 
                 let total_current_speed: f64 = jobs
                     .iter()
@@ -770,6 +790,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     window.set_session_downloaded_text(session_text.into());
                     window.set_is_downloading_active(is_active);
 
+                    let previously_downloading = was_dl_tracker.swap(active_count > 0, Ordering::Relaxed);
                     if active_count > 0 {
                         let live_status = format!(
                             "Downloading {} item{} • {} • Peak: {}",
@@ -779,6 +800,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             peak_speed_text
                         );
                         window.set_status_message(live_status.into());
+                    } else if previously_downloading || (completed_count > 0 && prev_completed != completed_count) {
+                        let msg = format!(
+                            "Download completed successfully • {} file{} ready",
+                            completed_count,
+                            if completed_count > 1 { "s" } else { "" }
+                        );
+                        window.set_status_message(msg.into());
                     }
 
                     reset_flag.store(false, Ordering::SeqCst);
@@ -1620,6 +1648,17 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
         tokio::spawn(async move {
             let search = if q.is_empty() { None } else { Some(q.as_str()) };
             refresh_history(&db, search, weak).await;
+        });
+    });
+
+    // Callback: Refresh history tab on navigation
+    let db_hist_nav = db.clone();
+    let weak_hist_nav = main_window.as_weak();
+    main_window.on_refresh_history_tab(move || {
+        let db = db_hist_nav.clone();
+        let weak = weak_hist_nav.clone();
+        tokio::spawn(async move {
+            refresh_history(&db, None, weak).await;
         });
     });
 

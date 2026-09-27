@@ -633,6 +633,8 @@ impl DownloadManager {
                             if let Some(j) = queue.get_job_mut(id) {
                                 j.status = DownloadStatus::Completed;
                                 j.progress_ratio = 1.0;
+                                j.downloaded_bytes = final_size;
+                                j.total_bytes = Some(final_size);
                                 j.speed_bytes_sec = 0.0;
                                 j.eta_seconds = Some(0);
                                 j.output_path = final_out_path.clone();

@@ -145,6 +145,7 @@ export component AppWindow inherits Window {
     callback delete_history_item(string);
     callback clear_all_history();
     callback export_history();
+    callback refresh_history_tab();
 
     callback open_download_file(string);
     callback open_download_folder(string);
@@ -280,7 +281,10 @@ export component AppWindow inherits Window {
                     text: "History";
                     icon: @image-url("icons/history.svg");
                     active: root.active_tab == 2;
-                    clicked => { root.active_tab = 2; }
+                    clicked => {
+                        root.active_tab = 2;
+                        root.refresh_history_tab();
+                    }
                 }
 
                 NavButton {
