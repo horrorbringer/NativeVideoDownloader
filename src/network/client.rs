@@ -15,6 +15,11 @@ fn build_http_client(proxy_url: Option<&str>) -> reqwest::Client {
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
+        .tcp_nodelay(true)
+        .tcp_keepalive(Duration::from_secs(60))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .pool_max_idle_per_host(10)
+        .http2_adaptive_window(true)
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
     if let Some(proxy_str) = proxy_url {
@@ -226,7 +231,7 @@ impl NetworkClient {
         }
 
         let is_partial = status.as_u16() == 206;
-        let (mut file, mut progress_calc) = if is_partial && existing_bytes > 0 {
+        let (file, mut progress_calc) = if is_partial && existing_bytes > 0 {
             info!("Server accepted Range request (206 Partial Content)");
             let total = response.content_length().map(|len| len + existing_bytes);
             let file = tokio::fs::OpenOptions::new()
@@ -243,6 +248,9 @@ impl NetworkClient {
             (file, calc)
         };
 
+        // Wrap file in a 256 KB asynchronous buffer to coalesce disk writes and minimize syscall overhead
+        let mut buffered_file = tokio::io::BufWriter::with_capacity(256 * 1024, file);
+
         // Inform initial progress
         on_progress(progress_calc.update(0));
         let mut last_prog_instant = std::time::Instant::now();
@@ -251,7 +259,7 @@ impl NetworkClient {
             tokio::select! {
                 _ = cancel_token.cancelled() => {
                     warn!("Download stopped/cancelled for: {:?}", destination_path);
-                    drop(file);
+                    drop(buffered_file);
                     if !preserve_part_on_cancel {
                         let _ = cleanup_part_file(&part_path);
                     }
@@ -261,7 +269,7 @@ impl NetworkClient {
                     match chunk_res {
                         Ok(Some(chunk)) => {
                             let len = chunk.len();
-                            file.write_all(&chunk).await?;
+                            buffered_file.write_all(&chunk).await?;
                             let prog = progress_calc.update(len);
                             if last_prog_instant.elapsed() >= std::time::Duration::from_millis(60) {
                                 last_prog_instant = std::time::Instant::now();
@@ -281,7 +289,7 @@ impl NetworkClient {
                             break;
                         }
                         Err(err) => {
-                            drop(file);
+                            drop(buffered_file);
                             return Err(AppError::Network(err));
                         }
                     }
@@ -289,8 +297,8 @@ impl NetworkClient {
             }
         }
 
-        file.flush().await?;
-        drop(file);
+        buffered_file.flush().await?;
+        drop(buffered_file);
 
         // Atomically rename .part file to final destination
         finalize_part_file(&part_path, destination_path)?;

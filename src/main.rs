@@ -647,13 +647,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .await;
 
-    // Periodic background ticker (every 1000ms) to keep speed graph smooth and responsive
+    // Periodic background ticker (every 1000ms) with idle sleep to preserve CPU and battery
     let ticker_mgr = download_manager.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(1000));
+        let mut zero_speed_ticks = 0;
         loop {
             interval.tick().await;
-            ticker_mgr.notify_update().await;
+            let jobs = ticker_mgr.get_jobs_snapshot().await;
+            let has_active = jobs.iter().any(|j| j.status == DownloadStatus::Downloading);
+            if has_active {
+                zero_speed_ticks = 0;
+                ticker_mgr.notify_update().await;
+            } else if zero_speed_ticks < 32 {
+                // Decay the 30-sample speed graph cleanly to zero, then enter low-power sleep
+                zero_speed_ticks += 1;
+                ticker_mgr.notify_update().await;
+            }
         }
     });
 

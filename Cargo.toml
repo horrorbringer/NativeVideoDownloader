@@ -19,3 +19,13 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 [build-dependencies]
 slint-build = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 1
