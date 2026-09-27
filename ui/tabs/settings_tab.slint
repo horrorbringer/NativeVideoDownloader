@@ -16,6 +16,11 @@ export component SettingsTab inherits ScrollView {
     in-out property <bool> proxy_is_connected: false;
     in-out property <bool> is_testing_proxy: false;
 
+    // Audio Extraction Defaults
+    in-out property <int> default_audio_format_index: 0;
+    in-out property <int> default_audio_bitrate_index: 0;
+    in-out property <bool> default_embed_audio_metadata: true;
+
     callback browse_download_dir();
     callback open_current_download_dir();
     callback reset_download_dir();
@@ -23,6 +28,9 @@ export component SettingsTab inherits ScrollView {
     callback set_max_concurrency(int);
     callback set_cookies_browser(int);
     callback set_clipboard_monitor(bool);
+    callback set_default_audio_format(int);
+    callback set_default_audio_bitrate(int);
+    callback set_embed_audio_metadata(bool);
     callback set_proxy(bool, string);
     callback test_proxy(string);
     callback test_notification();
@@ -474,7 +482,202 @@ export component SettingsTab inherits ScrollView {
             }
         }
 
-        // 4. Network & Custom Proxy
+        // 4. Audio Extraction & Music Defaults
+        Rectangle {
+            background: #161926;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #242c40;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 8px;
+                        background: #1e2438;
+                        border-width: 1px;
+                        border-color: #2c3550;
+
+                        Image {
+                            source: @image-url("../icons/music.svg");
+                            width: 17px;
+                            height: 17px;
+                            colorize: #ec4899;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 3px;
+                        Text {
+                            text: "Audio Extraction & Music Defaults";
+                            color: #ffffff;
+                            font-size: 15px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Configure preferred audio container, bitrate, and ID3 cover artwork embedding.";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
+                    }
+                }
+
+                // 1. Container Format
+                VerticalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Default Audio Container:";
+                        color: #c7cbd9;
+                        font-size: 13px;
+                        font-weight: 600;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        IconChip {
+                            text: "MP3 (Universal)";
+                            selected: root.default_audio_format_index == 0;
+                            clicked => {
+                                root.default_audio_format_index = 0;
+                                root.set_default_audio_format(0);
+                            }
+                        }
+                        IconChip {
+                            text: "M4A (AAC / Apple)";
+                            selected: root.default_audio_format_index == 1;
+                            clicked => {
+                                root.default_audio_format_index = 1;
+                                root.set_default_audio_format(1);
+                            }
+                        }
+                        IconChip {
+                            text: "FLAC (Lossless)";
+                            selected: root.default_audio_format_index == 2;
+                            clicked => {
+                                root.default_audio_format_index = 2;
+                                root.set_default_audio_format(2);
+                            }
+                        }
+                        IconChip {
+                            text: "WAV";
+                            selected: root.default_audio_format_index == 3;
+                            clicked => {
+                                root.default_audio_format_index = 3;
+                                root.set_default_audio_format(3);
+                            }
+                        }
+                        IconChip {
+                            text: "OPUS";
+                            selected: root.default_audio_format_index == 4;
+                            clicked => {
+                                root.default_audio_format_index = 4;
+                                root.set_default_audio_format(4);
+                            }
+                        }
+                    }
+                }
+
+                // 2. Bitrate (for compressed formats)
+                if root.default_audio_format_index != 2 && root.default_audio_format_index != 3: VerticalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Default Audio Quality / Bitrate:";
+                        color: #c7cbd9;
+                        font-size: 13px;
+                        font-weight: 600;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        IconChip {
+                            text: "320 kbps (Extreme Quality)";
+                            selected: root.default_audio_bitrate_index == 0;
+                            clicked => {
+                                root.default_audio_bitrate_index = 0;
+                                root.set_default_audio_bitrate(0);
+                            }
+                        }
+                        IconChip {
+                            text: "256 kbps (High Quality)";
+                            selected: root.default_audio_bitrate_index == 1;
+                            clicked => {
+                                root.default_audio_bitrate_index = 1;
+                                root.set_default_audio_bitrate(1);
+                            }
+                        }
+                        IconChip {
+                            text: "192 kbps (Standard)";
+                            selected: root.default_audio_bitrate_index == 2;
+                            clicked => {
+                                root.default_audio_bitrate_index = 2;
+                                root.set_default_audio_bitrate(2);
+                            }
+                        }
+                        IconChip {
+                            text: "128 kbps (Compact)";
+                            selected: root.default_audio_bitrate_index == 3;
+                            clicked => {
+                                root.default_audio_bitrate_index = 3;
+                                root.set_default_audio_bitrate(3);
+                            }
+                        }
+                    }
+                }
+
+                // 3. ID3 Tags & Cover Artwork
+                VerticalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Cover Artwork & ID3 Tags:";
+                        color: #c7cbd9;
+                        font-size: 13px;
+                        font-weight: 600;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        IconChip {
+                            text: "Embed Artwork & Metadata";
+                            icon: @image-url("../icons/sparkles.svg");
+                            has_icon: true;
+                            selected: root.default_embed_audio_metadata;
+                            clicked => {
+                                root.default_embed_audio_metadata = true;
+                                root.set_embed_audio_metadata(true);
+                            }
+                        }
+                        IconChip {
+                            text: "Audio Stream Only (No Tags)";
+                            selected: !root.default_embed_audio_metadata;
+                            clicked => {
+                                root.default_embed_audio_metadata = false;
+                                root.set_embed_audio_metadata(false);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Network & Custom Proxy
         Rectangle {
             background: #161926;
             border-radius: 12px;

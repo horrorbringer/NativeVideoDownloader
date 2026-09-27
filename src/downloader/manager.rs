@@ -172,10 +172,16 @@ impl DownloadManager {
         audio_bitrate: Option<String>,
         embed_artwork: bool,
     ) -> Result<Uuid, AppError> {
-        let destination = validate_destination_path(output_dir, &title)?;
+        let final_title = if is_audio_only {
+            let fmt = audio_format.as_deref().unwrap_or("mp3");
+            crate::filesystem::ensure_audio_filename(&title, fmt)
+        } else {
+            title.clone()
+        };
+        let destination = validate_destination_path(output_dir, &final_title)?;
         let job = DownloadJob::new(
             url,
-            title,
+            final_title,
             destination,
             total_bytes,
             is_extractor,
@@ -385,7 +391,8 @@ impl DownloadManager {
                 let active_proxy = manager.get_proxy().await;
 
                 let mgr_progress = manager.clone();
-                let download_res = if is_extractor {
+                let use_extractor = is_extractor || is_audio_only;
+                let download_res = if use_extractor {
                     let last_time = last_notify_stream.clone();
                     crate::downloader::extractor::download_stream(
                         &url,

@@ -105,6 +105,9 @@ export component AppWindow inherits Window {
     callback analyze_clipboard_detected();
     callback dismiss_clipboard_detected();
     callback set_clipboard_monitor(bool);
+    callback set_default_audio_format(int);
+    callback set_default_audio_bitrate(int);
+    callback set_embed_audio_metadata(bool);
     callback set_proxy(bool, string);
     callback test_proxy(string);
     callback start_download(int, bool, int, int, bool);
@@ -475,6 +478,9 @@ export component AppWindow inherits Window {
                 proxy_status_message <=> root.proxy_status_message;
                 proxy_is_connected <=> root.proxy_is_connected;
                 is_testing_proxy <=> root.is_testing_proxy;
+                default_audio_format_index <=> root.selected_audio_format_index;
+                default_audio_bitrate_index <=> root.selected_audio_bitrate_index;
+                default_embed_audio_metadata <=> root.embed_audio_metadata;
 
                 browse_download_dir() => { root.browse_download_dir(); }
                 open_current_download_dir() => { root.open_current_download_dir(); }
@@ -483,6 +489,9 @@ export component AppWindow inherits Window {
                 set_max_concurrency(c) => { root.set_max_concurrency(c); }
                 set_cookies_browser(b) => { root.set_cookies_browser(b); }
                 set_clipboard_monitor(e) => { root.set_clipboard_monitor(e); }
+                set_default_audio_format(fmt) => { root.set_default_audio_format(fmt); }
+                set_default_audio_bitrate(br) => { root.set_default_audio_bitrate(br); }
+                set_embed_audio_metadata(em) => { root.set_embed_audio_metadata(em); }
                 set_proxy(en, p) => { root.set_proxy(en, p); }
                 test_proxy(p) => { root.test_proxy(p); }
                 test_notification() => { root.test_notification(); }

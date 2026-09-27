@@ -342,7 +342,7 @@ pub const KNOWN_FILE_EXTENSIONS: &[&str] = &[
     "zip", "tar", "gz", "7z", "rar", "pdf", "iso", "dmg", "pkg",
 ];
 
-fn split_stem_and_ext(filename: &str) -> (&str, Option<&str>) {
+pub fn split_stem_and_ext(filename: &str) -> (&str, Option<&str>) {
     let path = Path::new(filename);
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         let ext_lower = ext.to_lowercase();
@@ -353,6 +353,17 @@ fn split_stem_and_ext(filename: &str) -> (&str, Option<&str>) {
         }
     }
     (filename, None)
+}
+
+/// Normalizes a media title for audio extraction, replacing any existing video extension with the target audio format
+pub fn ensure_audio_filename(title: &str, format: &str) -> String {
+    let clean_fmt = format.trim_start_matches('.').to_lowercase();
+    let (stem, ext) = split_stem_and_ext(title);
+    if ext.is_some() {
+        format!("{}.{}", stem, clean_fmt)
+    } else {
+        format!("{}.{}", title, clean_fmt)
+    }
 }
 
 fn parse_stem_and_index(stem: &str) -> (&str, usize) {
@@ -719,6 +730,15 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
         assert!(csv.contains("\"https://example.com/video,test\""));
         assert!(csv.contains("10485760"));
         assert!(csv.contains("Completed"));
+    }
+
+    #[test]
+    fn test_ensure_audio_filename() {
+        assert_eq!(ensure_audio_filename("Concert Live.mp4", "mp3"), "Concert Live.mp3");
+        assert_eq!(ensure_audio_filename("Podcast Episode.webm", "m4a"), "Podcast Episode.m4a");
+        assert_eq!(ensure_audio_filename("Audio Track", "flac"), "Audio Track.flac");
+        assert_eq!(ensure_audio_filename("Classical Symphony.mp3", "mp3"), "Classical Symphony.mp3");
+        assert_eq!(ensure_audio_filename("Video.mkv", ".opus"), "Video.opus");
     }
 }
 

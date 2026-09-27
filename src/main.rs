@@ -438,6 +438,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     download_manager.set_proxy(initial_proxy.clone()).await;
     let current_proxy = Arc::new(tokio::sync::RwLock::new(initial_proxy));
 
+    // Restore saved audio extraction defaults
+    let saved_audio_fmt: i32 = db.get_setting("default_audio_format").await.unwrap_or(None).and_then(|v| v.parse().ok()).unwrap_or(0);
+    let saved_audio_br: i32 = db.get_setting("default_audio_bitrate").await.unwrap_or(None).and_then(|v| v.parse().ok()).unwrap_or(0);
+    let saved_embed_meta: bool = db.get_setting("default_embed_metadata").await.unwrap_or(None).map(|v| v == "true").unwrap_or(true);
+    main_window.set_selected_audio_format_index(saved_audio_fmt);
+    main_window.set_selected_audio_bitrate_index(saved_audio_br);
+    main_window.set_embed_audio_metadata(saved_embed_meta);
+
     // Initialize speed samples for the graph with 30 idle points
     let initial_samples: Vec<SpeedSampleData> = (0..30)
         .map(|_| SpeedSampleData {
@@ -848,6 +856,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "Live Clipboard Link Monitor disabled".into()
                 },
             );
+        });
+    });
+
+    // Callback: Set default audio format
+    let db_audio_fmt = db.clone();
+    let weak_audio_fmt = main_window.as_weak();
+    main_window.on_set_default_audio_format(move |fmt_idx| {
+        let db = db_audio_fmt.clone();
+        let weak = weak_audio_fmt.clone();
+        let name = map_audio_format(fmt_idx).to_uppercase();
+        tokio::spawn(async move {
+            let _ = db.set_setting("default_audio_format", &fmt_idx.to_string()).await;
+            info!("Saved default audio format: {} (idx {})", name, fmt_idx);
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(format!("Default audio format set to {}", name).into());
+            });
+        });
+    });
+
+    // Callback: Set default audio bitrate
+    let db_audio_br = db.clone();
+    let weak_audio_br = main_window.as_weak();
+    main_window.on_set_default_audio_bitrate(move |br_idx| {
+        let db = db_audio_br.clone();
+        let weak = weak_audio_br.clone();
+        let br_name = map_audio_bitrate(br_idx);
+        tokio::spawn(async move {
+            let _ = db.set_setting("default_audio_bitrate", &br_idx.to_string()).await;
+            info!("Saved default audio bitrate: {} (idx {})", br_name, br_idx);
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(format!("Default audio bitrate set to {}", br_name).into());
+            });
+        });
+    });
+
+    // Callback: Set embed audio metadata
+    let db_audio_embed = db.clone();
+    let weak_audio_embed = main_window.as_weak();
+    main_window.on_set_embed_audio_metadata(move |embed| {
+        let db = db_audio_embed.clone();
+        let weak = weak_audio_embed.clone();
+        tokio::spawn(async move {
+            let _ = db.set_setting("default_embed_metadata", if embed { "true" } else { "false" }).await;
+            info!("Saved embed audio metadata setting: {}", embed);
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(
+                    if embed {
+                        "Audio cover artwork and ID3 metadata embedding enabled".into()
+                    } else {
+                        "Audio stream only (metadata embedding disabled)".into()
+                    },
+                );
+            });
         });
     });
 
