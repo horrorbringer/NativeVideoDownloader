@@ -294,10 +294,14 @@ impl DownloadManager {
         );
         let id = job.id;
 
-        // Persist to database
-        if let Err(err) = self.db.upsert_job(&job).await {
-            warn!("Failed to persist new job {} to database: {}", id, err);
-        }
+        // Persist to database asynchronously so worker starts immediately
+        let db = self.db.clone();
+        let job_for_db = job.clone();
+        tokio::spawn(async move {
+            if let Err(err) = db.upsert_job(&job_for_db).await {
+                warn!("Failed to persist new job {} to database: {}", id, err);
+            }
+        });
 
         {
             let mut queue = self.queue.lock().await;

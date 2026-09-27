@@ -1697,6 +1697,12 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
         let audio_fmt_clone = audio_format.clone();
         let audio_br_clone = audio_bitrate.clone();
 
+        // Instant visual response: switch to Downloads view immediately upon click
+        if let Some(win) = window_weak_dl.upgrade() {
+            win.set_status_message("Starting download...".into());
+            win.set_active_tab(1);
+        }
+
         tokio::spawn(async move {
             let maybe_meta = meta_arc.lock().await.clone();
             let metadata = match maybe_meta {
@@ -1711,10 +1717,16 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
 
             let download_dir = dir_lock.read().await.clone();
 
-            // Only download thumbnail if the analyzed link actually provided a thumbnail URL.
-            // Never extract or synthesize a thumbnail from the video itself.
+            // Only download thumbnail if the analyzed link actually provided a thumbnail URL
             let download_thumb = if metadata.thumbnail_url.is_some() {
                 download_thumb
+            } else {
+                false
+            };
+
+            // Only search for and download subtitles if the analyzed link confirmed subtitles exist
+            let download_subs = if metadata.has_subtitles {
+                download_subs
             } else {
                 false
             };
@@ -1729,7 +1741,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                             continue;
                         }
                     }
-                    if let Ok(_) = mgr
+                    if mgr
                         .add_download_with_context(
                             entry.url,
                             entry.title,
@@ -1749,6 +1761,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                             Some(idx + 1),
                         )
                         .await
+                        .is_ok()
                     {
                         queued_count += 1;
                     }
@@ -1757,7 +1770,6 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                 let msg = format!("Queued {} episodes for download", queued_count);
                 let _ = weak.upgrade_in_event_loop(move |window| {
                     window.set_status_message(msg.into());
-                    window.set_active_tab(1); // Switch to Downloads view
                 });
                 return;
             }
@@ -1785,8 +1797,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                 Ok(id) => {
                     info!("Download queued with id: {}", id);
                     let _ = weak.upgrade_in_event_loop(move |window| {
-                        window.set_status_message("Download queued in manager".into());
-                        window.set_active_tab(1); // Switch to Downloads view
+                        window.set_status_message("Download started".into());
                     });
                 }
                 Err(err) => {

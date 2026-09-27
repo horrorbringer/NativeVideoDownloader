@@ -8,8 +8,7 @@ use tracing::{info, warn};
 use crate::error::{AppError, Result};
 use crate::models::{DownloadProgress, VideoMetadata};
 
-/// Returns the path to the internal binary directory: `~/.native_video_downloader/bin`
-pub fn get_bin_dir() -> PathBuf {
+static CACHED_BIN_DIR: std::sync::LazyLock<PathBuf> = std::sync::LazyLock::new(|| {
     if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".native_video_downloader").join("bin")
     } else if let Ok(profile) = std::env::var("USERPROFILE") {
@@ -17,7 +16,43 @@ pub fn get_bin_dir() -> PathBuf {
     } else {
         PathBuf::from(".bin")
     }
+});
+
+/// Returns the path to the internal binary directory: `~/.native_video_downloader/bin`
+pub fn get_bin_dir() -> PathBuf {
+    CACHED_BIN_DIR.clone()
 }
+
+static CACHED_FFMPEG_PATH: std::sync::LazyLock<Option<PathBuf>> = std::sync::LazyLock::new(|| {
+    let local = get_bin_dir().join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
+    if local.is_file() {
+        return Some(local);
+    }
+
+    for candidate in &[
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+    ] {
+        let p = PathBuf::from(candidate);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+
+    // Check system PATH
+    if let Ok(path_var) = std::env::var("PATH") {
+        let exe_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+        for dir in std::env::split_paths(&path_var) {
+            let p = dir.join(exe_name);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+
+    None
+});
 
 /// Locates the `yt-dlp` executable in local bin directory or system PATH
 pub async fn find_ytdlp_path() -> Option<PathBuf> {
@@ -50,34 +85,7 @@ pub async fn find_ytdlp_path() -> Option<PathBuf> {
 
 /// Locates FFmpeg executable in local bin directory or system PATH
 pub fn find_ffmpeg_path() -> Option<PathBuf> {
-    let local = get_bin_dir().join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
-    if local.is_file() {
-        return Some(local);
-    }
-
-    for candidate in &[
-        "/opt/homebrew/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg",
-        "/usr/bin/ffmpeg",
-    ] {
-        let p = PathBuf::from(candidate);
-        if p.is_file() {
-            return Some(p);
-        }
-    }
-
-    // Check system PATH
-    if let Ok(path_var) = std::env::var("PATH") {
-        let exe_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
-        for dir in std::env::split_paths(&path_var) {
-            let p = dir.join(exe_name);
-            if p.is_file() {
-                return Some(p);
-            }
-        }
-    }
-
-    None
+    CACHED_FFMPEG_PATH.clone()
 }
 
 /// Ensures FFmpeg is available, downloading the official static standalone binary if missing
@@ -146,51 +154,60 @@ pub async fn ensure_dependencies() -> Result<(PathBuf, PathBuf)> {
     Ok((ytdlp, ffmpeg))
 }
 
+static CACHED_YTDLP_BIN: tokio::sync::OnceCell<PathBuf> = tokio::sync::OnceCell::const_new();
+
 /// Ensures `yt-dlp` is available, downloading the official standalone executable if missing
 pub async fn ensure_ytdlp_installed() -> Result<PathBuf> {
-    if let Some(path) = find_ytdlp_path().await {
-        return Ok(path);
+    if let Some(cached) = CACHED_YTDLP_BIN.get() {
+        return Ok(cached.clone());
     }
 
-    let bin_dir = get_bin_dir();
-    tokio::fs::create_dir_all(&bin_dir).await?;
-
-    let target_path = bin_dir.join(if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" });
-    let url = if cfg!(target_os = "macos") {
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
-    } else if cfg!(target_os = "windows") {
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    let resolved = if let Some(path) = find_ytdlp_path().await {
+        path
     } else {
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
+        let bin_dir = get_bin_dir();
+        tokio::fs::create_dir_all(&bin_dir).await?;
+
+        let target_path = bin_dir.join(if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" });
+        let url = if cfg!(target_os = "macos") {
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+        } else if cfg!(target_os = "windows") {
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+        } else {
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
+        };
+
+        info!("Downloading standalone yt-dlp binary from {} to {:?}", url, target_path);
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+
+        let resp = client.get(url).send().await?;
+        if !resp.status().is_success() {
+            return Err(AppError::Generic(format!(
+                "Failed to download yt-dlp binary: HTTP {}",
+                resp.status()
+            )));
+        }
+
+        let bytes = resp.bytes().await?;
+        tokio::fs::write(&target_path, bytes).await?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = tokio::fs::metadata(&target_path).await?.permissions();
+            perms.set_mode(0o755);
+            tokio::fs::set_permissions(&target_path, perms).await?;
+        }
+
+        info!("yt-dlp standalone binary installed successfully at {:?}", target_path);
+        target_path
     };
 
-    info!("Downloading standalone yt-dlp binary from {} to {:?}", url, target_path);
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
-
-    let resp = client.get(url).send().await?;
-    if !resp.status().is_success() {
-        return Err(AppError::Generic(format!(
-            "Failed to download yt-dlp binary: HTTP {}",
-            resp.status()
-        )));
-    }
-
-    let bytes = resp.bytes().await?;
-    tokio::fs::write(&target_path, bytes).await?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = tokio::fs::metadata(&target_path).await?.permissions();
-        perms.set_mode(0o755);
-        tokio::fs::set_permissions(&target_path, perms).await?;
-    }
-
-    info!("yt-dlp standalone binary installed successfully at {:?}", target_path);
-    Ok(target_path)
+    let _ = CACHED_YTDLP_BIN.set(resolved.clone());
+    Ok(resolved)
 }
 
 /// Detects if a URL is from a known video streaming platform
@@ -813,6 +830,16 @@ pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str
             }
         }
 
+        // Pre-resolve remaining episodes in background so when user starts downloading any episode,
+        // it starts instantly without needing to make network requests to parse HTML pages!
+        let remaining_eps: Vec<String> = playlist_meta.playlist_entries.iter().skip(1).map(|e| e.url.clone()).collect();
+        let proxy_opt = proxy.map(|s| s.to_string());
+        tokio::spawn(async move {
+            for ep_url in remaining_eps {
+                resolve_playable_stream_url(&ep_url, proxy_opt.as_deref()).await;
+            }
+        });
+
         return Ok(playlist_meta);
     }
 
@@ -1343,6 +1370,17 @@ fn html_escape_clean(input: &str) -> String {
 static PLAYABLE_URL_CACHE: std::sync::LazyLock<std::sync::RwLock<std::collections::HashMap<String, String>>> =
     std::sync::LazyLock::new(|| std::sync::RwLock::new(std::collections::HashMap::new()));
 
+static SHARED_HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
+    reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(5))
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .pool_max_idle_per_host(10)
+        .tcp_nodelay(true)
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+});
+
 /// Resolves the underlying stream or platform URL (such as Dailymotion, YouTube, Vimeo, or .m3u8).
 pub async fn resolve_playable_stream_url(url: &str, proxy: Option<&str>) -> String {
     if is_streaming_platform(url) || url.contains(".m3u8") || url.contains(".mp4") || url.contains(".webm") {
@@ -1355,20 +1393,26 @@ pub async fn resolve_playable_stream_url(url: &str, proxy: Option<&str>) -> Stri
         }
     }
 
-    let mut builder = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
-        .timeout(std::time::Duration::from_secs(6));
-
-    if let Some(prx_str) = proxy {
+    let client = if let Some(prx_str) = proxy {
         let trimmed = prx_str.trim();
         if !trimmed.is_empty() {
             if let Ok(prx) = reqwest::Proxy::all(trimmed) {
-                builder = builder.proxy(prx);
+                reqwest::Client::builder()
+                    .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                    .timeout(std::time::Duration::from_secs(5))
+                    .proxy(prx)
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new())
+            } else {
+                SHARED_HTTP_CLIENT.clone()
             }
+        } else {
+            SHARED_HTTP_CLIENT.clone()
         }
-    }
+    } else {
+        SHARED_HTTP_CLIENT.clone()
+    };
 
-    let client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
     if let Ok(resp) = client.get(url).send().await {
         if resp.status().is_success() {
             if let Ok(html) = resp.text().await {
@@ -1455,6 +1499,10 @@ where
         .arg("--no-check-formats")
         .arg("--no-warnings")
         .arg("--newline")
+        .arg("--ignore-config")
+        .arg("--no-cache-dir")
+        .arg("--extractor-retries").arg("1")
+        .arg("--compat-options").arg("no-live-chat")
         .arg("--progress-template")
         .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress._percent)s|%(info.ext)s|%(progress.filename)s");
 
@@ -1526,9 +1574,7 @@ where
         }
     }
 
-    let ffmpeg_loc = if let Some(ffmpeg) = find_ffmpeg_path() {
-        ffmpeg.parent().map(|p| p.to_path_buf())
-    } else if let Ok(ffmpeg) = ensure_ffmpeg_installed().await {
+    let ffmpeg_loc = if let Some(ref ffmpeg) = *CACHED_FFMPEG_PATH {
         ffmpeg.parent().map(|p| p.to_path_buf())
     } else if bin_dir.join("ffmpeg").exists() {
         Some(bin_dir.clone())
