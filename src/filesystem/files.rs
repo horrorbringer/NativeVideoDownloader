@@ -927,6 +927,7 @@ pub async fn organize_subtitles(media_path: &Path) -> Result<usize> {
 }
 
 /// Organizes all subtitle files in the specified directory into a "Subtitles" subfolder.
+#[allow(dead_code)]
 pub async fn organize_all_subtitles_in_dir(dir: &Path) -> Result<usize> {
     if !dir.is_dir() {
         return Ok(0);
