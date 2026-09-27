@@ -85,6 +85,7 @@ export component AppWindow inherits Window {
     in-out property <int> selected_concurrency: 3;
     in-out property <int> selected_cookies_browser_index: 0;
     in-out property <bool> clipboard_monitor_enabled: true;
+    in-out property <string> filename_template: "{title}.{ext}";
 
     // Network & Custom Proxy properties
     in-out property <bool> proxy_enabled: false;
@@ -135,6 +136,7 @@ export component AppWindow inherits Window {
     callback browse_download_dir();
     callback reset_download_dir();
     callback open_current_download_dir();
+    callback set_filename_template(string);
     callback set_speed_limit(int);
     callback set_max_concurrency(int);
     callback set_cookies_browser(int);
@@ -481,10 +483,12 @@ export component AppWindow inherits Window {
                 default_audio_format_index <=> root.selected_audio_format_index;
                 default_audio_bitrate_index <=> root.selected_audio_bitrate_index;
                 default_embed_audio_metadata <=> root.embed_audio_metadata;
+                filename_template <=> root.filename_template;
 
                 browse_download_dir() => { root.browse_download_dir(); }
                 open_current_download_dir() => { root.open_current_download_dir(); }
                 reset_download_dir() => { root.reset_download_dir(); }
+                set_filename_template(tpl) => { root.set_filename_template(tpl); }
                 set_speed_limit(idx) => { root.set_speed_limit(idx); }
                 set_max_concurrency(c) => { root.set_max_concurrency(c); }
                 set_cookies_browser(b) => { root.set_cookies_browser(b); }

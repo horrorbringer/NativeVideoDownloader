@@ -316,6 +316,7 @@ pub fn parse_links_from_text(content: &str) -> Vec<String> {
 }
 
 /// Validates that a path is safe, creates parent directories, and resolves duplicate filenames
+#[allow(dead_code)]
 pub fn validate_destination_path(dir: &Path, filename: &str) -> Result<PathBuf> {
     let sanitized = sanitize_filename(filename);
 
@@ -364,6 +365,160 @@ pub fn ensure_audio_filename(title: &str, format: &str) -> String {
     } else {
         format!("{}.{}", title, clean_fmt)
     }
+}
+
+/// Context for formatting filename templates
+#[derive(Debug, Clone, Default)]
+pub struct FilenameContext<'a> {
+    pub title: &'a str,
+    pub ext: &'a str,
+    pub resolution: Option<&'a str>,
+    pub series: Option<&'a str>,
+    pub index: Option<usize>,
+    pub date: Option<&'a str>,
+}
+
+/// Converts Unix epoch days to standard YYYY-MM-DD string without external crates
+pub fn format_epoch_days_date(epoch_days: u64) -> String {
+    let z = epoch_days as i64 + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{:04}-{:02}-{:02}", y, m, d)
+}
+
+/// Applies a filename template with variable substitutions and returns a clean, relative PathBuf supporting subfolders
+pub fn apply_filename_template(template: &str, ctx: &FilenameContext) -> PathBuf {
+    let clean_template = if template.trim().is_empty() {
+        "{title}.{ext}"
+    } else {
+        template.trim()
+    };
+
+    let today = if let Some(d) = ctx.date {
+        d.to_string()
+    } else {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        format_epoch_days_date(secs / 86400)
+    };
+
+    // Strip existing media extension from title to avoid double extensions
+    let (stem, _) = split_stem_and_ext(ctx.title);
+    let title_clean = sanitize_filename(stem);
+    let series_clean = ctx.series.map(sanitize_filename).unwrap_or_default();
+    let res_clean = ctx.resolution.unwrap_or("");
+    let ext_clean = ctx.ext.trim_start_matches('.');
+    let index_str = ctx.index.map(|i| format!("{:02}", i)).unwrap_or_default();
+
+    let mut result = clean_template.to_string();
+    result = result.replace("{title}", &title_clean);
+    result = result.replace("{ext}", ext_clean);
+    result = result.replace("{date}", &today);
+
+    if !series_clean.is_empty() {
+        result = result.replace("{series}", &series_clean);
+        result = result.replace("{playlist}", &series_clean);
+    } else {
+        result = result.replace("{series}/", "");
+        result = result.replace("{series}\\", "");
+        result = result.replace("{series}", "");
+        result = result.replace("{playlist}/", "");
+        result = result.replace("{playlist}\\", "");
+        result = result.replace("{playlist}", "");
+    }
+
+    if !res_clean.is_empty() {
+        result = result.replace("{resolution}", res_clean);
+        result = result.replace("{quality}", res_clean);
+    } else {
+        result = result.replace("[{resolution}]", "");
+        result = result.replace("({resolution})", "");
+        result = result.replace("- {resolution}", "");
+        result = result.replace("{resolution}", "");
+        result = result.replace("[{quality}]", "");
+        result = result.replace("({quality})", "");
+        result = result.replace("- {quality}", "");
+        result = result.replace("{quality}", "");
+    }
+
+    if !index_str.is_empty() {
+        result = result.replace("{index}", &index_str);
+        result = result.replace("{ep}", &index_str);
+    } else {
+        result = result.replace("{index} - ", "");
+        result = result.replace("{index}-", "");
+        result = result.replace("{index}", "");
+        result = result.replace("{ep} - ", "");
+        result = result.replace("{ep}-", "");
+        result = result.replace("{ep}", "");
+    }
+
+    // Clean up double spaces or dangling brackets
+    while result.contains("  ") {
+        result = result.replace("  ", " ");
+    }
+    result = result.replace(" - .", ".");
+    result = result.replace(" [].", ".");
+    result = result.replace(" ().", ".");
+    result = result.replace(" .", ".");
+
+    // Ensure extension is present at the end
+    if !ext_clean.is_empty() && !result.ends_with(&format!(".{}", ext_clean)) {
+        result = format!("{}.{}", result.trim_end_matches('.'), ext_clean);
+    }
+
+    // Split into segments to support subfolders safely
+    let segments: Vec<&str> = result
+        .split(|c| c == '/' || c == '\\')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut final_path = PathBuf::new();
+    for seg in segments {
+        let clean = sanitize_filename(seg);
+        if !clean.is_empty() {
+            final_path.push(clean);
+        }
+    }
+
+    if final_path.as_os_str().is_empty() {
+        PathBuf::from(format!("downloaded_media.{}", ext_clean))
+    } else {
+        final_path
+    }
+}
+
+/// Resolves a full destination path using template formatting, creating subfolders if needed, and avoiding file collisions
+pub fn resolve_template_destination(
+    dir: &Path,
+    template: &str,
+    ctx: &FilenameContext,
+) -> Result<PathBuf> {
+    let rel_path = apply_filename_template(template, ctx);
+    let full_path = dir.join(&rel_path);
+
+    if let Some(parent) = full_path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+
+    let file_name = full_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("media");
+    let parent = full_path.parent().unwrap_or(dir);
+    Ok(resolve_unique_path(parent, file_name))
 }
 
 fn parse_stem_and_index(stem: &str) -> (&str, usize) {
@@ -739,6 +894,67 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
         assert_eq!(ensure_audio_filename("Audio Track", "flac"), "Audio Track.flac");
         assert_eq!(ensure_audio_filename("Classical Symphony.mp3", "mp3"), "Classical Symphony.mp3");
         assert_eq!(ensure_audio_filename("Video.mkv", ".opus"), "Video.opus");
+    }
+
+    #[test]
+    fn test_apply_filename_template() {
+        // 1. Basic title and extension
+        let ctx1 = FilenameContext {
+            title: "Nature Documentary.mp4",
+            ext: "mp4",
+            resolution: None,
+            series: None,
+            index: None,
+            date: Some("2026-09-27"),
+        };
+        assert_eq!(
+            apply_filename_template("{title}.{ext}", &ctx1),
+            PathBuf::from("Nature Documentary.mp4")
+        );
+
+        // 2. Resolution tag present
+        let ctx2 = FilenameContext {
+            title: "Cyberpunk 2077",
+            ext: "mp4",
+            resolution: Some("1080p"),
+            series: None,
+            index: None,
+            date: Some("2026-09-27"),
+        };
+        assert_eq!(
+            apply_filename_template("{title} [{resolution}].{ext}", &ctx2),
+            PathBuf::from("Cyberpunk 2077 [1080p].mp4")
+        );
+
+        // 3. Resolution tag absent (empty brackets cleanly eliminated)
+        let ctx3 = FilenameContext {
+            title: "Anime Episode",
+            ext: "mkv",
+            resolution: None,
+            series: None,
+            index: None,
+            date: Some("2026-09-27"),
+        };
+        assert_eq!(
+            apply_filename_template("{title} [{resolution}].{ext}", &ctx3),
+            PathBuf::from("Anime Episode.mkv")
+        );
+
+        // 4. Series subfolder with index
+        let ctx4 = FilenameContext {
+            title: "City of Dreams",
+            ext: "mp4",
+            resolution: Some("1080p"),
+            series: Some("Edgerunners"),
+            index: Some(1),
+            date: Some("2026-09-27"),
+        };
+        let p4 = apply_filename_template("{series}/{index} - {title}.{ext}", &ctx4);
+        assert_eq!(p4, PathBuf::from("Edgerunners").join("01 - City of Dreams.mp4"));
+
+        // 5. Date prefix
+        let p5 = apply_filename_template("[{date}] {title}.{ext}", &ctx1);
+        assert_eq!(p5, PathBuf::from("[2026-09-27] Nature Documentary.mp4"));
     }
 }
 

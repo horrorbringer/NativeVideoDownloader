@@ -446,6 +446,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.set_selected_audio_bitrate_index(saved_audio_br);
     main_window.set_embed_audio_metadata(saved_embed_meta);
 
+    // Restore saved filename template
+    let saved_template = db
+        .get_setting("filename_template")
+        .await
+        .unwrap_or(None)
+        .unwrap_or_else(|| "{title}.{ext}".to_string());
+    main_window.set_filename_template(saved_template.clone().into());
+    download_manager.set_filename_template(saved_template).await;
+
     // Initialize speed samples for the graph with 30 idle points
     let initial_samples: Vec<SpeedSampleData> = (0..30)
         .map(|_| SpeedSampleData {
@@ -912,6 +921,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     });
 
+    // Callback: Set Filename Template
+    let db_tpl = db.clone();
+    let mgr_tpl = download_manager.clone();
+    let weak_tpl = main_window.as_weak();
+    main_window.on_set_filename_template(move |tpl_str| {
+        let db = db_tpl.clone();
+        let mgr = mgr_tpl.clone();
+        let weak = weak_tpl.clone();
+        let tpl = tpl_str.trim().to_string();
+        tokio::spawn(async move {
+            let _ = db.set_setting("filename_template", &tpl).await;
+            mgr.set_filename_template(tpl.clone()).await;
+            info!("Saved filename template: {}", tpl);
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(format!("Filename template saved: {}", tpl).into());
+            });
+        });
+    });
+
     // Callback: Paste from Clipboard into URL input & Auto-Analyze
     let weak_paste = main_window.as_weak();
     let meta_paste = current_metadata.clone();
@@ -1141,11 +1169,10 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
                             continue;
                         }
                     }
-                    let ep_title = format!("{} - {}", series_title, entry.title);
                     if let Ok(_) = mgr
-                        .add_download(
+                        .add_download_with_context(
                             entry.url,
-                            ep_title,
+                            entry.title,
                             &download_dir,
                             None,
                             true,
@@ -1155,6 +1182,8 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
                             audio_fmt_clone.clone(),
                             audio_br_clone.clone(),
                             embed_meta,
+                            Some(&series_title),
+                            Some(idx + 1),
                         )
                         .await
                     {

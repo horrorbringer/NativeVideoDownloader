@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
@@ -10,7 +10,7 @@ use crate::downloader::job::DownloadJob;
 use crate::downloader::queue::DownloadQueue;
 use crate::downloader::retry::RetryPolicy;
 use crate::error::AppError;
-use crate::filesystem::{part_path_for, validate_destination_path};
+use crate::filesystem::part_path_for;
 use crate::models::DownloadStatus;
 use crate::network::NetworkClient;
 
@@ -42,6 +42,7 @@ pub struct DownloadManager {
     speed_limit: Arc<RwLock<Option<String>>>,
     cookies_browser: Arc<RwLock<Option<String>>>,
     proxy: Arc<RwLock<Option<String>>>,
+    filename_template: Arc<RwLock<String>>,
     on_update: Mutex<Option<StatusUpdateCallback>>,
 }
 
@@ -56,6 +57,7 @@ impl DownloadManager {
             speed_limit: Arc::new(RwLock::new(None)),
             cookies_browser: Arc::new(RwLock::new(None)),
             proxy: Arc::new(RwLock::new(None)),
+            filename_template: Arc::new(RwLock::new("{title}.{ext}".to_string())),
             on_update: Mutex::new(None),
         }
     }
@@ -104,6 +106,16 @@ impl DownloadManager {
 
     pub async fn get_proxy(&self) -> Option<String> {
         let guard = self.proxy.read().await;
+        guard.clone()
+    }
+
+    pub async fn set_filename_template(&self, template: String) {
+        let mut guard = self.filename_template.write().await;
+        *guard = template;
+    }
+
+    pub async fn get_filename_template(&self) -> String {
+        let guard = self.filename_template.read().await;
         guard.clone()
     }
 
@@ -172,13 +184,64 @@ impl DownloadManager {
         audio_bitrate: Option<String>,
         embed_artwork: bool,
     ) -> Result<Uuid, AppError> {
-        let final_title = if is_audio_only {
-            let fmt = audio_format.as_deref().unwrap_or("mp3");
-            crate::filesystem::ensure_audio_filename(&title, fmt)
+        self.add_download_with_context(
+            url,
+            title,
+            output_dir,
+            total_bytes,
+            is_extractor,
+            is_audio_only,
+            quality,
+            download_subtitles,
+            audio_format,
+            audio_bitrate,
+            embed_artwork,
+            None,
+            None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn add_download_with_context(
+        self: &Arc<Self>,
+        url: String,
+        title: String,
+        output_dir: &Path,
+        total_bytes: Option<u64>,
+        is_extractor: bool,
+        is_audio_only: bool,
+        quality: Option<String>,
+        download_subtitles: bool,
+        audio_format: Option<String>,
+        audio_bitrate: Option<String>,
+        embed_artwork: bool,
+        series: Option<&str>,
+        index: Option<usize>,
+    ) -> Result<Uuid, AppError> {
+        let ext = if is_audio_only {
+            audio_format.as_deref().unwrap_or("mp3")
         } else {
-            title.clone()
+            crate::filesystem::split_stem_and_ext(&title).1.unwrap_or("mp4")
         };
-        let destination = validate_destination_path(output_dir, &final_title)?;
+
+        let template = self.get_filename_template().await;
+        let ctx = crate::filesystem::FilenameContext {
+            title: &title,
+            ext,
+            resolution: quality.as_deref(),
+            series,
+            index,
+            date: None,
+        };
+
+        let destination = crate::filesystem::resolve_template_destination(
+            output_dir,
+            &template,
+            &ctx,
+        )?;
+        let final_title = destination.file_name().and_then(|s| s.to_str()).unwrap_or(&title).to_string();
+
         let job = DownloadJob::new(
             url,
             final_title,
@@ -639,6 +702,19 @@ mod tests {
         assert_eq!(mgr.get_proxy().await, Some("socks5://127.0.0.1:1080".to_string()));
         mgr.set_proxy(None).await;
         assert_eq!(mgr.get_proxy().await, None);
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn test_filename_template_config() {
+        let db_path = std::env::temp_dir().join(format!("test_mgr_tpl_{}.db", Uuid::new_v4()));
+        let db = Arc::new(Database::init(&db_path).await.unwrap());
+        let mgr = DownloadManager::new(3, db.clone());
+
+        assert_eq!(mgr.get_filename_template().await, "{title}.{ext}");
+        mgr.set_filename_template("{series}/{index} - {title}.{ext}".to_string()).await;
+        assert_eq!(mgr.get_filename_template().await, "{series}/{index} - {title}.{ext}");
 
         let _ = std::fs::remove_file(db_path);
     }

@@ -21,9 +21,13 @@ export component SettingsTab inherits ScrollView {
     in-out property <int> default_audio_bitrate_index: 0;
     in-out property <bool> default_embed_audio_metadata: true;
 
+    // Filename Template
+    in-out property <string> filename_template: "{title}.{ext}";
+
     callback browse_download_dir();
     callback open_current_download_dir();
     callback reset_download_dir();
+    callback set_filename_template(string);
     callback set_speed_limit(int);
     callback set_max_concurrency(int);
     callback set_cookies_browser(int);
@@ -141,6 +145,105 @@ export component SettingsTab inherits ScrollView {
                         has_icon: true;
                         height: 38px;
                         clicked => { root.reset_download_dir(); }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    height: 1px;
+                    background: #202638;
+                }
+
+                // Filename Template & Automatic Subfolders
+                VerticalLayout {
+                    spacing: 10px;
+
+                    VerticalLayout {
+                        spacing: 3px;
+                        Text {
+                            text: "Filename Template & Automatic Subfolders";
+                            color: #ffffff;
+                            font-size: 14px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Customize media filenames and organize episodes or playlists into subfolders with variables.";
+                            color: #8c93a8;
+                            font-size: 12px;
+                        }
+                    }
+
+                    // Template input field & Save button
+                    HorizontalLayout {
+                        spacing: 10px;
+
+                        template_input := LineEdit {
+                            horizontal-stretch: 1;
+                            text <=> root.filename_template;
+                            font_size: 13px;
+                            height: 38px;
+                            placeholder_text: "{title} [{resolution}].{ext}";
+                            accepted => {
+                                root.set_filename_template(self.text);
+                            }
+                        }
+
+                        ActionButton {
+                            text: "Save";
+                            icon: @image-url("../icons/check.svg");
+                            has_icon: true;
+                            primary: true;
+                            height: 38px;
+                            clicked => {
+                                root.set_filename_template(root.filename_template);
+                            }
+                        }
+                    }
+
+                    // Quick Presets
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+
+                        Text {
+                            text: "Presets:";
+                            color: #64748b;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+
+                        IconChip {
+                            text: "{title}.{ext}";
+                            selected: root.filename_template == "{title}.{ext}";
+                            clicked => {
+                                root.filename_template = "{title}.{ext}";
+                                root.set_filename_template(root.filename_template);
+                            }
+                        }
+                        IconChip {
+                            text: "{title} [{resolution}].{ext}";
+                            selected: root.filename_template == "{title} [{resolution}].{ext}";
+                            clicked => {
+                                root.filename_template = "{title} [{resolution}].{ext}";
+                                root.set_filename_template(root.filename_template);
+                            }
+                        }
+                        IconChip {
+                            text: "{series}/{index} - {title}.{ext}";
+                            selected: root.filename_template == "{series}/{index} - {title}.{ext}";
+                            clicked => {
+                                root.filename_template = "{series}/{index} - {title}.{ext}";
+                                root.set_filename_template(root.filename_template);
+                            }
+                        }
+                        IconChip {
+                            text: "[{date}] {title}.{ext}";
+                            selected: root.filename_template == "[{date}] {title}.{ext}";
+                            clicked => {
+                                root.filename_template = "[{date}] {title}.{ext}";
+                                root.set_filename_template(root.filename_template);
+                            }
+                        }
                     }
                 }
             }
