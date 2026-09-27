@@ -76,16 +76,23 @@ impl NetworkClient {
             .map_err(|e| AppError::Generic(format!("Failed to build proxy client: {}", e)))?;
 
         let start = std::time::Instant::now();
-        // Try Cloudflare DNS or Google to test round-trip latency
-        let resp = client.head("https://1.1.1.1").send().await;
+        // Try standard lightweight ping endpoints (Cloudflare and Google generate_204)
+        let resp = client.get("https://cloudflare.com/cdn-cgi/trace").send().await;
         match resp {
-            Ok(_) => Ok(start.elapsed().as_millis()),
-            Err(_) => {
-                // Secondary check: Google
-                let resp2 = client.head("https://www.google.com").send().await;
+            Ok(r) if r.status().is_success() => Ok(start.elapsed().as_millis()),
+            _ => {
+                // Secondary fallback: Google 204
+                let resp2 = client.get("https://www.google.com/generate_204").send().await;
                 match resp2 {
                     Ok(_) => Ok(start.elapsed().as_millis()),
-                    Err(e) => Err(AppError::Generic(format!("Proxy unreachable: {}", e))),
+                    Err(e) => {
+                        let err_str = e.to_string();
+                        if err_str.to_lowercase().contains("refused") {
+                            Err(AppError::Generic("Connection refused. Is your proxy app (Clash/V2Ray) running?".into()))
+                        } else {
+                            Err(AppError::Generic(format!("Proxy unreachable: {}", e)))
+                        }
+                    }
                 }
             }
         }

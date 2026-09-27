@@ -596,7 +596,7 @@ export component SettingsTab inherits ScrollView {
                         alignment: start;
 
                         Text {
-                            text: "Presets:";
+                            text: "Presets (requires local proxy app):";
                             color: #64748b;
                             font-size: 11px;
                             vertical-alignment: center;
@@ -625,6 +625,15 @@ export component SettingsTab inherits ScrollView {
                             selected: root.proxy_url_input == "http://127.0.0.1:10808";
                             clicked => {
                                 root.proxy_url_input = "http://127.0.0.1:10808";
+                                root.set_proxy(true, root.proxy_url_input);
+                            }
+                        }
+
+                        IconChip {
+                            text: "127.0.0.1:40000 (WARP)";
+                            selected: root.proxy_url_input == "socks5://127.0.0.1:40000";
+                            clicked => {
+                                root.proxy_url_input = "socks5://127.0.0.1:40000";
                                 root.set_proxy(true, root.proxy_url_input);
                             }
                         }
