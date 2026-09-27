@@ -105,12 +105,14 @@ export component DownloadsTab inherits VerticalLayout {
                             spacing: 5px;
                             alignment: center;
 
-                            Image {
-                                source: @image-url("../icons/bolt.svg");
-                                width: 11px;
-                                height: 11px;
-                                colorize: #f59e0b;
-                                vertical-alignment: center;
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../icons/bolt.svg");
+                                    width: 11px;
+                                    height: 11px;
+                                    colorize: #f59e0b;
+                                }
                             }
 
                             Text {
@@ -137,12 +139,14 @@ export component DownloadsTab inherits VerticalLayout {
                             spacing: 5px;
                             alignment: center;
 
-                            Image {
-                                source: @image-url("../icons/download.svg");
-                                width: 11px;
-                                height: 11px;
-                                colorize: #a855f7;
-                                vertical-alignment: center;
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../icons/download.svg");
+                                    width: 11px;
+                                    height: 11px;
+                                    colorize: #a855f7;
+                                }
                             }
 
                             Text {
@@ -197,43 +201,38 @@ export component DownloadsTab inherits VerticalLayout {
                     }
 
                     HorizontalLayout {
-                        padding-left: 8px;
-                        padding-right: 8px;
+                        padding-left: 6px;
+                        padding-right: 6px;
                         padding-top: 4px;
                         padding-bottom: 4px;
-                        spacing: 3px;
+                        spacing: 2px;
 
-                        for sample in root.speed_samples: sample_col := HorizontalLayout {
+                        for sample in root.speed_samples: VerticalLayout {
                             horizontal-stretch: 1;
-                            alignment: center;
+                            alignment: end;
 
-                            VerticalLayout {
-                                alignment: end;
+                            Rectangle {
+                                height: Math.max(3px, sample.ratio * 44px);
+                                border-top-left-radius: 1.5px;
+                                border-top-right-radius: 1.5px;
+                                border-bottom-left-radius: 1px;
+                                border-bottom-right-radius: 1px;
+                                background: sample.ratio > 0.7 ? (Theme.is_dark ? #38bdf8 : #0284c7) :
+                                            sample.ratio > 0.4 ? (Theme.is_dark ? #60a5fa : #2563eb) :
+                                            sample.ratio > 0.15 ? (Theme.is_dark ? #3b82f6 : #3b82f6) :
+                                            sample.ratio > 0.01 ? (Theme.is_dark ? #2563eb : #60a5fa) :
+                                            (Theme.is_dark ? #1a2032 : #e2e8f0);
+                                animate height { duration: 120ms; }
+                                animate background { duration: 120ms; }
 
-                                Rectangle {
-                                    width: 4px;
-                                    height: Math.max(3px, sample.ratio * 44px);
+                                // Glowing active cap
+                                if sample.ratio > 0.05: Rectangle {
+                                    y: 0;
+                                    width: parent.width;
+                                    height: 2px;
                                     border-top-left-radius: 1.5px;
                                     border-top-right-radius: 1.5px;
-                                    border-bottom-left-radius: 1px;
-                                    border-bottom-right-radius: 1px;
-                                    background: sample.ratio > 0.7 ? (Theme.is_dark ? #38bdf8 : #0284c7) :
-                                                sample.ratio > 0.4 ? (Theme.is_dark ? #60a5fa : #2563eb) :
-                                                sample.ratio > 0.15 ? (Theme.is_dark ? #3b82f6 : #3b82f6) :
-                                                sample.ratio > 0.01 ? (Theme.is_dark ? #2563eb : #60a5fa) :
-                                                (Theme.is_dark ? #1a2032 : #e2e8f0);
-                                    animate height { duration: 150ms; }
-                                    animate background { duration: 150ms; }
-
-                                    // Glowing active cap
-                                    if sample.ratio > 0.05: Rectangle {
-                                        y: 0;
-                                        width: parent.width;
-                                        height: 2px;
-                                        border-top-left-radius: 1.5px;
-                                        border-top-right-radius: 1.5px;
-                                        background: #ffffff99;
-                                    }
+                                    background: #ffffff99;
                                 }
                             }
                         }
@@ -655,12 +654,14 @@ export component DownloadsTab inherits VerticalLayout {
                                     spacing: 4px;
                                     alignment: center;
 
-                                    Image {
-                                        source: @image-url("../icons/download.svg");
-                                        width: 10px;
-                                        height: 10px;
-                                        colorize: #38bdf8;
-                                        vertical-alignment: center;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/download.svg");
+                                            width: 10px;
+                                            height: 10px;
+                                            colorize: #38bdf8;
+                                        }
                                     }
 
                                     Text {

@@ -576,8 +576,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(true);
     main_window.set_is_dark_mode(saved_dark_mode);
 
-    // Initialize speed samples for the graph with 30 idle points (30s rolling window)
-    let initial_samples: Vec<SpeedSampleData> = (0..30)
+    // Initialize speed samples for the graph with 60 idle points (30s rolling window @ 2 Hz)
+    let initial_samples: Vec<SpeedSampleData> = (0..60)
         .map(|_| SpeedSampleData {
             ratio: 0.0,
             speed_text: "0 B/s".into(),
@@ -603,8 +603,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let queue_filter_idx: Arc<tokio::sync::RwLock<i32>> = Arc::new(tokio::sync::RwLock::new(0));
     let queue_search_term: Arc<tokio::sync::RwLock<String>> = Arc::new(tokio::sync::RwLock::new(String::new()));
 
-    // Speed history (30 seconds rolling timeline @ 1 Hz), peak tracking, and session bytes
-    let speed_history = Arc::new(tokio::sync::Mutex::new(VecDeque::from(vec![0.0f64; 30])));
+    // Speed history (30 seconds rolling timeline @ 2 Hz / 60 samples), peak tracking, and session bytes
+    let speed_history = Arc::new(tokio::sync::Mutex::new(VecDeque::from(vec![0.0f64; 60])));
     let peak_speed_bytes = Arc::new(AtomicU64::new(0));
     let session_downloaded_bytes = Arc::new(AtomicU64::new(0));
 
@@ -697,10 +697,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 let session_val = session_lock.load(Ordering::Relaxed);
 
-                // History shift with true 1-second cadence (1 Hz) for smooth, accurate 30s timeline
+                // History shift with 500ms cadence (2 Hz) for smooth, high-density 30s timeline (60 samples)
                 let should_shift = {
                     let mut guard = last_shift_lock.lock().unwrap();
-                    if guard.elapsed() >= std::time::Duration::from_millis(950) {
+                    if guard.elapsed() >= std::time::Duration::from_millis(480) {
                         *guard = std::time::Instant::now();
                         true
                     } else {
