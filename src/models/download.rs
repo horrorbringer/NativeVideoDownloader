@@ -83,7 +83,21 @@ impl DownloadProgress {
     }
 
     pub fn format_eta(&self) -> String {
-        match self.eta_seconds {
+        let eta = self.eta_seconds.or_else(|| {
+            if self.speed_bytes_sec > 0.0 {
+                self.total_bytes.and_then(|t| {
+                    if t > self.downloaded_bytes {
+                        Some(((t - self.downloaded_bytes) as f64 / self.speed_bytes_sec).round() as u64)
+                    } else {
+                        Some(0)
+                    }
+                })
+            } else {
+                None
+            }
+        });
+
+        match eta {
             Some(secs) => {
                 let hours = secs / 3600;
                 let minutes = (secs % 3600) / 60;

@@ -1107,7 +1107,7 @@ where
     let mut cmd = create_ytdlp_cmd(&ytdlp_bin);
     cmd.arg("--newline")
         .arg("--progress-template")
-        .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s");
+        .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress._percent)s|%(info.ext)s|%(progress.filename)s");
 
     if let Some(limit) = speed_limit {
         if !limit.is_empty() && limit != "unlimited" {
@@ -1212,31 +1212,8 @@ where
             line_res = reader.next_line() => {
                 match line_res {
                     Ok(Some(line)) => {
-                        if let Some(raw_idx) = line.find("RAW:") {
-                            let raw_part = &line[raw_idx + 4..];
-                            let parts: Vec<&str> = raw_part.split('|').collect();
-                            if parts.len() >= 5 {
-                                let downloaded = parts[0].trim().parse::<u64>().unwrap_or(0);
-                                let total_bytes = parts[1].trim().parse::<u64>().ok()
-                                    .or_else(|| parts[2].trim().parse::<u64>().ok());
-                                let speed = parts[3].trim().parse::<f64>().unwrap_or(0.0);
-                                let eta = parts[4].trim().parse::<u64>().ok();
-
-                                let progress_ratio = match total_bytes {
-                                    Some(total) if total > 0 => {
-                                        (downloaded as f32 / total as f32).clamp(0.0, 1.0)
-                                    }
-                                    _ => 0.0,
-                                };
-
-                                on_progress(DownloadProgress {
-                                    downloaded_bytes: downloaded,
-                                    total_bytes,
-                                    speed_bytes_sec: speed,
-                                    eta_seconds: eta,
-                                    progress_ratio,
-                                });
-                            }
+                        if let Some(progress) = parse_extractor_progress_line(&line) {
+                            on_progress(progress);
                         }
                     }
                     Ok(None) => {
@@ -1277,9 +1254,123 @@ where
     Ok(destination_path.to_path_buf())
 }
 
+/// Parses raw progress line emitted by yt-dlp `--progress-template`
+pub fn parse_extractor_progress_line(line: &str) -> Option<DownloadProgress> {
+    let raw_idx = line.find("RAW:")?;
+    let raw_part = &line[raw_idx + 4..];
+    let parts: Vec<&str> = raw_part.split('|').collect();
+    if parts.len() < 5 {
+        return None;
+    }
+
+    // Ignore subtitle downloads (e.g. srt, vtt, ass) so auxiliary subtitle files
+    // do not overwrite the primary video/audio stream's byte progress and total size.
+    if parts.len() >= 7 {
+        let ext = parts[6].trim().to_lowercase();
+        let fname = if parts.len() >= 8 {
+            parts[7].trim().to_lowercase()
+        } else {
+            String::new()
+        };
+        if ext == "srt"
+            || ext == "vtt"
+            || ext == "ass"
+            || ext == "lrc"
+            || fname.ends_with(".srt")
+            || fname.ends_with(".vtt")
+            || fname.ends_with(".ass")
+        {
+            return None;
+        }
+    }
+
+    let parse_num = |s: &str| -> Option<u64> {
+        let s = s.trim();
+        if s.is_empty()
+            || s.eq_ignore_ascii_case("na")
+            || s.eq_ignore_ascii_case("none")
+            || s.eq_ignore_ascii_case("null")
+        {
+            return None;
+        }
+        if let Ok(v) = s.parse::<u64>() {
+            return Some(v);
+        }
+        if let Ok(f) = s.parse::<f64>() {
+            if f >= 0.0 && f.is_finite() {
+                return Some(f.round() as u64);
+            }
+        }
+        None
+    };
+
+    let downloaded = parse_num(parts[0]).unwrap_or(0);
+    let total_bytes = parse_num(parts[1]).or_else(|| parse_num(parts[2]));
+    let speed = parts[3].trim().parse::<f64>().unwrap_or(0.0);
+    let mut eta = parse_num(parts[4]);
+
+    // If yt-dlp did not provide an ETA, estimate it from speed and remaining bytes
+    if eta.is_none() && speed > 0.0 {
+        if let Some(total) = total_bytes {
+            if total > downloaded {
+                eta = Some(((total - downloaded) as f64 / speed).round() as u64);
+            }
+        }
+    }
+
+    // If yt-dlp provided _percent directly in parts[5], use it for exact progress
+    let progress_ratio = if let Some(pct) = parts.get(5).and_then(|s| s.trim().parse::<f64>().ok()) {
+        (pct / 100.0).clamp(0.0, 1.0) as f32
+    } else if let Some(total) = total_bytes {
+        if total > 0 {
+            (downloaded as f32 / total as f32).clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+
+    Some(DownloadProgress {
+        downloaded_bytes: downloaded,
+        total_bytes,
+        speed_bytes_sec: speed,
+        eta_seconds: eta,
+        progress_ratio,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_extractor_progress_line() {
+        // Subtitles should be ignored
+        let sub_line = "RAW:1024|5147|NA|1500000|0|20.0|srt|/tmp/test.fr.srt";
+        assert!(parse_extractor_progress_line(sub_line).is_none());
+
+        // HLS stream with estimate as float and decimal ETA
+        let hls_line = "RAW:5124192|NA|64077264.0|913619.9|297.03|8.0|mp4|/tmp/test.mp4";
+        let p = parse_extractor_progress_line(hls_line).expect("Should parse HLS progress line");
+        assert_eq!(p.downloaded_bytes, 5_124_192);
+        assert_eq!(p.total_bytes, Some(64_077_264));
+        assert_eq!(p.eta_seconds, Some(297));
+        assert!((p.progress_ratio - 0.08).abs() < 0.001);
+
+        // Exact total bytes
+        let direct_line = "RAW:1000|2000|NA|500.0|2|50.0|mp4|video.mp4";
+        let p2 = parse_extractor_progress_line(direct_line).unwrap();
+        assert_eq!(p2.downloaded_bytes, 1000);
+        assert_eq!(p2.total_bytes, Some(2000));
+        assert_eq!(p2.eta_seconds, Some(2));
+        assert!((p2.progress_ratio - 0.50).abs() < 0.001);
+
+        // Fallback ETA when yt-dlp reports NA
+        let no_eta_line = "RAW:1000000|NA|5000000.0|1000000.0|NA|20.0|mp4|video.mp4";
+        let p3 = parse_extractor_progress_line(no_eta_line).unwrap();
+        assert_eq!(p3.eta_seconds, Some(4)); // (5MB - 1MB) / 1MB/s = 4s
+    }
 
     #[test]
     fn test_is_streaming_platform() {

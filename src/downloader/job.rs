@@ -69,8 +69,18 @@ impl DownloadJob {
 
     pub fn update_progress(&mut self, progress: DownloadProgress) {
         self.downloaded_bytes = progress.downloaded_bytes;
-        if progress.total_bytes.is_some() {
-            self.total_bytes = progress.total_bytes;
+        if let Some(total) = progress.total_bytes {
+            // Only accept total if it is at least as large as what's currently downloaded,
+            // or if we have no total recorded yet. This prevents small auxiliary downloads
+            // (such as 8 KB subtitles) from corrupting the media stream's total size.
+            if total >= self.downloaded_bytes || self.total_bytes.is_none() {
+                self.total_bytes = Some(total);
+            }
+        } else if let Some(existing_total) = self.total_bytes {
+            // If the recorded total is strictly smaller than downloaded bytes, it is stale
+            if self.downloaded_bytes > existing_total {
+                self.total_bytes = None;
+            }
         }
         self.speed_bytes_sec = progress.speed_bytes_sec;
         self.eta_seconds = progress.eta_seconds;
@@ -79,12 +89,20 @@ impl DownloadJob {
 
     pub fn size_display(&self) -> String {
         let current = DownloadProgress::format_size(self.downloaded_bytes);
-        let total = self
-            .total_bytes
-            .map(DownloadProgress::format_size)
-            .unwrap_or_else(|| "Unknown".to_string());
-        let pct = (self.progress_ratio * 100.0) as u32;
-        format!("{} / {} ({}%)", current, total, pct)
+        let pct = (self.progress_ratio * 100.0).round() as u32;
+        match self.total_bytes {
+            Some(total) if total >= self.downloaded_bytes => {
+                let total_str = DownloadProgress::format_size(total);
+                format!("{} / {} ({}%)", current, total_str, pct)
+            }
+            _ => {
+                if pct > 0 {
+                    format!("{} ({}%)", current, pct)
+                } else {
+                    current
+                }
+            }
+        }
     }
 
     pub fn speed_display(&self) -> String {
@@ -107,5 +125,60 @@ impl DownloadJob {
             progress_ratio: self.progress_ratio,
         };
         p.format_eta()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_job_progress_and_size_display() {
+        let mut job = DownloadJob::new(
+            "http://example.com/video".to_string(),
+            "EP01.mp4".to_string(),
+            PathBuf::from("/tmp/EP01.mp4"),
+            None,
+            true,
+            false,
+            None,
+            false,
+            None,
+            None,
+            false,
+        );
+
+        // Subtitle finishes first: 8600 bytes
+        job.update_progress(DownloadProgress {
+            downloaded_bytes: 8600,
+            total_bytes: Some(8600),
+            speed_bytes_sec: 10000.0,
+            eta_seconds: Some(0),
+            progress_ratio: 1.0,
+        });
+        assert_eq!(job.total_bytes, Some(8600));
+
+        // Video starts downloading: 13.8 MB downloaded, estimated total 60 MB
+        job.update_progress(DownloadProgress {
+            downloaded_bytes: 14_470_000,
+            total_bytes: Some(62_914_560), // 60 MB
+            speed_bytes_sec: 618_200.0,
+            eta_seconds: Some(78),
+            progress_ratio: 0.23,
+        });
+        assert_eq!(job.total_bytes, Some(62_914_560));
+        assert_eq!(job.size_display(), "13.8 MB / 60.0 MB (23%)");
+
+        // Stale total smaller than downloaded bytes is automatically rejected/cleared
+        job.update_progress(DownloadProgress {
+            downloaded_bytes: 20_000_000,
+            total_bytes: None,
+            speed_bytes_sec: 500_000.0,
+            eta_seconds: None,
+            progress_ratio: 0.30,
+        });
+        // Total remains 60 MB because 60 MB >= 20 MB
+        assert_eq!(job.total_bytes, Some(62_914_560));
     }
 }
