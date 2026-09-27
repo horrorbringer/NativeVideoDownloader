@@ -66,7 +66,84 @@ pub fn find_ffmpeg_path() -> Option<PathBuf> {
         }
     }
 
+    // Check system PATH
+    if let Ok(path_var) = std::env::var("PATH") {
+        let exe_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+        for dir in std::env::split_paths(&path_var) {
+            let p = dir.join(exe_name);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+
     None
+}
+
+/// Ensures FFmpeg is available, downloading the official static standalone binary if missing
+pub async fn ensure_ffmpeg_installed() -> Result<PathBuf> {
+    if let Some(path) = find_ffmpeg_path() {
+        return Ok(path);
+    }
+
+    let bin_dir = get_bin_dir();
+    tokio::fs::create_dir_all(&bin_dir).await?;
+
+    let target_path = bin_dir.join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
+    let url = if cfg!(target_os = "macos") {
+        if cfg!(target_arch = "aarch64") {
+            "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-arm64"
+        } else {
+            "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-x64"
+        }
+    } else if cfg!(target_os = "windows") {
+        "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-win32-x64"
+    } else {
+        if cfg!(target_arch = "aarch64") {
+            "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-arm64"
+        } else {
+            "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64"
+        }
+    };
+
+    info!("Downloading standalone FFmpeg binary from {} to {:?}", url, target_path);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let resp = client.get(url).send().await?;
+    if !resp.status().is_success() {
+        return Err(AppError::Generic(format!(
+            "Failed to download FFmpeg binary: HTTP {}",
+            resp.status()
+        )));
+    }
+
+    let bytes = resp.bytes().await?;
+    tokio::fs::write(&target_path, bytes).await?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = tokio::fs::metadata(&target_path).await?.permissions();
+        perms.set_mode(0o755);
+        tokio::fs::set_permissions(&target_path, perms).await?;
+    }
+
+    info!("FFmpeg standalone binary installed successfully at {:?}", target_path);
+    Ok(target_path)
+}
+
+/// Ensures all essential streaming dependencies (yt-dlp and ffmpeg) are available
+pub async fn ensure_dependencies() -> Result<(PathBuf, PathBuf)> {
+    let (ytdlp_res, ffmpeg_res) = tokio::join!(
+        ensure_ytdlp_installed(),
+        ensure_ffmpeg_installed()
+    );
+    let ytdlp = ytdlp_res?;
+    let ffmpeg = ffmpeg_res?;
+    Ok((ytdlp, ffmpeg))
 }
 
 /// Ensures `yt-dlp` is available, downloading the official standalone executable if missing
@@ -1374,12 +1451,18 @@ where
         }
     }
 
-    if let Some(ffmpeg) = find_ffmpeg_path() {
-        if let Some(ffmpeg_dir) = ffmpeg.parent() {
-            cmd.arg("--ffmpeg-location").arg(ffmpeg_dir);
-        }
+    let ffmpeg_loc = if let Some(ffmpeg) = find_ffmpeg_path() {
+        ffmpeg.parent().map(|p| p.to_path_buf())
+    } else if let Ok(ffmpeg) = ensure_ffmpeg_installed().await {
+        ffmpeg.parent().map(|p| p.to_path_buf())
     } else if bin_dir.join("ffmpeg").exists() {
-        cmd.arg("--ffmpeg-location").arg(&bin_dir);
+        Some(bin_dir.clone())
+    } else {
+        None
+    };
+
+    if let Some(ref dir) = ffmpeg_loc {
+        cmd.arg("--ffmpeg-location").arg(dir);
     }
 
     // Parallel fragment download: configurable concurrent HLS/DASH segments for max speed
@@ -1894,6 +1977,7 @@ pub fn clean_extractor_error(raw_err: &str) -> String {
 /// Updates the yt-dlp binary to the latest official release via `yt-dlp -U`
 pub async fn update_ytdlp_engine() -> Result<String> {
     let ytdlp_bin = ensure_ytdlp_installed().await?;
+    let _ = ensure_ffmpeg_installed().await;
     info!("Running yt-dlp self-update check via {:?}", ytdlp_bin);
     let output = Command::new(&ytdlp_bin)
         .arg("-U")

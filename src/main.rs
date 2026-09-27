@@ -2171,6 +2171,35 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
         refresh_history(&db_init_hist, None, weak_init_hist).await;
     });
 
+    // Background streaming dependencies verification & silent auto-update check on startup
+    let weak_bg_status = main_window.as_weak();
+    tokio::spawn(async move {
+        // 1. Ensure external engines (yt-dlp and ffmpeg) are installed and available
+        match downloader::ensure_dependencies().await {
+            Ok((ytdlp, ffmpeg)) => {
+                info!("Verified streaming dependencies: yt-dlp at {:?}, ffmpeg at {:?}", ytdlp, ffmpeg);
+            }
+            Err(err) => {
+                warn!("Dependency validation warning on startup: {}", err);
+            }
+        }
+
+        // 2. Perform silent background auto-update check for yt-dlp
+        match downloader::update_ytdlp_engine().await {
+            Ok(msg) => {
+                info!("Background extractor auto-update check: {}", msg);
+                if msg.contains("Updated") || msg.contains("Updating to") {
+                    let _ = weak_bg_status.upgrade_in_event_loop(move |win| {
+                        win.set_status_message(format!("Extractor updated: {}", msg).into());
+                    });
+                }
+            }
+            Err(err) => {
+                info!("Background extractor update check deferred: {}", err);
+            }
+        }
+    });
+
     // Auto-detect media URL from clipboard on app launch
     if let Some(text) = filesystem::read_clipboard_text() {
         if text.starts_with("http://") || text.starts_with("https://") {
