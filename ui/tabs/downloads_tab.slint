@@ -1,6 +1,7 @@
-import { LineEdit, ProgressIndicator, ScrollView } from "std-widgets.slint";
+import { LineEdit, ScrollView } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
+import { ProgressBar } from "../components/progress_bar.slint";
 import { DownloadItemData, SpeedSampleData } from "../models.slint";
 import { Theme } from "../theme.slint";
 
@@ -486,9 +487,10 @@ export component DownloadsTab inherits VerticalLayout {
                         }
                     }
 
-                    ProgressIndicator {
+                    ProgressBar {
                         progress: item.progress;
-                        height: 7px;
+                        status: item.status;
+                        height: 8px;
                     }
 
                     HorizontalLayout {
