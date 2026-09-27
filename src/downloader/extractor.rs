@@ -1497,7 +1497,8 @@ where
     cmd.arg("--concurrent-fragments").arg(frag_count.to_string());
     // Retry on transient errors (network hiccups on segment downloads)
     cmd.arg("--retries").arg("3");
-    cmd.arg("--fragment-retries").arg("3");
+    cmd.arg("--fragment-retries").arg("5");
+    cmd.arg("--file-access-retries").arg("5");
 
     let target_url = resolve_playable_stream_url(url, proxy).await;
     info!("Target URL for extractor download resolved: {}", target_url);

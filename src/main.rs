@@ -571,13 +571,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     download_manager.set_concurrent_fragments(saved_concurrent_fragments).await;
 
     // Restore saved preferred subtitle language preference (default: 0 / All Languages)
-    let saved_sub_lang: i32 = db
+    let saved_sub_lang_str = db
         .get_setting("preferred_sub_lang")
         .await
         .unwrap_or(None)
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
-    main_window.set_selected_sub_lang_index(saved_sub_lang);
+        .unwrap_or_else(|| "0".to_string());
+    let saved_sub_indices: Vec<i32> = saved_sub_lang_str
+        .split(',')
+        .filter_map(|s| s.trim().parse::<i32>().ok())
+        .collect();
+    apply_sub_langs_state(&main_window, &saved_sub_indices);
 
     // Restore saved theme preference (defaults to true / dark mode)
     let saved_dark_mode: bool = db
@@ -1207,37 +1210,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Callback: Set preferred subtitle language & persist
+    // Callback: Toggle individual subtitle language selection & persist
+    let db_sub_toggle = db.clone();
+    let weak_sub_toggle = main_window.as_weak();
+    main_window.on_toggle_sub_lang(move |idx| {
+        if let Some(win) = weak_sub_toggle.upgrade() {
+            handle_toggle_sub_lang(&win, idx);
+            let indices = get_selected_sub_langs_indices(&win);
+            let indices_str = indices.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+            let db = db_sub_toggle.clone();
+            tokio::spawn(async move {
+                let _ = db.set_setting("preferred_sub_lang", &indices_str).await;
+            });
+        }
+    });
+
     let db_sub_lang = db.clone();
     let weak_sub_lang = main_window.as_weak();
     main_window.on_set_sub_lang(move |idx| {
-        let db = db_sub_lang.clone();
-        let weak = weak_sub_lang.clone();
-        tokio::spawn(async move {
-            let _ = db.set_setting("preferred_sub_lang", &idx.to_string()).await;
-            info!("Saved preferred subtitle language setting index: {}", idx);
-            let lang_label = match idx {
-                1 => "English (en)",
-                2 => "Khmer (km)",
-                3 => "Thai (th)",
-                4 => "Vietnamese (vi)",
-                5 => "Indonesian / Malay (id/ms)",
-                6 => "Burmese (my)",
-                7 => "Chinese (zh)",
-                8 => "Japanese (ja)",
-                9 => "Korean (ko)",
-                10 => "Spanish (es)",
-                11 => "French (fr)",
-                12 => "German (de)",
-                13 => "Russian (ru)",
-                14 => "Portuguese (pt)",
-                15 => "Arabic (ar)",
-                _ => "All Languages",
-            };
-            let _ = weak.upgrade_in_event_loop(move |win| {
-                win.set_selected_sub_lang_index(idx);
-                win.set_status_message(format!("Default subtitle language set to: {}", lang_label).into());
+        if let Some(win) = weak_sub_lang.upgrade() {
+            handle_toggle_sub_lang(&win, idx);
+            let indices = get_selected_sub_langs_indices(&win);
+            let indices_str = indices.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+            let db = db_sub_lang.clone();
+            tokio::spawn(async move {
+                let _ = db.set_setting("preferred_sub_lang", &indices_str).await;
             });
-        });
+        }
     });
 
     // Callback: Toggle Theme (Dark / Light) & persist
@@ -1429,25 +1428,177 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
     }
 }
 
-/// Helper: Map subtitle language index to yt-dlp --sub-langs filter pattern
-fn map_subtitle_lang_index(idx: i32) -> &'static str {
+fn apply_sub_langs_state(window: &AppWindow, selected_indices: &[i32]) {
+    let all = selected_indices.contains(&0) || selected_indices.is_empty();
+    window.set_sub_lang_all(all);
+    window.set_sub_lang_en(!all && selected_indices.contains(&1));
+    window.set_sub_lang_km(!all && selected_indices.contains(&2));
+    window.set_sub_lang_th(!all && selected_indices.contains(&3));
+    window.set_sub_lang_vi(!all && selected_indices.contains(&4));
+    window.set_sub_lang_id(!all && selected_indices.contains(&5));
+    window.set_sub_lang_my(!all && selected_indices.contains(&6));
+    window.set_sub_lang_zh(!all && selected_indices.contains(&7));
+    window.set_sub_lang_ja(!all && selected_indices.contains(&8));
+    window.set_sub_lang_ko(!all && selected_indices.contains(&9));
+    window.set_sub_lang_es(!all && selected_indices.contains(&10));
+    window.set_sub_lang_fr(!all && selected_indices.contains(&11));
+    window.set_sub_lang_de(!all && selected_indices.contains(&12));
+    window.set_sub_lang_ru(!all && selected_indices.contains(&13));
+    window.set_sub_lang_pt(!all && selected_indices.contains(&14));
+    window.set_sub_lang_ar(!all && selected_indices.contains(&15));
+
+    update_sub_langs_summary(window);
+}
+
+fn update_sub_langs_summary(window: &AppWindow) {
+    if window.get_sub_lang_all() {
+        window.set_selected_sub_langs_summary("All Languages".into());
+        return;
+    }
+    let mut names = Vec::new();
+    if window.get_sub_lang_en() { names.push("English (en)"); }
+    if window.get_sub_lang_km() { names.push("Khmer (km)"); }
+    if window.get_sub_lang_th() { names.push("Thai (th)"); }
+    if window.get_sub_lang_vi() { names.push("Vietnamese (vi)"); }
+    if window.get_sub_lang_id() { names.push("Indonesian (id)"); }
+    if window.get_sub_lang_my() { names.push("Burmese (my)"); }
+    if window.get_sub_lang_zh() { names.push("Chinese (zh)"); }
+    if window.get_sub_lang_ja() { names.push("Japanese (ja)"); }
+    if window.get_sub_lang_ko() { names.push("Korean (ko)"); }
+    if window.get_sub_lang_es() { names.push("Spanish (es)"); }
+    if window.get_sub_lang_fr() { names.push("French (fr)"); }
+    if window.get_sub_lang_de() { names.push("German (de)"); }
+    if window.get_sub_lang_ru() { names.push("Russian (ru)"); }
+    if window.get_sub_lang_pt() { names.push("Portuguese (pt)"); }
+    if window.get_sub_lang_ar() { names.push("Arabic (ar)"); }
+
+    if names.is_empty() {
+        window.set_sub_lang_all(true);
+        window.set_selected_sub_langs_summary("All Languages".into());
+    } else {
+        let summary = format!("{} ({} selected)", names.join(", "), names.len());
+        window.set_selected_sub_langs_summary(summary.into());
+    }
+}
+
+fn handle_toggle_sub_lang(window: &AppWindow, idx: i32) {
+    if idx == 0 {
+        window.set_sub_lang_all(true);
+        window.set_sub_lang_en(false);
+        window.set_sub_lang_km(false);
+        window.set_sub_lang_th(false);
+        window.set_sub_lang_vi(false);
+        window.set_sub_lang_id(false);
+        window.set_sub_lang_my(false);
+        window.set_sub_lang_zh(false);
+        window.set_sub_lang_ja(false);
+        window.set_sub_lang_ko(false);
+        window.set_sub_lang_es(false);
+        window.set_sub_lang_fr(false);
+        window.set_sub_lang_de(false);
+        window.set_sub_lang_ru(false);
+        window.set_sub_lang_pt(false);
+        window.set_sub_lang_ar(false);
+        window.set_selected_sub_langs_summary("All Languages".into());
+        return;
+    }
+
     match idx {
-        1 => "en.*,en,und",
-        2 => "km.*,km",
-        3 => "th.*,th",
-        4 => "vi.*,vi",
-        5 => "id.*,id,ms.*,ms",
-        6 => "my.*,my",
-        7 => "zh.*,zh-Hans,zh-Hant",
-        8 => "ja.*,ja",
-        9 => "ko.*,ko",
-        10 => "es.*,es",
-        11 => "fr.*,fr",
-        12 => "de.*,de",
-        13 => "ru.*,ru",
-        14 => "pt.*,pt",
-        15 => "ar.*,ar",
-        _ => "all,-live_chat",
+        1 => window.set_sub_lang_en(!window.get_sub_lang_en()),
+        2 => window.set_sub_lang_km(!window.get_sub_lang_km()),
+        3 => window.set_sub_lang_th(!window.get_sub_lang_th()),
+        4 => window.set_sub_lang_vi(!window.get_sub_lang_vi()),
+        5 => window.set_sub_lang_id(!window.get_sub_lang_id()),
+        6 => window.set_sub_lang_my(!window.get_sub_lang_my()),
+        7 => window.set_sub_lang_zh(!window.get_sub_lang_zh()),
+        8 => window.set_sub_lang_ja(!window.get_sub_lang_ja()),
+        9 => window.set_sub_lang_ko(!window.get_sub_lang_ko()),
+        10 => window.set_sub_lang_es(!window.get_sub_lang_es()),
+        11 => window.set_sub_lang_fr(!window.get_sub_lang_fr()),
+        12 => window.set_sub_lang_de(!window.get_sub_lang_de()),
+        13 => window.set_sub_lang_ru(!window.get_sub_lang_ru()),
+        14 => window.set_sub_lang_pt(!window.get_sub_lang_pt()),
+        15 => window.set_sub_lang_ar(!window.get_sub_lang_ar()),
+        _ => {}
+    }
+
+    let any_specific = window.get_sub_lang_en()
+        || window.get_sub_lang_km()
+        || window.get_sub_lang_th()
+        || window.get_sub_lang_vi()
+        || window.get_sub_lang_id()
+        || window.get_sub_lang_my()
+        || window.get_sub_lang_zh()
+        || window.get_sub_lang_ja()
+        || window.get_sub_lang_ko()
+        || window.get_sub_lang_es()
+        || window.get_sub_lang_fr()
+        || window.get_sub_lang_de()
+        || window.get_sub_lang_ru()
+        || window.get_sub_lang_pt()
+        || window.get_sub_lang_ar();
+
+    if any_specific {
+        window.set_sub_lang_all(false);
+    } else {
+        window.set_sub_lang_all(true);
+    }
+
+    update_sub_langs_summary(window);
+}
+
+fn get_selected_sub_langs(window: &AppWindow) -> String {
+    if window.get_sub_lang_all() {
+        return "all,-live_chat".to_string();
+    }
+    let mut patterns = Vec::new();
+    if window.get_sub_lang_en() { patterns.push("en.*,en,und"); }
+    if window.get_sub_lang_km() { patterns.push("km.*,km"); }
+    if window.get_sub_lang_th() { patterns.push("th.*,th"); }
+    if window.get_sub_lang_vi() { patterns.push("vi.*,vi"); }
+    if window.get_sub_lang_id() { patterns.push("id.*,id,ms.*,ms"); }
+    if window.get_sub_lang_my() { patterns.push("my.*,my"); }
+    if window.get_sub_lang_zh() { patterns.push("zh.*,zh-Hans,zh-Hant"); }
+    if window.get_sub_lang_ja() { patterns.push("ja.*,ja"); }
+    if window.get_sub_lang_ko() { patterns.push("ko.*,ko"); }
+    if window.get_sub_lang_es() { patterns.push("es.*,es"); }
+    if window.get_sub_lang_fr() { patterns.push("fr.*,fr"); }
+    if window.get_sub_lang_de() { patterns.push("de.*,de"); }
+    if window.get_sub_lang_ru() { patterns.push("ru.*,ru"); }
+    if window.get_sub_lang_pt() { patterns.push("pt.*,pt"); }
+    if window.get_sub_lang_ar() { patterns.push("ar.*,ar"); }
+
+    if patterns.is_empty() {
+        "all,-live_chat".to_string()
+    } else {
+        patterns.join(",")
+    }
+}
+
+fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
+    if window.get_sub_lang_all() {
+        return vec![0];
+    }
+    let mut indices = Vec::new();
+    if window.get_sub_lang_en() { indices.push(1); }
+    if window.get_sub_lang_km() { indices.push(2); }
+    if window.get_sub_lang_th() { indices.push(3); }
+    if window.get_sub_lang_vi() { indices.push(4); }
+    if window.get_sub_lang_id() { indices.push(5); }
+    if window.get_sub_lang_my() { indices.push(6); }
+    if window.get_sub_lang_zh() { indices.push(7); }
+    if window.get_sub_lang_ja() { indices.push(8); }
+    if window.get_sub_lang_ko() { indices.push(9); }
+    if window.get_sub_lang_es() { indices.push(10); }
+    if window.get_sub_lang_fr() { indices.push(11); }
+    if window.get_sub_lang_de() { indices.push(12); }
+    if window.get_sub_lang_ru() { indices.push(13); }
+    if window.get_sub_lang_pt() { indices.push(14); }
+    if window.get_sub_lang_ar() { indices.push(15); }
+    if indices.is_empty() {
+        vec![0]
+    } else {
+        indices
     }
 }
 
@@ -1457,11 +1608,15 @@ fn map_subtitle_lang_index(idx: i32) -> &'static str {
     let mgr_clone_dl = download_manager.clone();
     let current_dir_dl = current_download_dir.clone();
 
-    main_window.on_start_download(move |format_idx, download_subs, download_thumb, audio_fmt_idx, audio_br_idx, embed_meta, sub_lang_idx| {
+    main_window.on_start_download(move |format_idx, download_subs, download_thumb, audio_fmt_idx, audio_br_idx, embed_meta, _legacy_sub_lang_idx| {
         let (is_audio_only, quality) = map_format_index(format_idx);
         let audio_format = if is_audio_only { Some(map_audio_format(audio_fmt_idx).to_string()) } else { None };
         let audio_bitrate = if is_audio_only { Some(map_audio_bitrate(audio_br_idx).to_string()) } else { None };
-        let sub_lang = if download_subs { Some(map_subtitle_lang_index(sub_lang_idx).to_string()) } else { None };
+        let sub_lang = if download_subs {
+            window_weak_dl.upgrade().map(|win| get_selected_sub_langs(&win))
+        } else {
+            None
+        };
 
         info!(
             "User triggered 'Start Download' with format_idx: {} (audio: {}, format: {:?}, bitrate: {:?}, embed_meta: {}, subs: {}, sub_lang: {:?}, thumb: {})",
@@ -1595,12 +1750,12 @@ fn map_subtitle_lang_index(idx: i32) -> &'static str {
     let mgr_clone_batch = download_manager.clone();
     let current_dir_batch = current_download_dir.clone();
 
-    main_window.on_start_batch_download(move |raw_text, format_idx, download_thumb, audio_fmt_idx, audio_br_idx, embed_meta, sub_lang_idx| {
+    main_window.on_start_batch_download(move |raw_text, format_idx, download_thumb, audio_fmt_idx, audio_br_idx, embed_meta, _legacy_sub_lang_idx| {
         let text_val = raw_text.to_string();
         let (is_audio_only, quality) = map_format_index(format_idx);
         let audio_format = if is_audio_only { Some(map_audio_format(audio_fmt_idx).to_string()) } else { None };
         let audio_bitrate = if is_audio_only { Some(map_audio_bitrate(audio_br_idx).to_string()) } else { None };
-        let sub_lang = Some(map_subtitle_lang_index(sub_lang_idx).to_string());
+        let sub_lang = window_weak_batch.upgrade().map(|win| get_selected_sub_langs(&win));
         let weak = window_weak_batch.clone();
         let mgr = mgr_clone_batch.clone();
         let dir_lock = current_dir_batch.clone();

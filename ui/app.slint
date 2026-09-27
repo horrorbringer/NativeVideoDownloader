@@ -103,6 +103,23 @@ export component AppWindow inherits Window {
     in-out property <string> filename_template: "{title}.{ext}";
     in-out property <int> selected_asset_org_mode: 0;
     in-out property <int> selected_sub_lang_index: 0;
+    in-out property <bool> sub_lang_all: true;
+    in-out property <bool> sub_lang_en: false;
+    in-out property <bool> sub_lang_km: false;
+    in-out property <bool> sub_lang_th: false;
+    in-out property <bool> sub_lang_vi: false;
+    in-out property <bool> sub_lang_id: false;
+    in-out property <bool> sub_lang_my: false;
+    in-out property <bool> sub_lang_zh: false;
+    in-out property <bool> sub_lang_ja: false;
+    in-out property <bool> sub_lang_ko: false;
+    in-out property <bool> sub_lang_es: false;
+    in-out property <bool> sub_lang_fr: false;
+    in-out property <bool> sub_lang_de: false;
+    in-out property <bool> sub_lang_ru: false;
+    in-out property <bool> sub_lang_pt: false;
+    in-out property <bool> sub_lang_ar: false;
+    in-out property <string> selected_sub_langs_summary: "All Languages";
     in-out property <int> selected_concurrent_fragments: 4;
 
     // Network & Custom Proxy properties
@@ -130,6 +147,7 @@ export component AppWindow inherits Window {
     callback set_proxy(bool, string);
     callback test_proxy(string);
     callback set_sub_lang(int);
+    callback toggle_sub_lang(int);
     callback start_download(int, bool, bool, int, int, bool, int);
     callback start_batch_download(string, int, bool, int, int, bool, int);
     callback pause_download(string);
@@ -470,6 +488,24 @@ export component AppWindow inherits Window {
                 clipboard_detected_url_visible <=> root.clipboard_detected_url_visible;
                 clipboard_detected_url <=> root.clipboard_detected_url;
                 selected_sub_lang_index <=> root.selected_sub_lang_index;
+                sub_lang_all <=> root.sub_lang_all;
+                sub_lang_en <=> root.sub_lang_en;
+                sub_lang_km <=> root.sub_lang_km;
+                sub_lang_th <=> root.sub_lang_th;
+                sub_lang_vi <=> root.sub_lang_vi;
+                sub_lang_id <=> root.sub_lang_id;
+                sub_lang_my <=> root.sub_lang_my;
+                sub_lang_zh <=> root.sub_lang_zh;
+                sub_lang_ja <=> root.sub_lang_ja;
+                sub_lang_ko <=> root.sub_lang_ko;
+                sub_lang_es <=> root.sub_lang_es;
+                sub_lang_fr <=> root.sub_lang_fr;
+                sub_lang_de <=> root.sub_lang_de;
+                sub_lang_ru <=> root.sub_lang_ru;
+                sub_lang_pt <=> root.sub_lang_pt;
+                sub_lang_ar <=> root.sub_lang_ar;
+                selected_sub_langs_summary <=> root.selected_sub_langs_summary;
+                toggle_sub_lang(idx) => { root.toggle_sub_lang(idx); }
 
                 analyze_url(url) => { root.analyze_url(url); }
                 clear_analysis() => { root.clear_analysis(); }
@@ -557,6 +593,24 @@ export component AppWindow inherits Window {
                 filename_template <=> root.filename_template;
                 selected_asset_org_mode <=> root.selected_asset_org_mode;
                 selected_sub_lang_index <=> root.selected_sub_lang_index;
+                sub_lang_all <=> root.sub_lang_all;
+                sub_lang_en <=> root.sub_lang_en;
+                sub_lang_km <=> root.sub_lang_km;
+                sub_lang_th <=> root.sub_lang_th;
+                sub_lang_vi <=> root.sub_lang_vi;
+                sub_lang_id <=> root.sub_lang_id;
+                sub_lang_my <=> root.sub_lang_my;
+                sub_lang_zh <=> root.sub_lang_zh;
+                sub_lang_ja <=> root.sub_lang_ja;
+                sub_lang_ko <=> root.sub_lang_ko;
+                sub_lang_es <=> root.sub_lang_es;
+                sub_lang_fr <=> root.sub_lang_fr;
+                sub_lang_de <=> root.sub_lang_de;
+                sub_lang_ru <=> root.sub_lang_ru;
+                sub_lang_pt <=> root.sub_lang_pt;
+                sub_lang_ar <=> root.sub_lang_ar;
+                selected_sub_langs_summary <=> root.selected_sub_langs_summary;
+                toggle_sub_lang(idx) => { root.toggle_sub_lang(idx); }
                 selected_concurrent_fragments <=> root.selected_concurrent_fragments;
 
                 browse_download_dir() => { root.browse_download_dir(); }
