@@ -133,6 +133,8 @@ pub fn is_streaming_platform(url: &str) -> bool {
         || lower.contains("soundcloud.com")
         || lower.contains("reddit.com")
         || lower.contains("bilibili.com")
+        || lower.contains("b23.tv")
+        || lower.contains("douyin.com")
         || lower.contains("iq.com")
         || lower.contains("iqiyi.com")
         || lower.contains("youku.com")
@@ -149,6 +151,31 @@ pub fn is_direct_media_url(url: &str) -> bool {
         ".m3u8", ".mpd",
     ] {
         if path.ends_with(ext) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Determines if a copied string is a candidate video or audio stream URL for live clipboard monitoring
+pub fn is_candidate_media_url(text: &str) -> bool {
+    let trimmed = text.trim();
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        return false;
+    }
+    if reqwest::Url::parse(trimmed).is_err() {
+        return false;
+    }
+    if is_streaming_platform(trimmed) || is_direct_media_url(trimmed) {
+        return true;
+    }
+    let lower = trimmed.to_lowercase();
+    let video_keywords = [
+        "/video/", "/play/", "/watch", "/item/", "/episode/",
+        "/stream", "m3u8", "/shorts/", "/reel/", "/status/"
+    ];
+    for kw in &video_keywords {
+        if lower.contains(kw) {
             return true;
         }
     }
@@ -1155,6 +1182,18 @@ mod tests {
         assert!(is_streaming_platform("https://www.tiktok.com/@user/video/123"));
         assert!(!is_streaming_platform("https://example.com/video.mp4"));
         assert!(!is_streaming_platform("http://files.cdn.com/stream.webm"));
+    }
+
+    #[test]
+    fn test_is_candidate_media_url() {
+        assert!(is_candidate_media_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ"));
+        assert!(is_candidate_media_url("https://vimeo.com/12345678"));
+        assert!(is_candidate_media_url("https://cdn.example.com/video/stream.m3u8"));
+        assert!(is_candidate_media_url("https://example.com/downloads/episode1.mp4"));
+        assert!(is_candidate_media_url("https://myanime.org/play/episode-10"));
+        assert!(!is_candidate_media_url("not a url"));
+        assert!(!is_candidate_media_url("https://en.wikipedia.org/wiki/Rust"));
+        assert!(!is_candidate_media_url("ftp://example.com/file.txt"));
     }
 
     #[test]

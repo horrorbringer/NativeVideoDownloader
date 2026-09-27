@@ -84,12 +84,20 @@ export component AppWindow inherits Window {
     in-out property <int> selected_speed_limit_index: 0;
     in-out property <int> selected_concurrency: 3;
     in-out property <int> selected_cookies_browser_index: 0;
+    in-out property <bool> clipboard_monitor_enabled: true;
+
+    // Live Clipboard Link Monitor properties
+    in-out property <bool> clipboard_detected_url_visible: false;
+    in-out property <string> clipboard_detected_url: "";
 
     // Callbacks
     callback analyze_url(string);
     callback paste_from_clipboard();
     callback paste_batch_from_clipboard();
     callback import_links_file();
+    callback analyze_clipboard_detected();
+    callback dismiss_clipboard_detected();
+    callback set_clipboard_monitor(bool);
     callback start_download(int, bool, int, int, bool);
     callback start_batch_download(string, int, int, int, bool);
     callback pause_download(string);
@@ -375,6 +383,8 @@ export component AppWindow inherits Window {
                 selected_audio_format_index <=> root.selected_audio_format_index;
                 selected_audio_bitrate_index <=> root.selected_audio_bitrate_index;
                 embed_audio_metadata <=> root.embed_audio_metadata;
+                clipboard_detected_url_visible <=> root.clipboard_detected_url_visible;
+                clipboard_detected_url <=> root.clipboard_detected_url;
 
                 analyze_url(url) => { root.analyze_url(url); }
                 clear_analysis() => { root.clear_analysis(); }
@@ -384,6 +394,8 @@ export component AppWindow inherits Window {
                 paste_from_clipboard() => { root.paste_from_clipboard(); }
                 paste_batch_from_clipboard() => { root.paste_batch_from_clipboard(); }
                 import_links_file() => { root.import_links_file(); }
+                analyze_clipboard_detected() => { root.analyze_clipboard_detected(); }
+                dismiss_clipboard_detected() => { root.dismiss_clipboard_detected(); }
                 start_download(fmt, subs, afmt, abr, meta) => { root.start_download(fmt, subs, afmt, abr, meta); }
                 start_batch_download(text, fmt, afmt, abr, meta) => { root.start_batch_download(text, fmt, afmt, abr, meta); }
                 dismiss_error() => { root.dismiss_error(); }
@@ -446,6 +458,7 @@ export component AppWindow inherits Window {
                 selected_speed_limit_index <=> root.selected_speed_limit_index;
                 selected_concurrency <=> root.selected_concurrency;
                 selected_cookies_browser_index <=> root.selected_cookies_browser_index;
+                clipboard_monitor_enabled <=> root.clipboard_monitor_enabled;
 
                 browse_download_dir() => { root.browse_download_dir(); }
                 open_current_download_dir() => { root.open_current_download_dir(); }
@@ -453,6 +466,7 @@ export component AppWindow inherits Window {
                 set_speed_limit(idx) => { root.set_speed_limit(idx); }
                 set_max_concurrency(c) => { root.set_max_concurrency(c); }
                 set_cookies_browser(b) => { root.set_cookies_browser(b); }
+                set_clipboard_monitor(e) => { root.set_clipboard_monitor(e); }
                 test_notification() => { root.test_notification(); }
                 update_extractor() => { root.update_extractor(); }
             }

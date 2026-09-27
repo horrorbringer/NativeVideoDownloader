@@ -7,6 +7,7 @@ export component SettingsTab inherits ScrollView {
     in-out property <int> selected_speed_limit_index: 0;
     in-out property <int> selected_concurrency: 3;
     in-out property <int> selected_cookies_browser_index: 0;
+    in-out property <bool> clipboard_monitor_enabled: true;
 
     callback browse_download_dir();
     callback open_current_download_dir();
@@ -14,6 +15,7 @@ export component SettingsTab inherits ScrollView {
     callback set_speed_limit(int);
     callback set_max_concurrency(int);
     callback set_cookies_browser(int);
+    callback set_clipboard_monitor(bool);
     callback test_notification();
     callback update_extractor();
 
@@ -526,7 +528,120 @@ export component SettingsTab inherits ScrollView {
             }
         }
 
-        // 4. Engine & Architecture Overview (Compact & Clean)
+        // 5. Live Clipboard Link Monitor
+        Rectangle {
+            background: #161926;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #242c40;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 8px;
+                        background: #1e2438;
+                        border-width: 1px;
+                        border-color: #2c3550;
+
+                        Image {
+                            source: @image-url("../icons/clipboard.svg");
+                            width: 17px;
+                            height: 17px;
+                            colorize: #7082ff;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 3px;
+                        Text {
+                            text: "Live Clipboard Link Monitor";
+                            color: #ffffff;
+                            font-size: 15px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Detects video and audio stream URLs automatically when copied in your browser.";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    IconChip {
+                        text: "Enabled (Watch Clipboard)";
+                        icon: @image-url("../icons/check.svg");
+                        has_icon: true;
+                        selected: root.clipboard_monitor_enabled;
+                        clicked => {
+                            root.clipboard_monitor_enabled = true;
+                            root.set_clipboard_monitor(true);
+                        }
+                    }
+
+                    IconChip {
+                        text: "Disabled";
+                        icon: @image-url("../icons/x.svg");
+                        has_icon: true;
+                        selected: !root.clipboard_monitor_enabled;
+                        clicked => {
+                            root.clipboard_monitor_enabled = false;
+                            root.set_clipboard_monitor(false);
+                        }
+                    }
+                }
+
+                Rectangle {
+                    background: #0f121d;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: #202638;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        padding-top: 8px;
+                        padding-bottom: 8px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: @image-url("../icons/info.svg");
+                                width: 14px;
+                                height: 14px;
+                                colorize: #7082ff;
+                            }
+                        }
+
+                        Text {
+                            text: root.clipboard_monitor_enabled
+                                ? "Monitoring active. When you copy a media link (YouTube, Bilibili, TikTok, stream links, etc.), an instant inspection banner will appear."
+                                : "Monitoring paused. Clipboard contents will not be read automatically.";
+                            color: #949db2;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. Engine & Architecture Overview (Compact & Clean)
         Rectangle {
             background: #121522;
             border-radius: 12px;

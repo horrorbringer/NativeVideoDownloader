@@ -718,6 +718,112 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    let clipboard_monitor_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let last_clipboard = Arc::new(std::sync::Mutex::new(
+        filesystem::read_clipboard_text().unwrap_or_default(),
+    ));
+
+    // Background Task: Live Clipboard Link Watcher
+    let weak_clip_watcher = main_window.as_weak();
+    let clip_enabled_watcher = clipboard_monitor_enabled.clone();
+    let last_clip_watcher = last_clipboard.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(1500));
+        loop {
+            interval.tick().await;
+            if !clip_enabled_watcher.load(std::sync::atomic::Ordering::Relaxed) {
+                continue;
+            }
+
+            let current = tokio::task::spawn_blocking(filesystem::read_clipboard_text)
+                .await
+                .ok()
+                .flatten();
+
+            if let Some(text) = current {
+                let trimmed = text.trim().to_string();
+                if trimmed.is_empty() {
+                    continue;
+                }
+
+                let is_new = {
+                    let mut last = last_clip_watcher.lock().unwrap();
+                    if *last != trimmed {
+                        *last = trimmed.clone();
+                        true
+                    } else {
+                        false
+                    }
+                };
+
+                if is_new && downloader::extractor::is_candidate_media_url(&trimmed) {
+                    tracing::info!("Clipboard watcher detected candidate media URL: {}", trimmed);
+                    let url = trimmed.clone();
+                    let _ = weak_clip_watcher.upgrade_in_event_loop(move |win| {
+                        win.set_clipboard_detected_url(url.clone().into());
+                        win.set_clipboard_detected_url_visible(true);
+                        win.set_status_message(format!("Clipboard detected media link: {}", url).into());
+                    });
+
+                    let notif_url = trimmed.clone();
+                    notifications::send_notification(
+                        "Native Video Downloader",
+                        "Media Link Copied",
+                        &format!("Ready to inspect: {}", notif_url),
+                        false,
+                    );
+                }
+            }
+        }
+    });
+
+    // Callback: Analyze Detected Clipboard URL
+    let weak_analyze_clip = main_window.as_weak();
+    let meta_analyze_clip = current_metadata.clone();
+    let client_analyze_clip = network_client.clone();
+    let cookies_analyze_clip = current_cookies_browser.clone();
+    main_window.on_analyze_clipboard_detected(move || {
+        let weak = weak_analyze_clip.clone();
+        let meta = meta_analyze_clip.clone();
+        let client = client_analyze_clip.clone();
+        let cookies = cookies_analyze_clip.clone();
+        let _ = weak_analyze_clip.upgrade_in_event_loop(move |win| {
+            let url = win.get_clipboard_detected_url().to_string();
+            win.set_clipboard_detected_url_visible(false);
+            if !url.is_empty() {
+                win.set_batch_mode(false);
+                win.set_input_url_text(url.clone().into());
+                win.set_status_message(format!("Analyzing copied link: {}", url).into());
+                run_url_analysis(url, weak, meta, client, cookies);
+            }
+        });
+    });
+
+    // Callback: Dismiss Detected Clipboard URL
+    let weak_dismiss_clip = main_window.as_weak();
+    main_window.on_dismiss_clipboard_detected(move || {
+        let _ = weak_dismiss_clip.upgrade_in_event_loop(|win| {
+            win.set_clipboard_detected_url_visible(false);
+            win.set_status_message("Dismissed copied media link".into());
+        });
+    });
+
+    // Callback: Toggle Clipboard Monitor in Settings
+    let clip_enabled_setter = clipboard_monitor_enabled.clone();
+    let weak_clip_set = main_window.as_weak();
+    main_window.on_set_clipboard_monitor(move |enabled| {
+        clip_enabled_setter.store(enabled, std::sync::atomic::Ordering::Relaxed);
+        let _ = weak_clip_set.upgrade_in_event_loop(move |win| {
+            win.set_status_message(
+                if enabled {
+                    "Live Clipboard Link Monitor enabled".into()
+                } else {
+                    "Live Clipboard Link Monitor disabled".into()
+                },
+            );
+        });
+    });
+
     // Callback: Paste from Clipboard into URL input & Auto-Analyze
     let weak_paste = main_window.as_weak();
     let meta_paste = current_metadata.clone();
@@ -1286,12 +1392,16 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
     // Callback: Copy Logs to System Clipboard
     let ui_logger_copy = ui_log_layer.clone();
     let weak_copy = main_window.as_weak();
+    let last_clip_logs = last_clipboard.clone();
     main_window.on_copy_logs(move || {
         let text = ui_logger_copy.get_formatted_logs();
         if !text.is_empty() {
             let count = text.lines().count();
             let success = filesystem::write_clipboard_text(&text);
             if success {
+                if let Ok(mut last) = last_clip_logs.lock() {
+                    *last = text.trim().to_string();
+                }
                 let _ = weak_copy.upgrade_in_event_loop(move |win| {
                     win.set_status_message(format!("Copied {} log entries to clipboard", count).into());
                 });

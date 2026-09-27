@@ -31,6 +31,10 @@ export component HomeTab inherits ScrollView {
     in-out property <int> selected_audio_bitrate_index: 0;
     in-out property <bool> embed_audio_metadata: true;
 
+    // Live Clipboard Link Monitor properties
+    in-out property <bool> clipboard_detected_url_visible: false;
+    in-out property <string> clipboard_detected_url: "";
+
     callback analyze_url(string);
     callback clear_analysis();
     callback toggle_episode(int);
@@ -39,6 +43,8 @@ export component HomeTab inherits ScrollView {
     callback paste_from_clipboard();
     callback paste_batch_from_clipboard();
     callback import_links_file();
+    callback analyze_clipboard_detected();
+    callback dismiss_clipboard_detected();
     callback start_download(int, bool, int, int, bool);
     callback start_batch_download(string, int, int, int, bool);
     callback dismiss_error();
@@ -115,6 +121,92 @@ export component HomeTab inherits ScrollView {
                         has_icon: true;
                         height: 28px;
                         clicked => { root.dismiss_error(); }
+                    }
+                }
+            }
+        }
+
+        // Live Clipboard Detected Link Banner
+        if root.clipboard_detected_url_visible: Rectangle {
+            background: #131b2e;
+            border-radius: 10px;
+            border-width: 1px;
+            border-color: #3b82f6;
+
+            HorizontalLayout {
+                padding: 12px;
+                spacing: 12px;
+                alignment: space-between;
+
+                HorizontalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 10px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 28px;
+                            height: 28px;
+                            border-radius: 14px;
+                            background: #1e2942;
+                            border-width: 1px;
+                            border-color: #3b82f6;
+
+                            Image {
+                                source: @image-url("../icons/clipboard.svg");
+                                width: 14px;
+                                height: 14px;
+                                colorize: #60a5fa;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 2px;
+                        alignment: center;
+
+                        Text {
+                            text: "Copied Media Link Detected";
+                            color: #60a5fa;
+                            font-size: 13px;
+                            font-weight: 700;
+                        }
+
+                        Text {
+                            text: root.clipboard_detected_url;
+                            color: #bfdbfe;
+                            font-size: 12px;
+                            overflow: elide;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    ActionButton {
+                        text: "Analyze Stream";
+                        icon: @image-url("../icons/search.svg");
+                        has_icon: true;
+                        primary: true;
+                        height: 30px;
+                        clicked => {
+                            root.analyze_clipboard_detected();
+                        }
+                    }
+
+                    ActionButton {
+                        text: "Dismiss";
+                        icon: @image-url("../icons/x.svg");
+                        has_icon: true;
+                        height: 30px;
+                        clicked => {
+                            root.dismiss_clipboard_detected();
+                        }
                     }
                 }
             }
