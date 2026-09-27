@@ -1391,6 +1391,14 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
 
             let download_dir = dir_lock.read().await.clone();
 
+            // Only download thumbnail if the analyzed link actually provided a thumbnail URL.
+            // Never extract or synthesize a thumbnail from the video itself.
+            let download_thumb = if metadata.thumbnail_url.is_some() {
+                download_thumb
+            } else {
+                false
+            };
+
             // If album/series playlist, queue selected episodes
             if metadata.is_playlist {
                 let series_title = metadata.title.clone();

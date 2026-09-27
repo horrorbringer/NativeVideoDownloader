@@ -1093,10 +1093,12 @@ export component HomeTab inherits ScrollView {
                     }
 
                     Rectangle {
-                        background: root.download_thumbnail ? (Theme.is_dark ? #121c32 : #eff6ff) : Theme.inner_bg;
+                        background: !root.has_thumbnail ? Theme.inner_bg :
+                                    root.download_thumbnail ? (Theme.is_dark ? #121c32 : #eff6ff) : Theme.inner_bg;
                         border-radius: 8px;
                         border-width: 1px;
-                        border-color: root.download_thumbnail ? (Theme.is_dark ? #2563eb : #93c5fd) : Theme.inner_border;
+                        border-color: !root.has_thumbnail ? Theme.inner_border :
+                                      root.download_thumbnail ? (Theme.is_dark ? #2563eb : #93c5fd) : Theme.inner_border;
                         height: 32px;
 
                         HorizontalLayout {
@@ -1112,13 +1114,16 @@ export component HomeTab inherits ScrollView {
                                     source: @image-url("../icons/sparkles.svg");
                                     width: 14px;
                                     height: 14px;
-                                    colorize: root.download_thumbnail ? (Theme.is_dark ? #60a5fa : #2563eb) : Theme.icon_default;
+                                    colorize: !root.has_thumbnail ? Theme.text_muted :
+                                              root.download_thumbnail ? (Theme.is_dark ? #60a5fa : #2563eb) : Theme.icon_default;
                                 }
                             }
 
                             Text {
-                                text: root.download_thumbnail ? "Cover Art / Thumbnail: Enabled" : "Cover Art / Thumbnail: Disabled";
-                                color: root.download_thumbnail ? (Theme.is_dark ? #60a5fa : #2563eb) : Theme.text_secondary;
+                                text: !root.has_thumbnail ? "Thumbnail: Not provided by link" :
+                                      root.download_thumbnail ? "Cover Art / Thumbnail: Enabled" : "Cover Art / Thumbnail: Disabled";
+                                color: !root.has_thumbnail ? Theme.text_muted :
+                                       root.download_thumbnail ? (Theme.is_dark ? #60a5fa : #2563eb) : Theme.text_secondary;
                                 font-size: 12px;
                                 font-weight: 600;
                                 vertical-alignment: center;
@@ -1126,6 +1131,7 @@ export component HomeTab inherits ScrollView {
                         }
 
                         TouchArea {
+                            enabled: root.has_thumbnail;
                             clicked => { root.download_thumbnail = !root.download_thumbnail; }
                         }
                     }
