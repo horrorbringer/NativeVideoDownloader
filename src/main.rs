@@ -1415,6 +1415,65 @@ fn map_audio_bitrate(idx: i32) -> &'static str {
         });
     });
 
+    // Callback: Export History to CSV
+    let db_export = db.clone();
+    let weak_export = main_window.as_weak();
+    main_window.on_export_history(move || {
+        let db = db_export.clone();
+        let weak = weak_export.clone();
+        tokio::spawn(async move {
+            let records = match db.get_history(None).await {
+                Ok(r) if !r.is_empty() => r,
+                Ok(_) => {
+                    let _ = weak.upgrade_in_event_loop(|win| {
+                        win.set_status_message("No history records to export".into());
+                    });
+                    return;
+                }
+                Err(err) => {
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_status_message(format!("Failed to load history: {}", err).into());
+                    });
+                    return;
+                }
+            };
+
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let default_name = format!("download_history_{}.csv", timestamp);
+
+            if let Some(mut save_path) = filesystem::pick_save_file(&default_name, "Export Download History to CSV").await {
+                if save_path.extension().is_none() {
+                    save_path.set_extension("csv");
+                }
+                match filesystem::export_history_to_csv(&records, &save_path).await {
+                    Ok(count) => {
+                        let path_display = save_path.display().to_string();
+                        info!("Exported {} history records to {}", count, path_display);
+                        notifications::send_notification(
+                            "History Exported",
+                            "CSV Export Successful",
+                            &format!("Successfully saved {} records to {}", count, path_display),
+                            false,
+                        );
+                        let _ = weak.upgrade_in_event_loop(move |win| {
+                            win.set_status_message(format!("Exported {} records to {}", count, path_display).into());
+                        });
+                    }
+                    Err(err) => {
+                        let err_msg = format!("Failed to export history: {}", err);
+                        tracing::error!("{}", err_msg);
+                        let _ = weak.upgrade_in_event_loop(move |win| {
+                            win.set_status_message(err_msg.into());
+                        });
+                    }
+                }
+            }
+        });
+    });
+
     // Callback: Clear Logs
     let ui_logger_clear = ui_log_layer.clone();
     main_window.on_clear_logs(move || {

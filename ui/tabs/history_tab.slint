@@ -8,6 +8,7 @@ export component HistoryTab inherits VerticalLayout {
 
     callback search_history(string);
     callback clear_all_history();
+    callback export_history();
     callback play_history_file(string);
     callback open_history_folder(string);
     callback redownload_history(string);
@@ -48,6 +49,15 @@ export component HistoryTab inherits VerticalLayout {
                     vertical-alignment: center;
                 }
             }
+        }
+
+        ActionButton {
+            text: "Export CSV";
+            icon: @image-url("../icons/download.svg");
+            has_icon: true;
+            height: 36px;
+            enabled: root.history_items.length > 0;
+            clicked => { root.export_history(); }
         }
 
         ActionButton {

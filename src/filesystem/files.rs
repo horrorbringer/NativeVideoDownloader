@@ -145,6 +145,118 @@ pub async fn pick_file() -> Option<PathBuf> {
     .flatten()
 }
 
+/// Prompts user with native desktop save file dialog
+pub async fn pick_save_file(default_filename: &str, prompt_title: &str) -> Option<PathBuf> {
+    let def_name = default_filename.to_string();
+    let prompt = prompt_title.to_string();
+    tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "macos")]
+        {
+            let script = format!(
+                "POSIX path of (choose file name with prompt \"{}\" default name \"{}\")",
+                prompt.replace('\"', "\\\""),
+                def_name.replace('\"', "\\\"")
+            );
+            let output = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg(&script)
+                .output()
+                .ok()?;
+            if output.status.success() {
+                let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path_str.is_empty() {
+                    return Some(PathBuf::from(path_str));
+                }
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let script = format!(
+                "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; $f = New-Object System.Windows.Forms.SaveFileDialog; $f.Title = '{}'; $f.FileName = '{}'; $f.Filter = 'CSV Files (*.csv)|*.csv|All Files (*.*)|*.*'; if ($f.ShowDialog() -eq 'OK') {{ $f.FileName }}",
+                prompt.replace('\'', "''"),
+                def_name.replace('\'', "''")
+            );
+            let output = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", &script])
+                .output()
+                .ok()?;
+            if output.status.success() {
+                let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path_str.is_empty() {
+                    return Some(PathBuf::from(path_str));
+                }
+            }
+        }
+        #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+        {
+            let output = std::process::Command::new("zenity")
+                .args([
+                    "--file-selection",
+                    "--save",
+                    "--confirm-overwrite",
+                    &format!("--filename={}", def_name),
+                    &format!("--title={}", prompt),
+                ])
+                .output()
+                .ok()?;
+            if output.status.success() {
+                let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path_str.is_empty() {
+                    return Some(PathBuf::from(path_str));
+                }
+            }
+        }
+        None
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// Escapes a CSV column value according to RFC 4180
+pub fn escape_csv_field(val: &str) -> String {
+    if val.contains(',') || val.contains('\"') || val.contains('\n') || val.contains('\r') {
+        format!("\"{}\"", val.replace('\"', "\"\""))
+    } else {
+        val.to_string()
+    }
+}
+
+/// Formats a list of database history records into RFC 4180 compliant CSV text
+pub fn format_history_csv(records: &[crate::database::HistoryRecord]) -> String {
+    let mut out = String::from("ID,Title,URL,Filename,Output Path,Status,Total Size (Bytes),Downloaded Size (Bytes),Error,Created At,Completed At\r\n");
+    for r in records {
+        let id = escape_csv_field(&r.id.to_string());
+        let title = escape_csv_field(&r.title);
+        let url = escape_csv_field(&r.url);
+        let filename = escape_csv_field(&r.filename);
+        let output_path = escape_csv_field(&r.output_path);
+        let status = escape_csv_field(&r.status);
+        let total_size = r.total_size.map(|s| s.to_string()).unwrap_or_default();
+        let downloaded_size = r.downloaded_size.to_string();
+        let error = escape_csv_field(r.error.as_deref().unwrap_or(""));
+        let created_at = escape_csv_field(&r.created_at);
+        let completed_at = escape_csv_field(r.completed_at.as_deref().unwrap_or(""));
+
+        out.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{},{},{}\r\n",
+            id, title, url, filename, output_path, status, total_size, downloaded_size, error, created_at, completed_at
+        ));
+    }
+    out
+}
+
+/// Exports a list of history records to a destination CSV file
+pub async fn export_history_to_csv(
+    records: &[crate::database::HistoryRecord],
+    path: &Path,
+) -> Result<usize> {
+    let content = format_history_csv(records);
+    tokio::fs::write(path, content).await?;
+    Ok(records.len())
+}
+
+
 /// Extracts all unique valid http/https URLs from a text file, playlist, or document
 pub fn parse_links_from_text(content: &str) -> Vec<String> {
     let mut links = Vec::new();
@@ -580,6 +692,33 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
         assert_eq!(links[2], "https://vimeo.com/12345678");
         assert_eq!(links[3], "https://dailymotion.com/video/x7xyz");
         assert_eq!(links[4], "http://bilibili.com/video/BV1xx411c7mD");
+    }
+
+    #[test]
+    fn test_format_history_csv() {
+        use uuid::Uuid;
+        let id1 = Uuid::new_v4();
+        let record1 = crate::database::HistoryRecord {
+            id: id1,
+            url: "https://example.com/video,test".to_string(),
+            title: "My \"Special\" Video, Part 1".to_string(),
+            filename: "my_video.mp4".to_string(),
+            output_path: "/Downloads/my_video.mp4".to_string(),
+            status: "Completed".to_string(),
+            total_size: Some(10485760),
+            downloaded_size: 10485760,
+            error: None,
+            created_at: "2026-09-27T10:00:00Z".to_string(),
+            completed_at: Some("2026-09-27T10:05:00Z".to_string()),
+        };
+
+        let csv = format_history_csv(&[record1]);
+        assert!(csv.contains("ID,Title,URL,Filename,Output Path"));
+        // Quotes and comma escaped
+        assert!(csv.contains("\"My \"\"Special\"\" Video, Part 1\""));
+        assert!(csv.contains("\"https://example.com/video,test\""));
+        assert!(csv.contains("10485760"));
+        assert!(csv.contains("Completed"));
     }
 }
 
