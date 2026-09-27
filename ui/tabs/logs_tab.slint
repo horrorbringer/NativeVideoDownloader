@@ -2,6 +2,7 @@ import { LineEdit, ScrollView } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
 import { LogEntryData } from "../models.slint";
+import { Theme } from "../theme.slint";
 
 export component LogsTab inherits VerticalLayout {
     in-out property <[LogEntryData]> log_entries: [];
@@ -106,10 +107,10 @@ export component LogsTab inherits VerticalLayout {
 
     // If no logs match filter/query
     if root.log_entries.length == 0: Rectangle {
-        background: #141724;
+        background: Theme.card_bg;
         border-radius: 12px;
         border-width: 1px;
-        border-color: #22283a;
+        border-color: Theme.card_border;
         vertical-stretch: 1;
 
         VerticalLayout {
@@ -122,15 +123,15 @@ export component LogsTab inherits VerticalLayout {
                     width: 48px;
                     height: 48px;
                     border-radius: 24px;
-                    background: #1d2234;
+                    background: Theme.sidebar_brand_bg;
                     border-width: 1px;
-                    border-color: #2b334d;
+                    border-color: Theme.sidebar_brand_border;
 
                     Image {
                         source: (root.log_filter_index != 0 || root.log_search_query != "") ? @image-url("../icons/search.svg") : @image-url("../icons/logs.svg");
                         width: 22px;
                         height: 22px;
-                        colorize: #7082ff;
+                        colorize: Theme.brand_purple;
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
                     }
@@ -141,14 +142,14 @@ export component LogsTab inherits VerticalLayout {
                 spacing: 5px;
                 Text {
                     text: (root.log_filter_index != 0 || root.log_search_query != "") ? "No matching logs found" : "No logs recorded yet";
-                    color: #ffffff;
+                    color: Theme.text_primary;
                     font-size: 15px;
                     font-weight: 700;
                     horizontal-alignment: center;
                 }
                 Text {
                     text: (root.log_filter_index != 0 || root.log_search_query != "") ? "Try selecting 'All' or clearing your search filter above." : "Engine operations, inspections, stream events, and diagnostics will stream here live.";
-                    color: #8c93a8;
+                    color: Theme.text_secondary;
                     font-size: 13px;
                     horizontal-alignment: center;
                 }
@@ -158,17 +159,17 @@ export component LogsTab inherits VerticalLayout {
 
     // Unified Developer Terminal Log Console Card
     if root.log_entries.length > 0: Rectangle {
-        background: #0b0e17;
+        background: Theme.is_dark ? #0b0e17 : #ffffff;
         border-radius: 10px;
         border-width: 1px;
-        border-color: #1e2436;
+        border-color: Theme.card_border;
         vertical-stretch: 1;
         clip: true;
 
         VerticalLayout {
             // Console Title Bar
             Rectangle {
-                background: #111522;
+                background: Theme.sidebar_status_bg;
                 height: 32px;
 
                 HorizontalLayout {
@@ -204,7 +205,7 @@ export component LogsTab inherits VerticalLayout {
 
                         Text {
                             text: "Console Stream • Real-time Engine Diagnostics";
-                            color: #64748b;
+                            color: Theme.text_secondary;
                             font-size: 11px;
                             font-weight: 600;
                             vertical-alignment: center;
@@ -213,7 +214,7 @@ export component LogsTab inherits VerticalLayout {
 
                     Text {
                         text: root.log_entries.length + " events";
-                        color: #64748b;
+                        color: Theme.text_muted;
                         font-size: 11px;
                         font-weight: 500;
                         vertical-alignment: center;
@@ -223,7 +224,7 @@ export component LogsTab inherits VerticalLayout {
 
             Rectangle {
                 height: 1px;
-                background: #1a2030;
+                background: Theme.sidebar_status_border;
             }
 
             // Console Stream Area
@@ -235,9 +236,9 @@ export component LogsTab inherits VerticalLayout {
                     spacing: 2px;
 
                     for entry in root.log_entries: Rectangle {
-                        background: touch.has-hover ? #171c2b : (
-                            entry.level == "ERROR" ? #221217 :
-                            entry.level == "WARN" ? #211a10 :
+                        background: touch.has-hover ? Theme.inner_bg : (
+                            entry.level == "ERROR" ? (Theme.is_dark ? #221217 : #fef2f2) :
+                            entry.level == "WARN" ? (Theme.is_dark ? #211a10 : #fffbeb) :
                             transparent
                         );
                         border-radius: 4px;
@@ -256,7 +257,7 @@ export component LogsTab inherits VerticalLayout {
                             // Fixed-width timestamp
                             Text {
                                 text: entry.timestamp;
-                                color: #5a6480;
+                                color: Theme.text_muted;
                                 font-size: 11px;
                                 width: 72px;
                                 vertical-alignment: top;
@@ -268,15 +269,18 @@ export component LogsTab inherits VerticalLayout {
                                 height: 18px;
                                 border-radius: 3px;
                                 border-width: 1px;
-                                background: entry.level == "ERROR" ? #371216 :
-                                            entry.level == "WARN" ? #351e08 : #172554;
-                                border-color: entry.level == "ERROR" ? #b91c1c :
-                                              entry.level == "WARN" ? #b45309 : #1d4ed8;
+                                background: entry.level == "ERROR" ? (Theme.is_dark ? #371216 : #fee2e2) :
+                                            entry.level == "WARN" ? (Theme.is_dark ? #351e08 : #fef3c7) :
+                                            (Theme.is_dark ? #172554 : #dbeafe);
+                                border-color: entry.level == "ERROR" ? (Theme.is_dark ? #b91c1c : #fca5a5) :
+                                              entry.level == "WARN" ? (Theme.is_dark ? #b45309 : #fcd34d) :
+                                              (Theme.is_dark ? #1d4ed8 : #93c5fd);
 
                                 Text {
                                     text: entry.level;
-                                    color: entry.level == "ERROR" ? #fca5a5 :
-                                           entry.level == "WARN" ? #fcd34d : #93c5fd;
+                                    color: entry.level == "ERROR" ? (Theme.is_dark ? #fca5a5 : #b91c1c) :
+                                           entry.level == "WARN" ? (Theme.is_dark ? #fcd34d : #b45309) :
+                                           (Theme.is_dark ? #93c5fd : #1d4ed8);
                                     font-size: 10px;
                                     font-weight: 700;
                                     horizontal-alignment: center;
@@ -287,8 +291,9 @@ export component LogsTab inherits VerticalLayout {
                             // Message
                             Text {
                                 text: entry.message;
-                                color: entry.level == "ERROR" ? #fca5a5 :
-                                       entry.level == "WARN" ? #fde68a : #cbd5e1;
+                                color: entry.level == "ERROR" ? (Theme.is_dark ? #fca5a5 : #b91c1c) :
+                                       entry.level == "WARN" ? (Theme.is_dark ? #fde68a : #92400e) :
+                                       Theme.text_primary;
                                 font-size: 12px;
                                 horizontal-stretch: 1;
                                 wrap: word-wrap;

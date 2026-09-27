@@ -357,6 +357,7 @@ pub fn split_stem_and_ext(filename: &str) -> (&str, Option<&str>) {
 }
 
 /// Normalizes a media title for audio extraction, replacing any existing video extension with the target audio format
+#[allow(dead_code)]
 pub fn ensure_audio_filename(title: &str, format: &str) -> String {
     let clean_fmt = format.trim_start_matches('.').to_lowercase();
     let (stem, ext) = split_stem_and_ext(title);

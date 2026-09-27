@@ -2,6 +2,7 @@ import { LineEdit, ProgressIndicator, ScrollView, TextEdit } from "std-widgets.s
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
 import { EpisodeItemData } from "../models.slint";
+import { Theme } from "../theme.slint";
 
 export component HomeTab inherits ScrollView {
     in-out property <bool> has_error: false;
@@ -59,10 +60,10 @@ export component HomeTab inherits ScrollView {
 
         // Error / Alert Banner
         if root.has_error: Rectangle {
-            background: #2a151b;
+            background: Theme.error_bg;
             border-radius: 10px;
             border-width: 1px;
-            border-color: #ef4444;
+            border-color: Theme.error_border;
 
             HorizontalLayout {
                 padding: 12px;
@@ -128,10 +129,10 @@ export component HomeTab inherits ScrollView {
 
         // Live Clipboard Detected Link Banner
         if root.clipboard_detected_url_visible: Rectangle {
-            background: #131b2e;
+            background: Theme.chip_bg;
             border-radius: 10px;
             border-width: 1px;
-            border-color: #3b82f6;
+            border-color: Theme.chip_border;
 
             HorizontalLayout {
                 padding: 12px;
@@ -241,10 +242,10 @@ export component HomeTab inherits ScrollView {
 
         // URL Input Card
         Rectangle {
-            background: #161926;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #242c40;
+            border-color: Theme.card_border;
             height: root.is_analyzing ? 112px : 92px;
 
             VerticalLayout {
@@ -340,10 +341,10 @@ export component HomeTab inherits ScrollView {
 
         // Video Analysis Result Card (shown when metadata is found)
         if root.has_metadata: Rectangle {
-            background: #161926;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #242c40;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 14px;
@@ -1000,10 +1001,10 @@ export component HomeTab inherits ScrollView {
 
         // Empty / Placeholder state when no video analyzed
         if !root.has_metadata && !root.is_analyzing: Rectangle {
-            background: #141724;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #22283a;
+            border-color: Theme.card_border;
             height: 175px;
 
             VerticalLayout {
@@ -1135,10 +1136,10 @@ export component HomeTab inherits ScrollView {
         spacing: 16px;
 
         Rectangle {
-            background: #161926;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #242c40;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 20px;

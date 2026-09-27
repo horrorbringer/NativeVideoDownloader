@@ -5,8 +5,9 @@ import { DownloadsTab } from "tabs/downloads_tab.slint";
 import { HistoryTab } from "tabs/history_tab.slint";
 import { LogsTab } from "tabs/logs_tab.slint";
 import { SettingsTab } from "tabs/settings_tab.slint";
+import { Theme } from "theme.slint";
 
-export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData }
+export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData, Theme }
 
 export component AppWindow inherits Window {
     title: "Native Video Downloader";
@@ -14,7 +15,10 @@ export component AppWindow inherits Window {
     preferred-height: 640px;
     min-width: 780px;
     min-height: 520px;
-    background: #0f1118;
+    background: Theme.app_bg;
+
+    in-out property <bool> is_dark_mode <=> Theme.is_dark;
+    callback toggle_theme();
 
     in-out property <int> active_tab: 0;
     in-out property <string> status_message: "Ready to download media";
@@ -157,54 +161,83 @@ export component AppWindow inherits Window {
         // Sidebar Navigation
         Rectangle {
             width: 200px;
-            background: #141724;
+            background: Theme.sidebar_bg;
             border-width: 1px;
-            border-color: #1e2436;
+            border-color: Theme.sidebar_border;
+            animate background { duration: 150ms; }
 
             VerticalLayout {
                 padding: 10px;
                 spacing: 4px;
 
-                // App Title & Brand
+                // App Title & Brand + Quick Theme Toggle
                 HorizontalLayout {
-                    alignment: start;
-                    spacing: 10px;
+                    alignment: space-between;
                     padding-bottom: 10px;
                     padding-left: 2px;
                     padding-top: 2px;
 
-                    Rectangle {
-                        width: 32px;
-                        height: 32px;
-                        border-radius: 8px;
-                        background: #232b48;
-                        border-width: 1px;
-                        border-color: #36416b;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            width: 32px;
+                            height: 32px;
+                            border-radius: 8px;
+                            background: Theme.sidebar_brand_bg;
+                            border-width: 1px;
+                            border-color: Theme.sidebar_brand_border;
 
-                        Image {
-                            source: @image-url("icons/bolt.svg");
-                            width: 17px;
-                            height: 17px;
-                            colorize: #7082ff;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
+                            Image {
+                                source: @image-url("icons/bolt.svg");
+                                width: 17px;
+                                height: 17px;
+                                colorize: Theme.brand_purple;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
+                            Text {
+                                text: "Media Stream";
+                                color: Theme.text_primary;
+                                font-size: 14px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "Native Pro Downloader";
+                                color: Theme.brand_purple;
+                                font-size: 11px;
+                                font-weight: 600;
+                            }
                         }
                     }
 
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 1px;
-                        Text {
-                            text: "Media Stream";
-                            color: #ffffff;
-                            font-size: 14px;
-                            font-weight: 700;
+                    // Theme toggle button
+                    theme_btn := Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 6px;
+                        background: theme_touch.has-hover ? Theme.nav_hover_bg : transparent;
+                        border-width: 1px;
+                        border-color: theme_touch.has-hover ? Theme.nav_hover_border : transparent;
+
+                        Image {
+                            source: Theme.is_dark ? @image-url("icons/sun.svg") : @image-url("icons/moon.svg");
+                            width: 15px;
+                            height: 15px;
+                            colorize: theme_touch.has-hover ? Theme.brand_purple : Theme.icon_default;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
                         }
-                        Text {
-                            text: "Native Pro Downloader";
-                            color: #7082ff;
-                            font-size: 11px;
-                            font-weight: 600;
+
+                        theme_touch := TouchArea {
+                            clicked => {
+                                Theme.is_dark = !Theme.is_dark;
+                                root.toggle_theme();
+                            }
                         }
                     }
                 }
@@ -251,10 +284,10 @@ export component AppWindow inherits Window {
 
                 // Sidebar System Status Widget
                 Rectangle {
-                    background: #171c2b;
+                    background: Theme.sidebar_status_bg;
                     border-radius: 8px;
                     border-width: 1px;
-                    border-color: #242c42;
+                    border-color: Theme.sidebar_status_border;
                     height: 52px;
 
                     VerticalLayout {
@@ -280,7 +313,7 @@ export component AppWindow inherits Window {
 
                             Text {
                                 text: root.active_downloads_count > 0 ? "Active Tasks" : "Engine Ready";
-                                color: #e2e8f0;
+                                color: Theme.text_primary;
                                 font-size: 11px;
                                 font-weight: 600;
                                 vertical-alignment: center;
@@ -291,7 +324,7 @@ export component AppWindow inherits Window {
                             text: root.active_downloads_count > 0 ?
                                   (root.active_downloads_count + " downloading • " + root.selected_concurrency + " workers") :
                                   ("Workers: " + root.selected_concurrency + " • SQLite OK");
-                            color: #717d96;
+                            color: Theme.text_secondary;
                             font-size: 10px;
                         }
                     }
@@ -315,7 +348,7 @@ export component AppWindow inherits Window {
                               root.active_tab == 1 ? "Active Downloads" :
                               root.active_tab == 2 ? "Download History" :
                               root.active_tab == 3 ? "Engine & Activity Logs" : "Application Settings";
-                        color: #ffffff;
+                        color: Theme.text_primary;
                         font-size: 20px;
                         font-weight: 700;
                     }
@@ -324,7 +357,7 @@ export component AppWindow inherits Window {
                               root.active_tab == 1 ? "Monitor ongoing queues, speeds and progress" :
                               root.active_tab == 2 ? "Past completed and archived downloads" :
                               root.active_tab == 3 ? "Real-time engine operations, streaming events, and diagnostics" : "Configure directories, concurrency, and defaults";
-                        color: #8c93a8;
+                        color: Theme.text_secondary;
                         font-size: 12px;
                     }
                 }
@@ -333,10 +366,10 @@ export component AppWindow inherits Window {
                 VerticalLayout {
                     alignment: center;
                     Rectangle {
-                        background: #141724;
+                        background: Theme.sidebar_status_bg;
                         border-radius: 14px;
                         border-width: 1px;
-                        border-color: #22283a;
+                        border-color: Theme.sidebar_status_border;
                         height: 28px;
 
                         HorizontalLayout {
@@ -362,7 +395,7 @@ export component AppWindow inherits Window {
                                       root.is_analyzing ? "Analyzing stream..." :
                                       root.active_downloads_count > 0 ? (root.active_downloads_count + " active tasks") :
                                       "Ready";
-                                color: #cbd5e1;
+                                color: Theme.text_secondary;
                                 font-size: 11px;
                                 font-weight: 500;
                                 vertical-alignment: center;
@@ -500,14 +533,15 @@ export component AppWindow inherits Window {
                 test_proxy(p) => { root.test_proxy(p); }
                 test_notification() => { root.test_notification(); }
                 update_extractor() => { root.update_extractor(); }
+                set_theme_dark(d) => { root.toggle_theme(); }
             }
 
             // Status bar at bottom
             Rectangle {
-                background: #131622;
+                background: Theme.sidebar_status_bg;
                 border-radius: 8px;
                 border-width: 1px;
-                border-color: #1e2436;
+                border-color: Theme.sidebar_status_border;
                 height: 36px;
 
                 HorizontalLayout {
@@ -517,7 +551,7 @@ export component AppWindow inherits Window {
 
                     Text {
                         text: root.status_message;
-                        color: root.has_error ? #f87171 : #79829c;
+                        color: root.has_error ? Theme.error_text : Theme.text_secondary;
                         font-size: 12px;
                         vertical-alignment: center;
                         overflow: elide;
@@ -525,8 +559,8 @@ export component AppWindow inherits Window {
                     }
 
                     Text {
-                        text: "v0.1.0 • Slint Native";
-                        color: #52596e;
+                        text: "v0.1.0 • Slint Native Engine";
+                        color: Theme.text_dimmed;
                         font-size: 11px;
                         vertical-alignment: center;
                     }

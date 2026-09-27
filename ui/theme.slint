@@ -1,0 +1,94 @@
+export global Theme {
+    in-out property <bool> is_dark: true;
+
+    // Window & Canvas Background
+    out property <color> app_bg: is_dark ? #0f1118 : #f8fafc;
+    out property <color> content_bg: is_dark ? #0f1118 : #f8fafc;
+
+    // Sidebar
+    out property <color> sidebar_bg: is_dark ? #141724 : #ffffff;
+    out property <color> sidebar_border: is_dark ? #1e2436 : #e2e8f0;
+    out property <color> sidebar_brand_bg: is_dark ? #232b48 : #eef2ff;
+    out property <color> sidebar_brand_border: is_dark ? #36416b : #c7d2fe;
+    out property <color> sidebar_status_bg: is_dark ? #171c2b : #f1f5f9;
+    out property <color> sidebar_status_border: is_dark ? #242c42 : #e2e8f0;
+
+    // Surface Cards & Containers
+    out property <color> card_bg: is_dark ? #161a29 : #ffffff;
+    out property <color> card_border: is_dark ? #22293e : #e2e8f0;
+    out property <color> card_alt_bg: is_dark ? #191e30 : #f8fafc;
+    out property <color> card_hover: is_dark ? #1d2235 : #f1f5f9;
+
+    // Inner Wells & Panels (e.g. Logs Console, Quality Box, Episode Item)
+    out property <color> inner_bg: is_dark ? #111422 : #f1f5f9;
+    out property <color> inner_border: is_dark ? #1d2336 : #e2e8f0;
+    out property <color> inner_alt: is_dark ? #0e101c : #f8fafc;
+
+    // Typography
+    out property <color> text_primary: is_dark ? #ffffff : #0f172a;
+    out property <color> text_secondary: is_dark ? #94a3b8 : #334155;
+    out property <color> text_muted: is_dark ? #64748b : #64748b;
+    out property <color> text_dimmed: is_dark ? #475569 : #94a3b8;
+    out property <color> icon_default: is_dark ? #8c94a9 : #64748b;
+
+    // Brand & Primary Accents
+    out property <color> primary_accent: is_dark ? #4f58c7 : #4338ca;
+    out property <color> primary_hover: is_dark ? #5b65d6 : #4f46e5;
+    out property <color> primary_pressed: is_dark ? #434ba8 : #3730a3;
+    out property <color> primary_border: is_dark ? #6b7af5 : #6366f1;
+    out property <color> primary_text: #ffffff;
+    out property <color> brand_purple: is_dark ? #7082ff : #4f46e5;
+
+    // Navigation Buttons
+    out property <color> nav_active_bg: is_dark ? #242c46 : #e0e7ff;
+    out property <color> nav_active_border: is_dark ? #3b4872 : #c7d2fe;
+    out property <color> nav_hover_bg: is_dark ? #191e2e : #f1f5f9;
+    out property <color> nav_hover_border: is_dark ? #252c40 : #e2e8f0;
+    out property <color> nav_active_text: is_dark ? #ffffff : #3730a3;
+    out property <color> nav_inactive_text: is_dark ? #94a0b8 : #475569;
+
+    // Secondary Action Buttons
+    out property <color> btn_secondary_bg: is_dark ? #1c202e : #ffffff;
+    out property <color> btn_secondary_hover: is_dark ? #272d40 : #f8fafc;
+    out property <color> btn_secondary_pressed: is_dark ? #181c28 : #f1f5f9;
+    out property <color> btn_secondary_border: is_dark ? #282d40 : #cbd5e1;
+    out property <color> btn_secondary_text: is_dark ? #cbd5e1 : #1e293b;
+
+    // Danger Buttons
+    out property <color> btn_danger_bg: is_dark ? #b91c1c : #dc2626;
+    out property <color> btn_danger_hover: is_dark ? #dc2626 : #ef4444;
+    out property <color> btn_danger_pressed: is_dark ? #991b1b : #b91c1c;
+    out property <color> btn_danger_border: is_dark ? #ef4444 : #f87171;
+    out property <color> btn_danger_text: #ffffff;
+
+    // Disabled Buttons
+    out property <color> btn_disabled_bg: is_dark ? #161822 : #f1f5f9;
+    out property <color> btn_disabled_border: is_dark ? #222634 : #e2e8f0;
+    out property <color> btn_disabled_text: is_dark ? #52596e : #94a3b8;
+
+    // Chips & Badges
+    out property <color> chip_bg: is_dark ? #192036 : #eef2ff;
+    out property <color> chip_border: is_dark ? #283354 : #c7d2fe;
+    out property <color> chip_text: is_dark ? #8fa0ff : #4338ca;
+
+    // Status Colors (Success, Warning, Error)
+    out property <color> success_bg: is_dark ? #052e16 : #dcfce7;
+    out property <color> success_border: is_dark ? #166534 : #86efac;
+    out property <color> success_text: is_dark ? #4ade80 : #15803d;
+
+    out property <color> warning_bg: is_dark ? #451a03 : #fef3c7;
+    out property <color> warning_border: is_dark ? #92400e : #fcd34d;
+    out property <color> warning_text: is_dark ? #fbbf24 : #b45309;
+
+    out property <color> error_bg: is_dark ? #450a0a : #fee2e2;
+    out property <color> error_border: is_dark ? #991b1b : #fca5a5;
+    out property <color> error_text: is_dark ? #f87171 : #b91c1c;
+
+    // Speed Graph / Telemetry
+    out property <color> graph_card_bg: is_dark ? #151928 : #ffffff;
+    out property <color> graph_card_border: is_dark ? #242c42 : #e2e8f0;
+    out property <color> graph_bg: is_dark ? #101320 : #f1f5f9;
+    out property <color> graph_border: is_dark ? #1e263d : #e2e8f0;
+    out property <color> graph_bar: is_dark ? #4f58c7 : #6366f1;
+    out property <color> graph_bar_peak: is_dark ? #7082ff : #4f46e5;
+}

@@ -1,3 +1,5 @@
+import { Theme } from "../theme.slint";
+
 export component NavButton inherits Rectangle {
     in property <string> text;
     in property <image> icon;
@@ -5,13 +7,13 @@ export component NavButton inherits Rectangle {
     in property <int> badge_count: 0;
     callback clicked();
 
-    background: root.active ? #242c46 :
-                touch.has-hover ? #191e2e : transparent;
+    background: root.active ? Theme.nav_active_bg :
+                touch.has-hover ? Theme.nav_hover_bg : transparent;
     animate background { duration: 120ms; }
     border-radius: 8px;
     border-width: 1px;
-    border-color: root.active ? #3b4872 :
-                  touch.has-hover ? #252c40 : transparent;
+    border-color: root.active ? Theme.nav_active_border :
+                  touch.has-hover ? Theme.nav_hover_border : transparent;
     animate border-color { duration: 120ms; }
     height: 36px;
 
@@ -31,14 +33,14 @@ export component NavButton inherits Rectangle {
                     source: root.icon;
                     width: 16px;
                     height: 16px;
-                    colorize: root.active ? #7082ff : (touch.has-hover ? #ffffff : #8c94a9);
+                    colorize: root.active ? Theme.brand_purple : (touch.has-hover ? Theme.text_primary : Theme.icon_default);
                     animate colorize { duration: 120ms; }
                 }
             }
 
             Text {
                 text: root.text;
-                color: root.active ? #ffffff : (touch.has-hover ? #f1f5f9 : #94a0b8);
+                color: root.active ? Theme.nav_active_text : (touch.has-hover ? Theme.text_primary : Theme.nav_inactive_text);
                 font-size: 13px;
                 font-weight: root.active ? 600 : 500;
                 vertical-alignment: center;
@@ -50,7 +52,7 @@ export component NavButton inherits Rectangle {
         if root.badge_count > 0: VerticalLayout {
             alignment: center;
             Rectangle {
-                background: root.active ? #4f58c7 : #2a3048;
+                background: root.active ? Theme.primary_accent : Theme.chip_bg;
                 border-radius: 9px;
                 height: 18px;
                 min-width: 18px;
@@ -62,7 +64,7 @@ export component NavButton inherits Rectangle {
 
                     Text {
                         text: root.badge_count;
-                        color: #ffffff;
+                        color: root.active ? #ffffff : Theme.chip_text;
                         font-size: 10px;
                         font-weight: 700;
                         vertical-alignment: center;

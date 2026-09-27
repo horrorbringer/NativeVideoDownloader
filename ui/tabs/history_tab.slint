@@ -1,6 +1,7 @@
 import { LineEdit, ScrollView } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { HistoryItemData } from "../models.slint";
+import { Theme } from "../theme.slint";
 
 export component HistoryTab inherits VerticalLayout {
     in-out property <[HistoryItemData]> history_items: [];
@@ -31,10 +32,10 @@ export component HistoryTab inherits VerticalLayout {
         }
 
         Rectangle {
-            background: #141724;
+            background: Theme.sidebar_status_bg;
             border-radius: 7px;
             border-width: 1px;
-            border-color: #22283a;
+            border-color: Theme.sidebar_status_border;
             height: 36px;
 
             HorizontalLayout {
@@ -43,7 +44,7 @@ export component HistoryTab inherits VerticalLayout {
                 alignment: center;
                 Text {
                     text: root.history_items.length + " Records";
-                    color: #8c93a8;
+                    color: Theme.text_secondary;
                     font-size: 12px;
                     font-weight: 600;
                     vertical-alignment: center;
@@ -73,10 +74,10 @@ export component HistoryTab inherits VerticalLayout {
 
     // If no history items
     if root.history_items.length == 0: Rectangle {
-        background: #141724;
+        background: Theme.card_bg;
         border-radius: 12px;
         border-width: 1px;
-        border-color: #22283a;
+        border-color: Theme.card_border;
         vertical-stretch: 1;
 
         VerticalLayout {
@@ -89,15 +90,15 @@ export component HistoryTab inherits VerticalLayout {
                     width: 48px;
                     height: 48px;
                     border-radius: 24px;
-                    background: #1d2234;
+                    background: Theme.sidebar_brand_bg;
                     border-width: 1px;
-                    border-color: #2b334d;
+                    border-color: Theme.sidebar_brand_border;
 
                     Image {
                         source: root.history_search_query != "" ? @image-url("../icons/search.svg") : @image-url("../icons/history.svg");
                         width: 22px;
                         height: 22px;
-                        colorize: #7082ff;
+                        colorize: Theme.brand_purple;
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
                     }
@@ -108,14 +109,14 @@ export component HistoryTab inherits VerticalLayout {
                 spacing: 5px;
                 Text {
                     text: root.history_search_query != "" ? "No history records match your search" : "No download history yet";
-                    color: #ffffff;
+                    color: Theme.text_primary;
                     font-size: 15px;
                     font-weight: 700;
                     horizontal-alignment: center;
                 }
                 Text {
                     text: root.history_search_query != "" ? "Try a different keyword or clear the search box above." : "Finished and saved media downloads will be persisted here.";
-                    color: #8c93a8;
+                    color: Theme.text_secondary;
                     font-size: 13px;
                     horizontal-alignment: center;
                 }
@@ -132,10 +133,10 @@ export component HistoryTab inherits VerticalLayout {
             padding-bottom: 8px;
 
             for item in root.history_items: Rectangle {
-                background: touch.has-hover ? #1a1e2d : #161926;
+                background: touch.has-hover ? Theme.card_hover : Theme.card_bg;
                 border-radius: 12px;
                 border-width: 1px;
-                border-color: touch.has-hover ? #2e3852 : #242c40;
+                border-color: touch.has-hover ? Theme.primary_border : Theme.card_border;
                 animate background { duration: 150ms; }
                 animate border-color { duration: 150ms; }
 
@@ -156,7 +157,7 @@ export component HistoryTab inherits VerticalLayout {
 
                             Text {
                                 text: item.title;
-                                color: #ffffff;
+                                color: Theme.text_primary;
                                 font-size: 15px;
                                 font-weight: 700;
                                 overflow: elide;
@@ -171,8 +172,10 @@ export component HistoryTab inherits VerticalLayout {
                                     height: 22px;
                                     border-radius: 4px;
                                     border-width: 1px;
-                                    background: item.status == "Completed" ? #0e291b : (item.status == "Failed" ? #331317 : #1a2030);
-                                    border-color: item.status == "Completed" ? #166534 : (item.status == "Failed" ? #991b1b : #2d3748);
+                                    background: item.status == "Completed" ? (Theme.is_dark ? #0e291b : #dcfce7) :
+                                                (item.status == "Failed" ? (Theme.is_dark ? #331317 : #fee2e2) : Theme.inner_bg);
+                                    border-color: item.status == "Completed" ? (Theme.is_dark ? #166534 : #86efac) :
+                                                  (item.status == "Failed" ? (Theme.is_dark ? #991b1b : #fca5a5) : Theme.inner_border);
 
                                     HorizontalLayout {
                                         padding-left: 8px;
@@ -186,13 +189,14 @@ export component HistoryTab inherits VerticalLayout {
                                                 source: item.status == "Completed" ? @image-url("../icons/check.svg") : @image-url("../icons/x.svg");
                                                 width: 11px;
                                                 height: 11px;
-                                                colorize: item.status == "Completed" ? #4ade80 : #f87171;
+                                                colorize: item.status == "Completed" ? (Theme.is_dark ? #4ade80 : #15803d) : (Theme.is_dark ? #f87171 : #b91c1c);
                                             }
                                         }
 
                                         Text {
                                             text: item.status == "Completed" ? "Completed" : item.status;
-                                            color: item.status == "Completed" ? #4ade80 : (item.status == "Failed" ? #f87171 : #cbd5e1);
+                                            color: item.status == "Completed" ? (Theme.is_dark ? #4ade80 : #15803d) :
+                                                   (item.status == "Failed" ? (Theme.is_dark ? #f87171 : #b91c1c) : Theme.text_secondary);
                                             font-size: 11px;
                                             font-weight: 700;
                                             vertical-alignment: center;
@@ -211,13 +215,13 @@ export component HistoryTab inherits VerticalLayout {
                                             source: @image-url("../icons/package.svg");
                                             width: 13px;
                                             height: 13px;
-                                            colorize: #8c93a8;
+                                            colorize: Theme.text_secondary;
                                         }
                                     }
 
                                     Text {
                                         text: item.size_text;
-                                        color: #8c93a8;
+                                        color: Theme.text_secondary;
                                         font-size: 12px;
                                         vertical-alignment: center;
                                     }
@@ -234,13 +238,13 @@ export component HistoryTab inherits VerticalLayout {
                                             source: @image-url("../icons/history.svg");
                                             width: 13px;
                                             height: 13px;
-                                            colorize: #64748b;
+                                            colorize: Theme.text_muted;
                                         }
                                     }
 
                                     Text {
                                         text: item.date_text;
-                                        color: #64748b;
+                                        color: Theme.text_muted;
                                         font-size: 12px;
                                         vertical-alignment: center;
                                     }
@@ -289,10 +293,10 @@ export component HistoryTab inherits VerticalLayout {
 
                     // Row 2: Recessed File Path Bezel
                     Rectangle {
-                        background: #0f121d;
+                        background: Theme.inner_bg;
                         border-radius: 6px;
                         border-width: 1px;
-                        border-color: #1e2436;
+                        border-color: Theme.inner_border;
                         height: 28px;
 
                         HorizontalLayout {
@@ -307,13 +311,13 @@ export component HistoryTab inherits VerticalLayout {
                                     source: @image-url("../icons/folder.svg");
                                     width: 12px;
                                     height: 12px;
-                                    colorize: #64748b;
+                                    colorize: Theme.text_muted;
                                 }
                             }
 
                             Text {
                                 text: item.output_path;
-                                color: #64748b;
+                                color: Theme.text_muted;
                                 font-size: 11px;
                                 overflow: elide;
                                 horizontal-stretch: 1;

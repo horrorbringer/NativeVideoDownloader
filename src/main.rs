@@ -455,6 +455,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.set_filename_template(saved_template.clone().into());
     download_manager.set_filename_template(saved_template).await;
 
+    // Restore saved theme preference (defaults to true / dark mode)
+    let saved_dark_mode: bool = db
+        .get_setting("dark_mode")
+        .await
+        .unwrap_or(None)
+        .map(|v| v != "false")
+        .unwrap_or(true);
+    main_window.set_is_dark_mode(saved_dark_mode);
+
     // Initialize speed samples for the graph with 30 idle points
     let initial_samples: Vec<SpeedSampleData> = (0..30)
         .map(|_| SpeedSampleData {
@@ -948,6 +957,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 win.set_status_message(format!("Filename template saved: {}", tpl).into());
             });
         });
+    });
+
+    // Callback: Toggle Theme (Dark / Light) & persist
+    let db_theme = db.clone();
+    let weak_theme = main_window.as_weak();
+    main_window.on_toggle_theme(move || {
+        let db = db_theme.clone();
+        if let Some(win) = weak_theme.upgrade() {
+            let is_dark = win.get_is_dark_mode();
+            let mode_str = if is_dark { "Dark mode enabled" } else { "Light mode enabled" };
+            win.set_status_message(mode_str.into());
+            tokio::spawn(async move {
+                let _ = db.set_setting("dark_mode", if is_dark { "true" } else { "false" }).await;
+                info!("Saved theme preference: {}", if is_dark { "dark" } else { "light" });
+            });
+        }
     });
 
     // Callback: Paste from Clipboard into URL input & Auto-Analyze

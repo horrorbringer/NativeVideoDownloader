@@ -1,6 +1,7 @@
 import { ScrollView, LineEdit } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
+import { Theme } from "../theme.slint";
 
 export component SettingsTab inherits ScrollView {
     in-out property <string> download_dir_path: "~/Downloads";
@@ -24,6 +25,7 @@ export component SettingsTab inherits ScrollView {
     // Filename Template
     in-out property <string> filename_template: "{title}.{ext}";
 
+    callback set_theme_dark(bool);
     callback browse_download_dir();
     callback open_current_download_dir();
     callback reset_download_dir();
@@ -47,12 +49,197 @@ export component SettingsTab inherits ScrollView {
         spacing: 12px;
         padding-bottom: 14px;
 
-        // 1. Storage & File Location
+        // 0. Appearance & Interface Theme Selection
         Rectangle {
-            background: #161926;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #242c40;
+            border-color: Theme.card_border;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 8px;
+                        background: Theme.sidebar_brand_bg;
+                        border-width: 1px;
+                        border-color: Theme.sidebar_brand_border;
+
+                        Image {
+                            source: Theme.is_dark ? @image-url("../icons/moon.svg") : @image-url("../icons/sun.svg");
+                            width: 17px;
+                            height: 17px;
+                            colorize: Theme.brand_purple;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 3px;
+                        Text {
+                            text: "Appearance & Interface Theme";
+                            color: Theme.text_primary;
+                            font-size: 15px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Choose between deep obsidian dark mode and crisp high-contrast light mode.";
+                            color: Theme.text_secondary;
+                            font-size: 13px;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 12px;
+
+                    // Dark Mode Option Card
+                    dark_mode_card := Rectangle {
+                        horizontal-stretch: 1;
+                        height: 60px;
+                        border-radius: 8px;
+                        background: Theme.is_dark ? Theme.sidebar_status_bg : (dark_touch.has-hover ? Theme.inner_bg : transparent);
+                        border-width: Theme.is_dark ? 2px : 1px;
+                        border-color: Theme.is_dark ? Theme.brand_purple : Theme.card_border;
+                        animate border-color { duration: 120ms; }
+                        animate background { duration: 120ms; }
+
+                        HorizontalLayout {
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            spacing: 10px;
+                            alignment: start;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 32px;
+                                    height: 32px;
+                                    border-radius: 6px;
+                                    background: #141724;
+                                    border-width: 1px;
+                                    border-color: #2b334d;
+
+                                    Image {
+                                        source: @image-url("../icons/moon.svg");
+                                        width: 16px;
+                                        height: 16px;
+                                        colorize: #7082ff;
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: "Dark Mode (Deep Slate)";
+                                    color: Theme.text_primary;
+                                    font-size: 13px;
+                                    font-weight: Theme.is_dark ? 700 : 500;
+                                }
+                                Text {
+                                    text: "Low-glare obsidian palette for evening and night sessions";
+                                    color: Theme.text_secondary;
+                                    font-size: 11px;
+                                }
+                            }
+                        }
+
+                        dark_touch := TouchArea {
+                            clicked => {
+                                if !Theme.is_dark {
+                                    Theme.is_dark = true;
+                                    root.set_theme_dark(true);
+                                }
+                            }
+                        }
+                    }
+
+                    // Light Mode Option Card
+                    light_mode_card := Rectangle {
+                        horizontal-stretch: 1;
+                        height: 60px;
+                        border-radius: 8px;
+                        background: !Theme.is_dark ? Theme.sidebar_status_bg : (light_touch.has-hover ? Theme.inner_bg : transparent);
+                        border-width: !Theme.is_dark ? 2px : 1px;
+                        border-color: !Theme.is_dark ? Theme.brand_purple : Theme.card_border;
+                        animate border-color { duration: 120ms; }
+                        animate background { duration: 120ms; }
+
+                        HorizontalLayout {
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            spacing: 10px;
+                            alignment: start;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 32px;
+                                    height: 32px;
+                                    border-radius: 6px;
+                                    background: #ffffff;
+                                    border-width: 1px;
+                                    border-color: #cbd5e1;
+
+                                    Image {
+                                        source: @image-url("../icons/sun.svg");
+                                        width: 16px;
+                                        height: 16px;
+                                        colorize: #f59e0b;
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: "Light Mode (Modern Clean)";
+                                    color: Theme.text_primary;
+                                    font-size: 13px;
+                                    font-weight: !Theme.is_dark ? 700 : 500;
+                                }
+                                Text {
+                                    text: "Crisp daylight contrast with refined slate accents";
+                                    color: Theme.text_secondary;
+                                    font-size: 11px;
+                                }
+                            }
+                        }
+
+                        light_touch := TouchArea {
+                            clicked => {
+                                if Theme.is_dark {
+                                    Theme.is_dark = false;
+                                    root.set_theme_dark(false);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 1. Storage & File Location
+        Rectangle {
+            background: Theme.card_bg;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 20px;
@@ -251,10 +438,10 @@ export component SettingsTab inherits ScrollView {
 
         // 2. Network & Bandwidth Management
         Rectangle {
-            background: #161926;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #242c40;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 20px;
@@ -442,10 +629,10 @@ export component SettingsTab inherits ScrollView {
 
         // 3. Browser Cookies & Authentication
         Rectangle {
-            background: #161926;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #242c40;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 20px;
@@ -587,10 +774,10 @@ export component SettingsTab inherits ScrollView {
 
         // 4. Audio Extraction & Music Defaults
         Rectangle {
-            background: #161926;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #242c40;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 20px;
@@ -782,10 +969,10 @@ export component SettingsTab inherits ScrollView {
 
         // 5. Network & Custom Proxy
         Rectangle {
-            background: #161926;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #242c40;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 20px;
@@ -983,10 +1170,10 @@ export component SettingsTab inherits ScrollView {
 
         // 5. System & Desktop Notifications
         Rectangle {
-            background: #161926;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #242c40;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 20px;
@@ -1046,10 +1233,10 @@ export component SettingsTab inherits ScrollView {
 
         // 5. Live Clipboard Link Monitor
         Rectangle {
-            background: #161926;
+            background: Theme.card_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #242c40;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 20px;
@@ -1159,10 +1346,10 @@ export component SettingsTab inherits ScrollView {
 
         // 6. Engine & Architecture Overview (Compact & Clean)
         Rectangle {
-            background: #121522;
+            background: Theme.card_alt_bg;
             border-radius: 12px;
             border-width: 1px;
-            border-color: #202638;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 16px;

@@ -2,6 +2,7 @@ import { LineEdit, ProgressIndicator, ScrollView } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
 import { DownloadItemData, SpeedSampleData } from "../models.slint";
+import { Theme } from "../theme.slint";
 
 export component DownloadsTab inherits VerticalLayout {
     in-out property <[DownloadItemData]> download_items: [];
@@ -30,10 +31,10 @@ export component DownloadsTab inherits VerticalLayout {
 
     // Live Bandwidth & Speed Graph Monitor Card
     Rectangle {
-        background: #151928;
+        background: Theme.graph_card_bg;
         border-radius: 10px;
         border-width: 1px;
-        border-color: #242c42;
+        border-color: Theme.graph_card_border;
         height: root.show_speed_graph ? 114px : 42px;
         animate height { duration: 150ms; }
 
@@ -76,7 +77,7 @@ export component DownloadsTab inherits VerticalLayout {
 
                     // Peak speed pill
                     Rectangle {
-                        background: #1c2236;
+                        background: Theme.sidebar_status_bg;
                         border-radius: 4px;
                         height: 22px;
                         HorizontalLayout {
@@ -85,7 +86,7 @@ export component DownloadsTab inherits VerticalLayout {
                             alignment: center;
                             Text {
                                 text: "Peak: " + root.peak_speed_text;
-                                color: #8e9bb3;
+                                color: Theme.text_secondary;
                                 font-size: 10px;
                                 font-weight: 600;
                                 vertical-alignment: center;
@@ -95,7 +96,7 @@ export component DownloadsTab inherits VerticalLayout {
 
                     // Session total transferred pill
                     Rectangle {
-                        background: #1c2236;
+                        background: Theme.sidebar_status_bg;
                         border-radius: 4px;
                         height: 22px;
                         HorizontalLayout {
@@ -104,7 +105,7 @@ export component DownloadsTab inherits VerticalLayout {
                             alignment: center;
                             Text {
                                 text: "Session: " + root.session_downloaded_text;
-                                color: #8e9bb3;
+                                color: Theme.text_secondary;
                                 font-size: 10px;
                                 font-weight: 600;
                                 vertical-alignment: center;
@@ -130,10 +131,10 @@ export component DownloadsTab inherits VerticalLayout {
                 spacing: 4px;
 
                 Rectangle {
-                    background: #0f131f;
+                    background: Theme.graph_bg;
                     border-radius: 6px;
                     border-width: 1px;
-                    border-color: #1e2538;
+                    border-color: Theme.graph_border;
                     height: 48px;
                     clip: true;
 
@@ -202,7 +203,7 @@ export component DownloadsTab inherits VerticalLayout {
 
         Text {
             text: "Queue (" + root.total_queue_count + " jobs)";
-            color: #a0a7ba;
+            color: Theme.text_secondary;
             font-size: 13px;
             font-weight: 600;
             vertical-alignment: center;
@@ -319,10 +320,10 @@ export component DownloadsTab inherits VerticalLayout {
 
     // If no downloads in current view
     if root.download_items.length == 0: Rectangle {
-        background: #141724;
+        background: Theme.card_bg;
         border-radius: 12px;
         border-width: 1px;
-        border-color: #22283a;
+        border-color: Theme.card_border;
         vertical-stretch: 1;
 
         VerticalLayout {
@@ -335,15 +336,15 @@ export component DownloadsTab inherits VerticalLayout {
                     width: 48px;
                     height: 48px;
                     border-radius: 24px;
-                    background: #1d2234;
+                    background: Theme.sidebar_brand_bg;
                     border-width: 1px;
-                    border-color: #2b334d;
+                    border-color: Theme.sidebar_brand_border;
 
                     Image {
                         source: (root.queue_filter_index != 0 || root.queue_search_query != "") ? @image-url("../icons/search.svg") : @image-url("../icons/download.svg");
                         width: 22px;
                         height: 22px;
-                        colorize: #7082ff;
+                        colorize: Theme.brand_purple;
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
                     }
@@ -354,14 +355,14 @@ export component DownloadsTab inherits VerticalLayout {
                 spacing: 5px;
                 Text {
                     text: (root.queue_filter_index != 0 || root.queue_search_query != "") ? "No matching downloads found" : "No active downloads";
-                    color: #ffffff;
+                    color: Theme.text_primary;
                     font-size: 15px;
                     font-weight: 700;
                     horizontal-alignment: center;
                 }
                 Text {
                     text: (root.queue_filter_index != 0 || root.queue_search_query != "") ? "Try selecting 'All' or clearing your search query above." : "Downloads in progress, paused, or queued will appear here.";
-                    color: #8c93a8;
+                    color: Theme.text_secondary;
                     font-size: 13px;
                     horizontal-alignment: center;
                 }
@@ -378,10 +379,10 @@ export component DownloadsTab inherits VerticalLayout {
             padding-bottom: 8px;
 
             for item in root.download_items: Rectangle {
-                background: touch.has-hover ? #1a1e2d : #161926;
+                background: touch.has-hover ? Theme.card_hover : Theme.card_bg;
                 border-radius: 12px;
                 border-width: 1px;
-                border-color: touch.has-hover ? #2e3852 : #242c40;
+                border-color: touch.has-hover ? Theme.primary_border : Theme.card_border;
                 animate background { duration: 150ms; }
                 animate border-color { duration: 150ms; }
 
@@ -398,7 +399,7 @@ export component DownloadsTab inherits VerticalLayout {
                             spacing: 6px;
                             Text {
                                 text: item.title;
-                                color: #ffffff;
+                                color: Theme.text_primary;
                                 font-size: 15px;
                                 font-weight: 600;
                             }
@@ -495,13 +496,13 @@ export component DownloadsTab inherits VerticalLayout {
 
                         Text {
                             text: item.size_text;
-                            color: #8c93a8;
+                            color: Theme.text_secondary;
                             font-size: 12px;
                         }
 
                         Text {
                             text: "Speed: " + item.speed_text + "  •  ETA: " + item.eta_text;
-                            color: #8c93a8;
+                            color: Theme.text_secondary;
                             font-size: 12px;
                         }
                     }

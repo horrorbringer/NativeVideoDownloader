@@ -1,3 +1,5 @@
+import { Theme } from "../theme.slint";
+
 export component IconChip inherits Rectangle {
     in property <string> text;
     in property <image> icon;
@@ -5,12 +7,13 @@ export component IconChip inherits Rectangle {
     in property <bool> selected: false;
     callback clicked();
 
-    background: root.selected ? (touch.pressed ? #3e46a6 : touch.has-hover ? #5863d6 : #4b54c2) :
-                (touch.pressed ? #141722 : touch.has-hover ? #24293c : #191c29);
+    background: root.selected ? (touch.pressed ? Theme.primary_pressed : touch.has-hover ? Theme.primary_hover : Theme.primary_accent) :
+                (touch.pressed ? Theme.btn_secondary_pressed : touch.has-hover ? Theme.btn_secondary_hover : Theme.btn_secondary_bg);
     animate background { duration: 120ms; }
     border-radius: 7px;
     border-width: 1px;
-    border-color: root.selected ? #7080ff : (touch.has-hover ? #3b4462 : #282f44);
+    border-color: root.selected ? Theme.primary_border :
+                  (touch.has-hover ? Theme.sidebar_status_border : Theme.card_border);
     animate border-color { duration: 120ms; }
     height: 32px;
 
@@ -26,14 +29,14 @@ export component IconChip inherits Rectangle {
                 source: root.icon;
                 width: 13px;
                 height: 13px;
-                colorize: root.selected ? #ffffff : (touch.has-hover ? #f1f5f9 : #949db2);
+                colorize: root.selected ? #ffffff : (touch.has-hover ? Theme.text_primary : Theme.icon_default);
                 animate colorize { duration: 120ms; }
             }
         }
 
         Text {
             text: root.text;
-            color: root.selected ? #ffffff : (touch.has-hover ? #f1f5f9 : #949db2);
+            color: root.selected ? #ffffff : (touch.has-hover ? Theme.text_primary : Theme.text_secondary);
             font-size: 12px;
             font-weight: root.selected ? 600 : 500;
             vertical-alignment: center;
