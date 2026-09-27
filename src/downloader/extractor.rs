@@ -197,12 +197,17 @@ fn create_ytdlp_cmd(ytdlp_bin: &Path) -> Command {
     cmd
 }
 
-/// Inspects a video or album/playlist streaming URL to fetch metadata
-pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
+/// Inspects a video or album/playlist streaming URL to fetch metadata with optional browser cookies
+pub async fn inspect_video_with_cookies(url: &str, cookies_browser: Option<&str>) -> Result<VideoMetadata> {
     let ytdlp_bin = ensure_ytdlp_installed().await?;
 
-    info!("Inspecting streaming URL with yt-dlp: {}", url);
+    info!("Inspecting streaming URL with yt-dlp: {} (cookies: {:?})", url, cookies_browser);
     let mut cmd = create_ytdlp_cmd(&ytdlp_bin);
+    if let Some(b) = cookies_browser {
+        if !b.is_empty() {
+            cmd.arg("--cookies-from-browser").arg(b);
+        }
+    }
     let output = cmd
         .arg("--dump-single-json")
         .arg("--flat-playlist")
@@ -347,6 +352,11 @@ pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
         subtitles_summary,
         thumbnail_url,
     })
+}
+
+/// Convenience wrapper for inspecting streaming URL without explicit browser cookies
+pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
+    inspect_video_with_cookies(url, None).await
 }
 
 /// Scrapes a generic webpage's HTML to locate embedded video tags, OpenGraph video, or .m3u8/.mp4 stream URLs
@@ -951,6 +961,7 @@ pub async fn download_stream<F>(
     quality: Option<&str>,
     download_subtitles: bool,
     speed_limit: Option<&str>,
+    cookies_browser: Option<&str>,
     cancel_token: CancellationToken,
     mut on_progress: F,
 ) -> Result<PathBuf>
@@ -988,6 +999,13 @@ where
     if let Some(limit) = speed_limit {
         if !limit.is_empty() && limit != "unlimited" {
             cmd.arg("--limit-rate").arg(limit);
+        }
+    }
+
+    if let Some(browser) = cookies_browser {
+        if !browser.is_empty() {
+            info!("Applying browser cookies from {} to yt-dlp download", browser);
+            cmd.arg("--cookies-from-browser").arg(browser);
         }
     }
 

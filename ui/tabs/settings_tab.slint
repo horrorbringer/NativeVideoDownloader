@@ -6,12 +6,14 @@ export component SettingsTab inherits ScrollView {
     in-out property <string> download_dir_path: "~/Downloads";
     in-out property <int> selected_speed_limit_index: 0;
     in-out property <int> selected_concurrency: 3;
+    in-out property <int> selected_cookies_browser_index: 0;
 
     callback browse_download_dir();
     callback open_current_download_dir();
     callback reset_download_dir();
     callback set_speed_limit(int);
     callback set_max_concurrency(int);
+    callback set_cookies_browser(int);
     callback test_notification();
     callback update_extractor();
 
@@ -316,7 +318,152 @@ export component SettingsTab inherits ScrollView {
             }
         }
 
-        // 3. System & Desktop Notifications
+        // 3. Browser Cookies & Authentication
+        Rectangle {
+            background: #161926;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #242c40;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 8px;
+                        background: #1e2438;
+                        border-width: 1px;
+                        border-color: #2c3550;
+
+                        Image {
+                            source: @image-url("../icons/monitor.svg");
+                            width: 17px;
+                            height: 17px;
+                            colorize: #7082ff;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 3px;
+                        Text {
+                            text: "Browser Cookies & Authentication";
+                            color: #ffffff;
+                            font-size: 15px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Extract session cookies from your web browser to download private, age-gated, or member-only videos.";
+                            color: #8c93a8;
+                            font-size: 13px;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    IconChip {
+                        text: "Disabled";
+                        selected: root.selected_cookies_browser_index == 0;
+                        clicked => {
+                            root.selected_cookies_browser_index = 0;
+                            root.set_cookies_browser(0);
+                        }
+                    }
+                    IconChip {
+                        text: "Chrome";
+                        selected: root.selected_cookies_browser_index == 1;
+                        clicked => {
+                            root.selected_cookies_browser_index = 1;
+                            root.set_cookies_browser(1);
+                        }
+                    }
+                    IconChip {
+                        text: "Firefox";
+                        selected: root.selected_cookies_browser_index == 2;
+                        clicked => {
+                            root.selected_cookies_browser_index = 2;
+                            root.set_cookies_browser(2);
+                        }
+                    }
+                    IconChip {
+                        text: "Safari";
+                        selected: root.selected_cookies_browser_index == 3;
+                        clicked => {
+                            root.selected_cookies_browser_index = 3;
+                            root.set_cookies_browser(3);
+                        }
+                    }
+                    IconChip {
+                        text: "Brave";
+                        selected: root.selected_cookies_browser_index == 4;
+                        clicked => {
+                            root.selected_cookies_browser_index = 4;
+                            root.set_cookies_browser(4);
+                        }
+                    }
+                    IconChip {
+                        text: "Edge";
+                        selected: root.selected_cookies_browser_index == 5;
+                        clicked => {
+                            root.selected_cookies_browser_index = 5;
+                            root.set_cookies_browser(5);
+                        }
+                    }
+                }
+
+                Rectangle {
+                    background: #0f121d;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: #202638;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        padding-top: 8px;
+                        padding-bottom: 8px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: @image-url("../icons/info.svg");
+                                width: 14px;
+                                height: 14px;
+                                colorize: #7082ff;
+                            }
+                        }
+
+                        Text {
+                            text: root.selected_cookies_browser_index == 0
+                                ? "Cookies disabled. Downloads use anonymous guest sessions."
+                                : "Using session cookies from " + (
+                                    root.selected_cookies_browser_index == 1 ? "Google Chrome" :
+                                    root.selected_cookies_browser_index == 2 ? "Mozilla Firefox" :
+                                    root.selected_cookies_browser_index == 3 ? "Apple Safari" :
+                                    root.selected_cookies_browser_index == 4 ? "Brave Browser" : "Microsoft Edge"
+                                  ) + ". Logged-in accounts will be inherited automatically.";
+                            color: #949db2;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. System & Desktop Notifications
         Rectangle {
             background: #161926;
             border-radius: 12px;

@@ -70,6 +70,7 @@ fn run_url_analysis(
     window_weak: slint::Weak<AppWindow>,
     meta_clone: Arc<Mutex<Option<VideoMetadata>>>,
     client_clone: Arc<NetworkClient>,
+    cookies_browser_clone: Arc<tokio::sync::RwLock<Option<String>>>,
 ) {
     let url_str = url_str.trim().to_string();
     info!("Received URL analysis request: {}", url_str);
@@ -106,11 +107,12 @@ fn run_url_analysis(
     let client = client_clone.clone();
 
     tokio::spawn(async move {
+        let cookies_browser = cookies_browser_clone.read().await.clone();
         let inspect_result = if downloader::is_streaming_platform(&url_str) {
             let _ = weak_for_async.upgrade_in_event_loop(|w| {
                 w.set_status_message("Analyzing streaming platform media (yt-dlp)...".into());
             });
-            downloader::inspect_video(&url_str).await
+            downloader::inspect_video_with_cookies(&url_str, cookies_browser.as_deref()).await
         } else {
             match client.inspect_url(&url_str).await {
                 Ok(meta) if downloader::is_valid_direct_media(&meta) => Ok(meta),
@@ -124,11 +126,11 @@ fn run_url_analysis(
                             "Web source detected. Extracting media stream...".into(),
                         );
                     });
-                    downloader::inspect_video(&url_str).await
+                    downloader::inspect_video_with_cookies(&url_str, cookies_browser.as_deref()).await
                 }
                 Err(err) => {
                     // Try extractor as fallback
-                    match downloader::inspect_video(&url_str).await {
+                    match downloader::inspect_video_with_cookies(&url_str, cookies_browser.as_deref()).await {
                         Ok(extracted) => Ok(extracted),
                         Err(_) => Err(err),
                     }
@@ -387,6 +389,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     download_manager.set_speed_limit(manager_limit).await;
 
+    // Restore browser cookies authentication preference
+    let initial_cookies_browser = if let Ok(Some(saved)) = db.get_setting("cookies_browser").await {
+        saved
+    } else {
+        String::new()
+    };
+    let initial_cookies_idx = match initial_cookies_browser.as_str() {
+        "chrome" => 1,
+        "firefox" => 2,
+        "safari" => 3,
+        "brave" => 4,
+        "edge" => 5,
+        _ => 0,
+    };
+    main_window.set_selected_cookies_browser_index(initial_cookies_idx);
+    let manager_cookies = match initial_cookies_idx {
+        1 => Some("chrome".to_string()),
+        2 => Some("firefox".to_string()),
+        3 => Some("safari".to_string()),
+        4 => Some("brave".to_string()),
+        5 => Some("edge".to_string()),
+        _ => None,
+    };
+    download_manager.set_cookies_browser(manager_cookies.clone()).await;
+    let current_cookies_browser = Arc::new(tokio::sync::RwLock::new(manager_cookies));
+
     // Initialize speed samples for the graph with 30 idle points
     let initial_samples: Vec<SpeedSampleData> = (0..30)
         .map(|_| SpeedSampleData {
@@ -593,6 +621,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window_weak = main_window.as_weak();
     let meta_clone = current_metadata.clone();
     let client_clone = network_client.clone();
+    let cookies_for_analyze = current_cookies_browser.clone();
 
     main_window.on_analyze_url(move |url| {
         run_url_analysis(
@@ -600,6 +629,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             window_weak.clone(),
             meta_clone.clone(),
             client_clone.clone(),
+            cookies_for_analyze.clone(),
         );
     });
 
@@ -692,12 +722,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let weak_paste = main_window.as_weak();
     let meta_paste = current_metadata.clone();
     let client_paste = network_client.clone();
+    let cookies_paste = current_cookies_browser.clone();
     main_window.on_paste_from_clipboard(move || {
         if let Some(text) = filesystem::read_clipboard_text() {
             let weak = weak_paste.clone();
             let is_url = text.starts_with("http://") || text.starts_with("https://");
             if is_url {
-                run_url_analysis(text, weak, meta_paste.clone(), client_paste.clone());
+                run_url_analysis(
+                    text,
+                    weak,
+                    meta_paste.clone(),
+                    client_paste.clone(),
+                    cookies_paste.clone(),
+                );
             } else {
                 let _ = weak.upgrade_in_event_loop(move |win| {
                     win.set_input_url_text(text.into());
@@ -1243,6 +1280,35 @@ fn map_format_index(idx: i32) -> (bool, Option<String>) {
             info!("Updated concurrent worker limit to: {}", count);
             let _ = weak.upgrade_in_event_loop(move |window| {
                 window.set_status_message(format!("Concurrent workers limit set to: {} parallel", count).into());
+            });
+        });
+    });
+
+    // Callback: Set Browser Cookies Authentication
+    let db_cookies = db.clone();
+    let mgr_cookies = download_manager.clone();
+    let weak_cookies = main_window.as_weak();
+    let cookies_lock = current_cookies_browser.clone();
+    main_window.on_set_cookies_browser(move |idx| {
+        let db = db_cookies.clone();
+        let mgr = mgr_cookies.clone();
+        let weak = weak_cookies.clone();
+        let lock = cookies_lock.clone();
+        tokio::spawn(async move {
+            let (setting_val, browser_opt, label) = match idx {
+                1 => ("chrome", Some("chrome".to_string()), "Google Chrome"),
+                2 => ("firefox", Some("firefox".to_string()), "Mozilla Firefox"),
+                3 => ("safari", Some("safari".to_string()), "Apple Safari"),
+                4 => ("brave", Some("brave".to_string()), "Brave Browser"),
+                5 => ("edge", Some("edge".to_string()), "Microsoft Edge"),
+                _ => ("", None, "Disabled (Guest mode)"),
+            };
+            mgr.set_cookies_browser(browser_opt.clone()).await;
+            *lock.write().await = browser_opt;
+            let _ = db.set_setting("cookies_browser", setting_val).await;
+            info!("Updated browser cookies authentication: {}", label);
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                window.set_status_message(format!("Browser cookies: {}", label).into());
             });
         });
     });

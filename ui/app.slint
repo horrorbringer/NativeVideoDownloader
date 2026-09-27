@@ -78,6 +78,7 @@ export component AppWindow inherits Window {
     in-out property <string> download_dir_path: "~/Downloads";
     in-out property <int> selected_speed_limit_index: 0;
     in-out property <int> selected_concurrency: 3;
+    in-out property <int> selected_cookies_browser_index: 0;
 
     // Callbacks
     callback analyze_url(string);
@@ -109,6 +110,7 @@ export component AppWindow inherits Window {
     callback open_current_download_dir();
     callback set_speed_limit(int);
     callback set_max_concurrency(int);
+    callback set_cookies_browser(int);
     callback test_notification();
     callback update_extractor();
 
@@ -433,12 +435,14 @@ export component AppWindow inherits Window {
                 download_dir_path <=> root.download_dir_path;
                 selected_speed_limit_index <=> root.selected_speed_limit_index;
                 selected_concurrency <=> root.selected_concurrency;
+                selected_cookies_browser_index <=> root.selected_cookies_browser_index;
 
                 browse_download_dir() => { root.browse_download_dir(); }
                 open_current_download_dir() => { root.open_current_download_dir(); }
                 reset_download_dir() => { root.reset_download_dir(); }
                 set_speed_limit(idx) => { root.set_speed_limit(idx); }
                 set_max_concurrency(c) => { root.set_max_concurrency(c); }
+                set_cookies_browser(b) => { root.set_cookies_browser(b); }
                 test_notification() => { root.test_notification(); }
                 update_extractor() => { root.update_extractor(); }
             }
