@@ -239,6 +239,12 @@ Files:
 
 ---
 
+## Releasing & Packaging
+
+For complete instructions on building standalone `.dmg`, `.exe`, `.AppImage`, `.deb`, and automated multi-platform CI/CD releases, see the **[Cross-Platform Release Guide](RELEASE.md)**.
+
+---
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

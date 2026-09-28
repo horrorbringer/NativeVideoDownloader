@@ -1,0 +1,158 @@
+name: Release Multi-Platform Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # -------------------------------------------------------------
+  # macOS Build (Universal 2: Apple Silicon + Intel)
+  # -------------------------------------------------------------
+  build-macos:
+    name: macOS Universal Release
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Apple Silicon binary
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Build Intel binary
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Combine Universal 2 Binary (lipo)
+        run: |
+          mkdir -p target/universal-apple-darwin/release
+          lipo -create -output target/universal-apple-darwin/release/native_video_downloader \
+            target/aarch64-apple-darwin/release/native_video_downloader \
+            target/x86_64-apple-darwin/release/native_video_downloader
+
+      - name: Create macOS .app Bundle and DMG
+        run: |
+          APP_DIR="Native Video Downloader.app"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+          cp target/universal-apple-darwin/release/native_video_downloader "$APP_DIR/Contents/MacOS/native_video_downloader"
+          chmod +x "$APP_DIR/Contents/MacOS/native_video_downloader"
+
+          cat << 'EOF' > "$APP_DIR/Contents/Info.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>native_video_downloader</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.nativevideodownloader.app</string>
+              <key>CFBundleName</key>
+              <string>Native Video Downloader</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>0.1.0</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          zip -r "NativeVideoDownloader-macOS-Universal.zip" "$APP_DIR"
+          hdiutil create -volname "Native Video Downloader" -srcfolder "$APP_DIR" -ov -format UDZO "NativeVideoDownloader-macOS-Universal.dmg"
+
+      - name: Upload macOS Assets to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            NativeVideoDownloader-macOS-Universal.dmg
+            NativeVideoDownloader-macOS-Universal.zip
+
+  # -------------------------------------------------------------
+  # Windows Build (.exe & Portable .zip)
+  # -------------------------------------------------------------
+  build-windows:
+    name: Windows x64 Release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Release Executable
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Create Windows Portable Archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-win
+          Copy-Item target/x86_64-pc-windows-msvc/release/native_video_downloader.exe dist-win/
+          Copy-Item README.md dist-win/ -ErrorAction SilentlyContinue
+          Compress-Archive -Path dist-win/* -DestinationPath NativeVideoDownloader-Windows-x64.zip
+
+      - name: Upload Windows Assets to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            NativeVideoDownloader-Windows-x64.zip
+            target/x86_64-pc-windows-msvc/release/native_video_downloader.exe
+
+  # -------------------------------------------------------------
+  # Linux Build (x86_64 Portable Tarball)
+  # -------------------------------------------------------------
+  build-linux:
+    name: Linux x64 Release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1-dev libxcb1-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Release Binary
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Package Linux Tarball
+        run: |
+          mkdir -p dist-linux
+          cp target/x86_64-unknown-linux-gnu/release/native_video_downloader dist-linux/
+          chmod +x dist-linux/native_video_downloader
+          tar -czvf NativeVideoDownloader-Linux-x64.tar.gz -C dist-linux .
+
+      - name: Upload Linux Assets to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            NativeVideoDownloader-Linux-x64.tar.gz
+            target/x86_64-unknown-linux-gnu/release/native_video_downloader
