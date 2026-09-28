@@ -25,6 +25,7 @@ export component SettingsTab inherits ScrollView {
     // Filename Template & Organization
     in-out property <string> filename_template: "{title}.{ext}";
     in-out property <int> selected_asset_org_mode: 0;
+    in-out property <int> selected_file_conflict_policy: 0;
     in-out property <int> selected_sub_lang_index: 0;
     in-out property <bool> sub_lang_all: true;
     in-out property <bool> sub_lang_en: false;
@@ -57,6 +58,7 @@ export component SettingsTab inherits ScrollView {
     callback reset_download_dir();
     callback set_filename_template(string);
     callback set_asset_organization_mode(int);
+    callback set_file_conflict_policy(int);
     callback set_sub_lang(int);
     callback toggle_sub_lang(int);
     callback set_speed_limit(int);
@@ -729,6 +731,97 @@ export component SettingsTab inherits ScrollView {
                                     selected: root.sub_lang_ar;
                                     clicked => { root.toggle_sub_lang(15); }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    height: 1px;
+                    background: Theme.card_border;
+                }
+
+                // File Collision & Incomplete Download Auto-Resume
+                VerticalLayout {
+                    spacing: 10px;
+
+                    VerticalLayout {
+                        spacing: 3px;
+                        Text {
+                            text: "File Collision & Incomplete Download Auto-Resume";
+                            color: Theme.text_primary;
+                            font-size: 14px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Configure behavior when a file or interrupted .part download already exists in the target directory.";
+                            color: Theme.text_secondary;
+                            font-size: 12px;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        IconChip {
+                            text: "Auto-Resume or Rename";
+                            icon: @image-url("../icons/refresh.svg");
+                            has_icon: true;
+                            selected: root.selected_file_conflict_policy == 0;
+                            clicked => {
+                                root.selected_file_conflict_policy = 0;
+                                root.set_file_conflict_policy(0);
+                            }
+                        }
+                        IconChip {
+                            text: "Always Auto-Rename (1)";
+                            selected: root.selected_file_conflict_policy == 1;
+                            clicked => {
+                                root.selected_file_conflict_policy = 1;
+                                root.set_file_conflict_policy(1);
+                            }
+                        }
+                        IconChip {
+                            text: "Overwrite";
+                            selected: root.selected_file_conflict_policy == 2;
+                            clicked => {
+                                root.selected_file_conflict_policy = 2;
+                                root.set_file_conflict_policy(2);
+                            }
+                        }
+                        IconChip {
+                            text: "Skip Existing";
+                            selected: root.selected_file_conflict_policy == 3;
+                            clicked => {
+                                root.selected_file_conflict_policy = 3;
+                                root.set_file_conflict_policy(3);
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            padding-top: 7px;
+                            padding-bottom: 7px;
+                            alignment: start;
+
+                            Text {
+                                text: root.selected_file_conflict_policy == 0 ? "Smart Resume: Reuses existing .part files so interrupted downloads resume from disk byte ranges instead of restarting. If a finished video already exists, saves as (1), (2), etc." :
+                                      (root.selected_file_conflict_policy == 1 ? "Auto-Rename: Always appends (1), (2) on any duplicate or partial file name." :
+                                      (root.selected_file_conflict_policy == 2 ? "Overwrite: Always replaces existing media and resets partial files to download from 0%." :
+                                       "Skip Existing: Detects if the completed video already exists on disk and marks it finished without re-downloading."));
+                                color: Theme.brand_purple;
+                                font-size: 11px;
+                                font-weight: 500;
                             }
                         }
                     }

@@ -564,6 +564,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.set_selected_asset_org_mode(saved_asset_org_mode as i32);
     download_manager.set_asset_organization_mode(saved_asset_org_mode).await;
 
+    // Restore saved file conflict & auto-resume policy (defaults to 0 / AutoResumeOrRename)
+    let saved_conflict_policy_u8: u8 = db
+        .get_setting("file_conflict_policy")
+        .await
+        .unwrap_or(None)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let conflict_policy = crate::filesystem::FileConflictPolicy::from_u8(saved_conflict_policy_u8);
+    main_window.set_selected_file_conflict_policy(conflict_policy.to_u8() as i32);
+    download_manager.set_file_conflict_policy(conflict_policy).await;
+
     // Restore saved concurrent fragments preference (default: 4)
     let saved_concurrent_fragments: u8 = db
         .get_setting("concurrent_fragments")
@@ -1004,8 +1015,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::spawn(async move {
             let meta_guard = meta_preview.lock().await;
             if let Some(ref meta) = *meta_guard {
-                let stream_url = meta.url.clone();
+                let raw_url = meta.url.clone();
                 let referer = meta.referer.clone();
+                drop(meta_guard);
+                let stream_url = crate::downloader::extractor::resolve_playable_stream_url(&raw_url, None).await;
                 if let Err(e) = filesystem::play_stream_url(&stream_url, referer.as_deref()) {
                     warn!("Failed to preview stream URL {}: {}", stream_url, e);
                 }
@@ -1022,8 +1035,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(ref meta) = *meta_guard {
                 let idx_usize = idx as usize;
                 if let Some(entry) = meta.playlist_entries.get(idx_usize) {
-                    let stream_url = entry.url.clone();
+                    let raw_url = entry.url.clone();
                     let referer = entry.referer.clone().or_else(|| meta.referer.clone());
+                    drop(meta_guard);
+                    let stream_url = crate::downloader::extractor::resolve_playable_stream_url(&raw_url, None).await;
                     if let Err(e) = filesystem::play_stream_url(&stream_url, referer.as_deref()) {
                         warn!("Failed to preview episode stream URL {}: {}", stream_url, e);
                     }
@@ -1271,10 +1286,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let series_title = metadata.title.clone();
                     let mut added = 0;
                     for (i, entry) in metadata.playlist_entries.iter().enumerate() {
-                        let entry_referer = entry.referer.clone().or_else(|| metadata.referer.clone());
+                        let entry_url = crate::downloader::extractor::get_cached_playable_url(&entry.url)
+                            .unwrap_or_else(|| entry.url.clone());
+                        let entry_referer = if crate::downloader::extractor::is_streaming_platform(&entry_url) {
+                            None
+                        } else {
+                            entry.referer.clone().or_else(|| metadata.referer.clone())
+                        };
                         if mgr
                             .add_download_with_context(
-                                entry.url.clone(),
+                                entry_url,
                                 entry.title.clone(),
                                 &download_dir,
                                 None,
@@ -1473,6 +1494,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let _ = weak.upgrade_in_event_loop(move |win| {
                 win.set_selected_asset_org_mode(mode as i32);
+                win.set_status_message(msg.into());
+            });
+        });
+    });
+
+    // Callback: Set File Conflict & Auto-Resume Policy
+    let db_conflict = db.clone();
+    let mgr_conflict = download_manager.clone();
+    let weak_conflict = main_window.as_weak();
+    main_window.on_set_file_conflict_policy(move |policy_idx| {
+        let db = db_conflict.clone();
+        let mgr = mgr_conflict.clone();
+        let weak = weak_conflict.clone();
+        tokio::spawn(async move {
+            let policy = crate::filesystem::FileConflictPolicy::from_u8(policy_idx.clamp(0, 3) as u8);
+            let _ = db.set_setting("file_conflict_policy", &policy.to_u8().to_string()).await;
+            mgr.set_file_conflict_policy(policy).await;
+            info!("Saved file conflict policy: {:?}", policy);
+            let msg = match policy {
+                crate::filesystem::FileConflictPolicy::AutoResumeOrRename => "File Conflict: Auto-Resume partial downloads / Rename completed",
+                crate::filesystem::FileConflictPolicy::AutoRename => "File Conflict: Always auto-rename with (1)",
+                crate::filesystem::FileConflictPolicy::Overwrite => "File Conflict: Overwrite existing media",
+                crate::filesystem::FileConflictPolicy::SkipExisting => "File Conflict: Skip existing completed files",
+            };
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_selected_file_conflict_policy(policy.to_u8() as i32);
                 win.set_status_message(msg.into());
             });
         });
@@ -2019,10 +2066,16 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                             continue;
                         }
                     }
-                    let entry_referer = entry.referer.or_else(|| metadata.referer.clone());
+                    let entry_url = crate::downloader::extractor::get_cached_playable_url(&entry.url)
+                        .unwrap_or(entry.url);
+                    let entry_referer = if crate::downloader::extractor::is_streaming_platform(&entry_url) {
+                        None
+                    } else {
+                        entry.referer.or_else(|| metadata.referer.clone())
+                    };
                     if mgr
                         .add_download_with_context(
-                            entry.url,
+                            entry_url,
                             entry.title,
                             &download_dir,
                             None,

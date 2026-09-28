@@ -45,6 +45,7 @@ pub struct DownloadManager {
     filename_template: Arc<RwLock<String>>,
     asset_org_mode: Arc<RwLock<u8>>,
     concurrent_fragments: Arc<RwLock<u8>>,
+    file_conflict_policy: Arc<RwLock<crate::filesystem::FileConflictPolicy>>,
     on_update: Mutex<Option<StatusUpdateCallback>>,
 }
 
@@ -62,6 +63,7 @@ impl DownloadManager {
             filename_template: Arc::new(RwLock::new("{title}.{ext}".to_string())),
             asset_org_mode: Arc::new(RwLock::new(0)),
             concurrent_fragments: Arc::new(RwLock::new(4)),
+            file_conflict_policy: Arc::new(RwLock::new(crate::filesystem::FileConflictPolicy::AutoResumeOrRename)),
             on_update: Mutex::new(None),
         }
     }
@@ -140,6 +142,16 @@ impl DownloadManager {
 
     pub async fn get_concurrent_fragments(&self) -> u8 {
         let guard = self.concurrent_fragments.read().await;
+        *guard
+    }
+
+    pub async fn set_file_conflict_policy(&self, policy: crate::filesystem::FileConflictPolicy) {
+        let mut guard = self.file_conflict_policy.write().await;
+        *guard = policy;
+    }
+
+    pub async fn get_file_conflict_policy(&self) -> crate::filesystem::FileConflictPolicy {
+        let guard = self.file_conflict_policy.read().await;
         *guard
     }
 
@@ -275,12 +287,60 @@ impl DownloadManager {
             date: None,
         };
 
-        let destination = crate::filesystem::resolve_template_destination(
+        let policy = self.get_file_conflict_policy().await;
+        let resolved = crate::filesystem::resolve_template_destination_with_policy(
             output_dir,
             &template,
             &ctx,
+            policy,
         )?;
+        let destination = resolved.path;
         let final_title = destination.file_name().and_then(|s| s.to_str()).unwrap_or(&title).to_string();
+
+        if resolved.should_skip {
+            info!("Skipping download for '{}': completed file exists on disk and policy is SkipExisting", final_title);
+            let existing_size = std::fs::metadata(&destination).map(|m| m.len()).unwrap_or(0);
+            let mut job = DownloadJob::new(
+                url,
+                final_title,
+                destination,
+                Some(existing_size),
+                is_extractor,
+                is_audio_only,
+                quality,
+                download_subtitles,
+                subtitle_language,
+                download_thumbnail,
+                thumbnail_url,
+                audio_format,
+                audio_bitrate,
+                embed_artwork,
+            );
+            job.referer = referer;
+            job.status = DownloadStatus::Completed;
+            job.progress_ratio = 1.0;
+            job.downloaded_bytes = existing_size;
+            let id = job.id;
+
+            let db = self.db.clone();
+            let job_for_db = job.clone();
+            tokio::spawn(async move {
+                if let Err(err) = db.upsert_job(&job_for_db).await {
+                    warn!("Failed to persist skipped job {} to database: {}", id, err);
+                }
+            });
+
+            {
+                let mut queue = self.queue.lock().await;
+                queue.add_job(job);
+            }
+            self.notify_update().await;
+            return Ok(id);
+        }
+
+        if resolved.is_resuming {
+            info!("Resuming existing partial download for '{}' at {:?}", final_title, destination);
+        }
 
         let mut job = DownloadJob::new(
             url,

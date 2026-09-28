@@ -233,6 +233,16 @@ pub fn is_streaming_platform(url: &str) -> bool {
         || lower.contains("iqiyi.com")
         || lower.contains("youku.com")
         || lower.contains("weibo.com")
+        || lower.contains("anyreel.app")
+        || lower.contains("dramaboxdb.com")
+        || lower.contains("dramabox.com")
+        || lower.contains("dramabox.app")
+        || lower.contains("shortmax.com")
+        || lower.contains("shortmax.app")
+        || lower.contains("reelshort.com")
+        || lower.contains("goodshort.com")
+        || lower.contains("kalos.tv")
+        || lower.contains("kuaikaw.cn")
 }
 
 /// Checks if a URL directly targets a media file or playlist by extension
@@ -267,7 +277,8 @@ pub fn is_candidate_media_url(text: &str) -> bool {
     let video_keywords = [
         "/video/", "/play/", "/watch", "/item/", "/episode/", "/episodes/",
         "/movie/", "/drama/", "/series/", "/stream", "m3u8", ".mp4", "/shorts/",
-        "/reel/", "/status/", "anyreel", "shortdrama", "vod"
+        "/reel/", "/status/", "anyreel", "dramabox", "shortmax", "reelshort",
+        "goodshort", "kalos", "shortdrama", "vod"
     ];
     for kw in &video_keywords {
         if lower.contains(kw) {
@@ -587,8 +598,15 @@ pub async fn inspect_video_with_options(
     cookies_browser: Option<&str>,
     proxy: Option<&str>,
 ) -> Result<VideoMetadata> {
-    // Fast path: AnyReel short dramas have custom native parser without yt-dlp delay
-    if url.contains("anyreel.app") {
+    // Fast path: Custom short drama native parsers without yt-dlp delay
+    if url.contains("anyreel.app")
+        || url.contains("dramabox")
+        || url.contains("shortmax")
+        || url.contains("reelshort")
+        || url.contains("goodshort")
+        || url.contains("kalos")
+        || url.contains("kuaikaw.cn")
+    {
         return scrape_page_for_media_with_proxy(url, proxy).await;
     }
 
@@ -857,6 +875,8 @@ pub async fn scrape_page_for_media(page_url: &str) -> Result<VideoMetadata> {
 pub struct MacCmsInfo {
     pub video_url: String,
     pub title: Option<String>,
+    pub series_name: Option<String>,
+    pub nid: Option<u32>,
 }
 
 /// Extracts video source and series title from MacCMS player_aaaa configuration
@@ -889,9 +909,19 @@ pub fn extract_maccms_player(html: &str) -> Option<MacCmsInfo> {
     let json_str = &json_slice[..end_idx];
     let val: serde_json::Value = serde_json::from_str(json_str).ok()?;
 
-    let raw_url = val.get("url").and_then(|v| v.as_str())?.trim();
-    if raw_url.is_empty() {
+    let raw_str = val.get("url").and_then(|v| v.as_str())?.trim();
+    if raw_str.is_empty() {
         return None;
+    }
+
+    let encrypt = val.get("encrypt").and_then(|e| e.as_i64()).unwrap_or(0);
+    let mut raw_url = raw_str.to_string();
+    if encrypt == 2 {
+        if let Some(decoded) = decode_base64(&raw_url) {
+            raw_url = decoded;
+        }
+    } else if encrypt == 1 {
+        raw_url = decode_percent(&raw_url);
     }
 
     let from = val.get("from").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
@@ -908,24 +938,30 @@ pub fn extract_maccms_player(html: &str) -> Option<MacCmsInfo> {
         format!("https://vimeo.com/{}", raw_url)
     } else if from == "bilibili" {
         format!("https://www.bilibili.com/video/{}", raw_url)
+    } else if from == "okru" || from == "ok" {
+        format!("https://ok.ru/video/{}", raw_url)
     } else {
         raw_url.to_string()
     };
 
-    let title = val.get("vod_data")
+    let nid = val.get("nid").and_then(|n| {
+        n.as_u64().map(|u| u as u32).or_else(|| n.as_str().and_then(|s| s.parse().ok()))
+    });
+
+    let series_name = val.get("vod_data")
         .and_then(|vd| vd.get("vod_name"))
         .and_then(|vn| vn.as_str())
-        .map(|name| {
-            if let Some(nid) = val.get("nid").and_then(|n| {
-                n.as_i64().map(|i| i.to_string()).or_else(|| n.as_str().map(|s| s.to_string()))
-            }) {
-                format!("{} EP{}", name, nid)
-            } else {
-                name.to_string()
-            }
-        });
+        .map(|name| name.trim().to_string());
 
-    Some(MacCmsInfo { video_url, title })
+    let title = series_name.as_ref().map(|name| {
+        if let Some(n) = nid {
+            format!("{} EP{}", name, n)
+        } else {
+            name.clone()
+        }
+    });
+
+    Some(MacCmsInfo { video_url, title, series_name, nid })
 }
 
 /// Searches for <iframe src="..."> embedding video streams or platforms
@@ -1101,13 +1137,36 @@ pub fn extract_playlist_from_detail_html(html: &str, page_url: &str) -> Option<V
         }
     }
 
-    let title = extract_schema_org_title(html)
+    let maccms_opt = extract_maccms_player(html);
+
+    // If maccms player exists on current page, register its stream URL and attach to active episode entry
+    let primary_url = if let Some(ref maccms) = maccms_opt {
+        if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
+            cache.insert(page_url.to_string(), maccms.video_url.clone());
+        }
+        if let Some(nid) = maccms.nid {
+            for entry in entries.iter_mut() {
+                if extract_episode_num(&entry.title) == Some(nid)
+                    || entry.url.contains(&format!("nid/{}.html", nid))
+                    || entry.url.contains(&format!("nid/{}", nid))
+                {
+                    entry.url = maccms.video_url.clone();
+                }
+            }
+        }
+        maccms.video_url.clone()
+    } else {
+        entries.first().map(|e| e.url.clone()).unwrap_or_else(|| page_url.to_string())
+    };
+
+    let raw_title = maccms_opt.as_ref().and_then(|m| m.series_name.clone())
+        .or_else(|| extract_schema_org_title(html))
         .or_else(|| extract_html_title(html))
         .unwrap_or_else(|| "Series Collection".to_string());
+    let title = clean_series_title_episodes(&raw_title);
 
     let thumbnail_url = extract_html_thumbnail(html, page_url);
     let playlist_count = entries.len();
-    let primary_url = entries.first().map(|e| e.url.clone()).unwrap_or_else(|| page_url.to_string());
 
     Some(VideoMetadata {
         url: primary_url,
@@ -1151,7 +1210,7 @@ fn parse_episodes_from_block(block: &str, base_url: &str) -> Vec<crate::models::
         });
 
         let text_end = block[tag_close + 1..].find("</a>").map(|e| tag_close + 1 + e).unwrap_or(tag_close + 1);
-        let inner_text = html_escape_clean(block[tag_close + 1..text_end].trim());
+        let inner_text = strip_html_tags_and_clean(block[tag_close + 1..text_end].trim());
 
         if let Some(h) = href {
             if !h.is_empty() && (h.contains("vod/play") || h.contains("/play/")) {
@@ -1193,7 +1252,7 @@ fn parse_episodes_from_html_scan(html: &str, base_url: &str) -> Vec<crate::model
         });
 
         let text_end = html[tag_close + 1..].find("</a>").map(|e| tag_close + 1 + e).unwrap_or(tag_close + 1);
-        let inner_text = html_escape_clean(html[tag_close + 1..text_end].trim());
+        let inner_text = strip_html_tags_and_clean(html[tag_close + 1..text_end].trim());
 
         if let Some(h) = href {
             if !h.is_empty() && (h.contains("vod/play") || h.contains("/play/id/")) {
@@ -1488,6 +1547,26 @@ pub fn universal_sniff_media_from_html(html: &str, page_url: &str) -> Option<Vid
     // 0. AnyReel Short Drama series (Next.js App Router RSC streams)
     if let Some(anyreel_meta) = extract_anyreel_drama(html, page_url) {
         return Some(anyreel_meta);
+    }
+
+    // 0b. DramaBox Short Drama series
+    if let Some(dramabox_meta) = extract_dramabox_drama(html, page_url) {
+        return Some(dramabox_meta);
+    }
+
+    // 0c. ShortMax Short Drama series
+    if let Some(shortmax_meta) = extract_shortmax_drama(html, page_url) {
+        return Some(shortmax_meta);
+    }
+
+    // 0d. ReelShort Drama series
+    if let Some(reelshort_meta) = extract_reelshort_drama(html, page_url) {
+        return Some(reelshort_meta);
+    }
+
+    // 0e. Universal Short Drama series parser
+    if let Some(generic_drama_meta) = extract_generic_short_drama(html, page_url) {
+        return Some(generic_drama_meta);
     }
 
     // 1. Structured JSON (Next.js __NEXT_DATA__, Nuxt, player configs, state objects)
@@ -1801,6 +1880,505 @@ pub fn extract_anyreel_drama(html: &str, page_url: &str) -> Option<VideoMetadata
     })
 }
 
+/// Extracts short drama series playlist and direct MP4/M3U8 streams from DramaBox (dramaboxdb.com, dramabox.com, dramabox.app)
+pub fn extract_dramabox_drama(html: &str, page_url: &str) -> Option<VideoMetadata> {
+    if !page_url.contains("dramabox") && !html.contains("dramabox") && !html.contains("dramaInfo") {
+        return None;
+    }
+
+    let mut json_candidates = Vec::new();
+    if let Some(script_start) = html.find(r#"<script id="__NEXT_DATA__""#) {
+        if let Some(tag_end_rel) = html[script_start..].find('>') {
+            let tag_end = script_start + tag_end_rel + 1;
+            if let Some(close_rel) = html[tag_end..].find("</script>") {
+                json_candidates.push(&html[tag_end..tag_end + close_rel]);
+            }
+        }
+    }
+
+    for marker in &["__INITIAL_STATE__", "window.__DATA__", "dramaData"] {
+        if let Some(pos) = html.find(marker) {
+            let rest = &html[pos + marker.len()..];
+            if let Some(eq_rel) = rest.find('=') {
+                let after_eq = rest[eq_rel + 1..].trim_start();
+                if after_eq.starts_with('{') {
+                    let mut depth = 0;
+                    let mut end_idx = 0;
+                    for (i, c) in after_eq.char_indices() {
+                        if c == '{' {
+                            depth += 1;
+                        } else if c == '}' {
+                            depth -= 1;
+                            if depth == 0 {
+                                end_idx = i + 1;
+                                break;
+                            }
+                        }
+                    }
+                    if end_idx > 0 {
+                        json_candidates.push(&after_eq[..end_idx]);
+                    }
+                }
+            }
+        }
+    }
+
+    for json_str in json_candidates {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) else { continue };
+
+        let series_title = v.pointer("/props/pageProps/dramaInfo/dramaName")
+            .or_else(|| v.pointer("/props/pageProps/bookInfo/bookName"))
+            .or_else(|| v.pointer("/props/pageProps/drama/title"))
+            .or_else(|| v.pointer("/dramaInfo/dramaName"))
+            .or_else(|| v.pointer("/drama/name"))
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| extract_html_title(html))
+            .unwrap_or_else(|| "DramaBox Series".to_string());
+
+        let thumbnail_url = v.pointer("/props/pageProps/dramaInfo/coverUrl")
+            .or_else(|| v.pointer("/props/pageProps/bookInfo/cover"))
+            .or_else(|| v.pointer("/props/pageProps/drama/cover"))
+            .or_else(|| v.pointer("/dramaInfo/coverUrl"))
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| extract_html_thumbnail(html, page_url));
+
+        let episodes_opt = v.pointer("/props/pageProps/chapterList")
+            .or_else(|| v.pointer("/props/pageProps/episodeList"))
+            .or_else(|| v.pointer("/props/pageProps/episodes"))
+            .or_else(|| v.pointer("/chapterList"))
+            .or_else(|| v.pointer("/episodeList"))
+            .or_else(|| v.pointer("/episodes"))
+            .and_then(|arr| arr.as_array());
+
+        let Some(episodes) = episodes_opt else { continue };
+        if episodes.is_empty() { continue };
+
+        let mut entries = Vec::new();
+        let mut primary_stream_url = String::new();
+
+        for (idx, ep) in episodes.iter().enumerate() {
+            let ep_title = ep.get("chapterName")
+                .or_else(|| ep.get("title"))
+                .or_else(|| ep.get("episodeName"))
+                .and_then(|s| s.as_str())
+                .map(|s| format!("{} - {}", series_title, s))
+                .unwrap_or_else(|| format!("{} - Episode {}", series_title, idx + 1));
+
+            let stream_url = ep.get("chapterVideoVo")
+                .and_then(|v| {
+                    v.get("mp4")
+                        .or_else(|| v.get("mp4720p"))
+                        .or_else(|| v.get("m3u8"))
+                        .or_else(|| v.get("m3u8720p"))
+                })
+                .or_else(|| ep.get("videoUrl"))
+                .or_else(|| ep.get("playUrl"))
+                .or_else(|| ep.get("m3u8Url"))
+                .or_else(|| ep.get("streamUrl"))
+                .or_else(|| ep.get("video_url"))
+                .or_else(|| ep.get("url"))
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_string());
+
+            if let Some(stream) = stream_url {
+                if stream.starts_with("http://") || stream.starts_with("https://") {
+                    if primary_stream_url.is_empty() {
+                        primary_stream_url = stream.clone();
+                    }
+                    entries.push(crate::models::PlaylistEntry {
+                        title: ep_title,
+                        url: stream,
+                        referer: Some("https://www.dramaboxdb.com/".to_string()),
+                    });
+                }
+            }
+        }
+
+        if !entries.is_empty() {
+            let count = entries.len();
+            let ext = if primary_stream_url.contains(".m3u8") { "m3u8" } else { "mp4" };
+            return Some(VideoMetadata {
+                url: primary_stream_url,
+                title: series_title,
+                content_length: None,
+                content_type: Some(format!("video/{}", ext)),
+                supports_ranges: true,
+                is_extractor: true,
+                duration_seconds: None,
+                resolution: Some(format!("{} Episodes • DramaBox HD", count)),
+                ext: Some(ext.to_string()),
+                is_playlist: count > 1,
+                playlist_count: count,
+                playlist_entries: entries,
+                has_subtitles: false,
+                subtitles_summary: String::new(),
+                thumbnail_url,
+                fps: Some(30.0),
+                vcodec: Some("H.264".to_string()),
+                acodec: Some("AAC".to_string()),
+                referer: Some("https://www.dramaboxdb.com/".to_string()),
+                ..Default::default()
+            });
+        }
+    }
+
+    None
+}
+
+/// Extracts short drama series playlist and direct MP4/M3U8 streams from ShortMax (shortmax.com, shortmax.app)
+pub fn extract_shortmax_drama(html: &str, page_url: &str) -> Option<VideoMetadata> {
+    if !page_url.contains("shortmax") && !html.contains("shortmax") {
+        return None;
+    }
+
+    let mut json_candidates = Vec::new();
+    if let Some(script_start) = html.find(r#"<script id="__NEXT_DATA__""#) {
+        if let Some(tag_end_rel) = html[script_start..].find('>') {
+            let tag_end = script_start + tag_end_rel + 1;
+            if let Some(close_rel) = html[tag_end..].find("</script>") {
+                json_candidates.push(&html[tag_end..tag_end + close_rel]);
+            }
+        }
+    }
+
+    for json_str in json_candidates {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) else { continue };
+
+        let series_title = v.pointer("/props/pageProps/seriesInfo/seriesName")
+            .or_else(|| v.pointer("/props/pageProps/drama/title"))
+            .or_else(|| v.pointer("/props/pageProps/dramaDetail/name"))
+            .or_else(|| v.pointer("/seriesInfo/seriesName"))
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| extract_html_title(html))
+            .unwrap_or_else(|| "ShortMax Series".to_string());
+
+        let thumbnail_url = v.pointer("/props/pageProps/seriesInfo/coverUrl")
+            .or_else(|| v.pointer("/props/pageProps/drama/coverUrl"))
+            .or_else(|| v.pointer("/props/pageProps/drama/thumb"))
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| extract_html_thumbnail(html, page_url));
+
+        let episodes_opt = v.pointer("/props/pageProps/episodes")
+            .or_else(|| v.pointer("/props/pageProps/episodeList"))
+            .or_else(|| v.pointer("/props/pageProps/videoList"))
+            .or_else(|| v.pointer("/episodes"))
+            .and_then(|arr| arr.as_array());
+
+        let Some(episodes) = episodes_opt else { continue };
+        if episodes.is_empty() { continue };
+
+        let mut entries = Vec::new();
+        let mut primary_stream_url = String::new();
+
+        for (idx, ep) in episodes.iter().enumerate() {
+            let ep_num = ep.get("episodeNum")
+                .or_else(|| ep.get("episodeSort"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or((idx + 1) as u64);
+            let ep_name = ep.get("title").and_then(|s| s.as_str()).unwrap_or("");
+            let title = if !ep_name.is_empty() {
+                format!("{} - {}", series_title, ep_name)
+            } else {
+                format!("{} - Episode {}", series_title, ep_num)
+            };
+
+            let stream_url = ep.get("playUrl")
+                .or_else(|| ep.get("videoUrl"))
+                .or_else(|| ep.get("m3u8Url"))
+                .or_else(|| ep.get("streamUrl"))
+                .or_else(|| ep.get("mp4Url"))
+                .or_else(|| ep.get("url"))
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_string());
+
+            if let Some(stream) = stream_url {
+                if stream.starts_with("http://") || stream.starts_with("https://") {
+                    if primary_stream_url.is_empty() {
+                        primary_stream_url = stream.clone();
+                    }
+                    entries.push(crate::models::PlaylistEntry {
+                        title,
+                        url: stream,
+                        referer: Some("https://www.shortmax.com/".to_string()),
+                    });
+                }
+            }
+        }
+
+        if !entries.is_empty() {
+            let count = entries.len();
+            let ext = if primary_stream_url.contains(".m3u8") { "m3u8" } else { "mp4" };
+            return Some(VideoMetadata {
+                url: primary_stream_url,
+                title: series_title,
+                content_length: None,
+                content_type: Some(format!("video/{}", ext)),
+                supports_ranges: true,
+                is_extractor: true,
+                duration_seconds: None,
+                resolution: Some(format!("{} Episodes • ShortMax HD", count)),
+                ext: Some(ext.to_string()),
+                is_playlist: count > 1,
+                playlist_count: count,
+                playlist_entries: entries,
+                has_subtitles: false,
+                subtitles_summary: String::new(),
+                thumbnail_url,
+                fps: Some(30.0),
+                vcodec: Some("H.264".to_string()),
+                acodec: Some("AAC".to_string()),
+                referer: Some("https://www.shortmax.com/".to_string()),
+                ..Default::default()
+            });
+        }
+    }
+
+    None
+}
+
+/// Extracts short drama series playlist and direct MP4/M3U8 streams from ReelShort (reelshort.com)
+pub fn extract_reelshort_drama(html: &str, page_url: &str) -> Option<VideoMetadata> {
+    if !page_url.contains("reelshort") && !html.contains("reelshort") {
+        return None;
+    }
+
+    let mut json_candidates = Vec::new();
+    if let Some(script_start) = html.find(r#"<script id="__NEXT_DATA__""#) {
+        if let Some(tag_end_rel) = html[script_start..].find('>') {
+            let tag_end = script_start + tag_end_rel + 1;
+            if let Some(close_rel) = html[tag_end..].find("</script>") {
+                json_candidates.push(&html[tag_end..tag_end + close_rel]);
+            }
+        }
+    }
+
+    for json_str in json_candidates {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) else { continue };
+
+        let series_title = v.pointer("/props/pageProps/book/title")
+            .or_else(|| v.pointer("/props/pageProps/book/book_name"))
+            .or_else(|| v.pointer("/props/pageProps/detail/title"))
+            .or_else(|| v.pointer("/props/pageProps/dramaDetail/name"))
+            .or_else(|| v.pointer("/props/pageProps/drama/title"))
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| extract_html_title(html))
+            .unwrap_or_else(|| "ReelShort Series".to_string());
+
+        let thumbnail_url = v.pointer("/props/pageProps/book/cover_image")
+            .or_else(|| v.pointer("/props/pageProps/book/cover"))
+            .or_else(|| v.pointer("/props/pageProps/detail/cover"))
+            .or_else(|| v.pointer("/props/pageProps/drama/cover"))
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| extract_html_thumbnail(html, page_url));
+
+        let episodes_opt = v.pointer("/props/pageProps/chapter_list")
+            .or_else(|| v.pointer("/props/pageProps/chapters"))
+            .or_else(|| v.pointer("/props/pageProps/episodes"))
+            .or_else(|| v.pointer("/props/pageProps/detail/chapters"))
+            .and_then(|arr| arr.as_array());
+
+        let Some(episodes) = episodes_opt else { continue };
+        if episodes.is_empty() { continue };
+
+        let mut entries = Vec::new();
+        let mut primary_stream_url = String::new();
+
+        for (idx, ep) in episodes.iter().enumerate() {
+            let ep_name = ep.get("chapter_name")
+                .or_else(|| ep.get("title"))
+                .or_else(|| ep.get("name"))
+                .and_then(|s| s.as_str())
+                .unwrap_or("");
+
+            let title = if !ep_name.is_empty() {
+                format!("{} - {}", series_title, ep_name)
+            } else {
+                format!("{} - Episode {}", series_title, idx + 1)
+            };
+
+            let stream_url = ep.get("video_url")
+                .or_else(|| ep.get("stream_url"))
+                .or_else(|| ep.get("play_url"))
+                .or_else(|| ep.get("hls_url"))
+                .or_else(|| ep.get("media_url"))
+                .or_else(|| ep.get("url"))
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_string());
+
+            if let Some(stream) = stream_url {
+                if stream.starts_with("http://") || stream.starts_with("https://") {
+                    if primary_stream_url.is_empty() {
+                        primary_stream_url = stream.clone();
+                    }
+                    entries.push(crate::models::PlaylistEntry {
+                        title,
+                        url: stream,
+                        referer: Some("https://www.reelshort.com/".to_string()),
+                    });
+                }
+            }
+        }
+
+        if !entries.is_empty() {
+            let count = entries.len();
+            let ext = if primary_stream_url.contains(".m3u8") { "m3u8" } else { "mp4" };
+            return Some(VideoMetadata {
+                url: primary_stream_url,
+                title: series_title,
+                content_length: None,
+                content_type: Some(format!("video/{}", ext)),
+                supports_ranges: true,
+                is_extractor: true,
+                duration_seconds: None,
+                resolution: Some(format!("{} Episodes • ReelShort HD", count)),
+                ext: Some(ext.to_string()),
+                is_playlist: count > 1,
+                playlist_count: count,
+                playlist_entries: entries,
+                has_subtitles: false,
+                subtitles_summary: String::new(),
+                thumbnail_url,
+                fps: Some(30.0),
+                vcodec: Some("H.264".to_string()),
+                acodec: Some("AAC".to_string()),
+                referer: Some("https://www.reelshort.com/".to_string()),
+                ..Default::default()
+            });
+        }
+    }
+
+    None
+}
+
+/// Universal Short Drama Parser: Recursively inspects Next.js (__NEXT_DATA__), Nuxt, or state JSON
+/// for any array of episode chapters containing media stream URLs across any short drama platform
+pub fn extract_generic_short_drama(html: &str, page_url: &str) -> Option<VideoMetadata> {
+    let script_start = html.find(r#"<script id="__NEXT_DATA__""#)?;
+    let tag_end = html[script_start..].find('>')? + script_start + 1;
+    let script_end = html[tag_end..].find("</script>")? + tag_end;
+    let json_str = &html[tag_end..script_end];
+
+    let v: serde_json::Value = serde_json::from_str(json_str).ok()?;
+    let page_props = v.get("props").and_then(|p| p.get("pageProps"))?;
+
+    let series_title = extract_html_title(html).unwrap_or_else(|| "Short Drama Series".to_string());
+    let thumbnail_url = extract_html_thumbnail(html, page_url);
+
+    let mut candidate_entries = Vec::new();
+    find_drama_episodes_in_json(page_props, &series_title, page_url, &mut candidate_entries);
+
+    if !candidate_entries.is_empty() {
+        let count = candidate_entries.len();
+        let primary_url = candidate_entries[0].url.clone();
+        let ext = if primary_url.contains(".m3u8") { "m3u8" } else { "mp4" };
+        return Some(VideoMetadata {
+            url: primary_url,
+            title: series_title,
+            content_length: None,
+            content_type: Some(format!("video/{}", ext)),
+            supports_ranges: true,
+            is_extractor: true,
+            duration_seconds: None,
+            resolution: Some(format!("{} Episodes • Drama Stream", count)),
+            ext: Some(ext.to_string()),
+            is_playlist: count > 1,
+            playlist_count: count,
+            playlist_entries: candidate_entries,
+            has_subtitles: false,
+            subtitles_summary: String::new(),
+            thumbnail_url,
+            fps: Some(30.0),
+            vcodec: Some("H.264".to_string()),
+            acodec: Some("AAC".to_string()),
+            referer: Some(page_url.to_string()),
+            ..Default::default()
+        });
+    }
+
+    None
+}
+
+fn find_drama_episodes_in_json(
+    val: &serde_json::Value,
+    series_title: &str,
+    page_url: &str,
+    entries: &mut Vec<crate::models::PlaylistEntry>,
+) {
+    if !entries.is_empty() {
+        return;
+    }
+    match val {
+        serde_json::Value::Array(arr) => {
+            if arr.len() >= 2 {
+                let mut temp_entries = Vec::new();
+                for (idx, item) in arr.iter().enumerate() {
+                    if let serde_json::Value::Object(map) = item {
+                        let stream_url = map.get("videoUrl")
+                            .or_else(|| map.get("video_url"))
+                            .or_else(|| map.get("playUrl"))
+                            .or_else(|| map.get("play_url"))
+                            .or_else(|| map.get("m3u8Url"))
+                            .or_else(|| map.get("m3u8_url"))
+                            .or_else(|| map.get("streamUrl"))
+                            .or_else(|| map.get("stream_url"))
+                            .or_else(|| map.get("hlsUrl"))
+                            .or_else(|| map.get("mp4Url"))
+                            .or_else(|| map.get("mp4"))
+                            .or_else(|| map.get("m3u8"))
+                            .or_else(|| map.get("url"))
+                            .and_then(|v| v.as_str())
+                            .filter(|s| s.starts_with("http://") || s.starts_with("https://"));
+
+                        if let Some(stream) = stream_url {
+                            let ep_name = map.get("title")
+                                .or_else(|| map.get("chapterName"))
+                                .or_else(|| map.get("chapter_name"))
+                                .or_else(|| map.get("name"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let title = if !ep_name.is_empty() {
+                                format!("{} - {}", series_title, ep_name)
+                            } else {
+                                format!("{} - Episode {}", series_title, idx + 1)
+                            };
+                            temp_entries.push(crate::models::PlaylistEntry {
+                                title,
+                                url: stream.to_string(),
+                                referer: Some(page_url.to_string()),
+                            });
+                        }
+                    }
+                }
+                if temp_entries.len() >= 2 {
+                    *entries = temp_entries;
+                    return;
+                }
+            }
+            for item in arr {
+                find_drama_episodes_in_json(item, series_title, page_url, entries);
+                if !entries.is_empty() {
+                    return;
+                }
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (_, v) in map {
+                find_drama_episodes_in_json(v, series_title, page_url, entries);
+                if !entries.is_empty() {
+                    return;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Helper to search HTML for embedded video links (<video src=...>, <source src=...>, og:video, or .m3u8/.mp4 URLs)
 fn extract_stream_from_html(html: &str, base_url: &str) -> Option<String> {
     // 1. Check og:video or og:video:url
@@ -1883,6 +2461,55 @@ fn resolve_relative_url(base: &str, rel: &str) -> String {
     }
 }
 
+/// Decodes URL percent-encoding (e.g. %20 -> space)
+fn decode_percent(input: &str) -> String {
+    let mut out = Vec::new();
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(val) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16) {
+                out.push(val);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| input.to_string())
+}
+
+/// Decodes standard Base64 string without external dependencies
+fn decode_base64(input: &str) -> Option<String> {
+    let mut table = [0xFFu8; 256];
+    for (i, &b) in b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".iter().enumerate() {
+        table[b as usize] = i as u8;
+    }
+    let bytes: Vec<u8> = input.bytes().filter(|&b| b != b'=' && !b.is_ascii_whitespace()).collect();
+    if bytes.is_empty() {
+        return None;
+    }
+    let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
+    for chunk in bytes.chunks(4) {
+        let b0 = *table.get(*chunk.get(0)? as usize)?;
+        let b1 = *table.get(*chunk.get(1)? as usize)?;
+        if b0 == 0xFF || b1 == 0xFF { return None; }
+        out.push((b0 << 2) | (b1 >> 4));
+        if chunk.len() > 2 {
+            let b2 = *table.get(*chunk.get(2)? as usize)?;
+            if b2 == 0xFF { return None; }
+            out.push(((b1 & 0x0F) << 4) | (b2 >> 2));
+            if chunk.len() > 3 {
+                let b3 = *table.get(*chunk.get(3)? as usize)?;
+                if b3 == 0xFF { return None; }
+                out.push(((b2 & 0x03) << 6) | b3);
+            }
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
 /// Cleans HTML entities and unicode escape sequences
 fn html_escape_clean(input: &str) -> String {
     input
@@ -1897,9 +2524,49 @@ fn html_escape_clean(input: &str) -> String {
         .to_string()
 }
 
+/// Strips HTML tags (<...>) and decodes HTML entities and unicode escape sequences
+pub fn strip_html_tags_and_clean(input: &str) -> String {
+    let unescaped = html_escape_clean(input);
+    let mut in_tag = false;
+    let mut res = String::with_capacity(unescaped.len());
+    for c in unescaped.chars() {
+        if c == '<' {
+            in_tag = true;
+        } else if c == '>' {
+            in_tag = false;
+        } else if !in_tag {
+            res.push(c);
+        }
+    }
+    res.split_whitespace().collect::<Vec<_>>().join(" ").trim().to_string()
+}
+
+/// Cleans redundant episode numbers from series collection titles (e.g. "Title EP07" -> "Title")
+pub fn clean_series_title_episodes(title: &str) -> String {
+    let t = title.trim();
+    let patterns = [" EP", " Ep", " Episode ", " 第"];
+    for p in &patterns {
+        if let Some(idx) = t.rfind(p) {
+            let suffix = &t[idx + p.len()..];
+            if suffix.chars().all(|c| c.is_ascii_digit() || c.is_whitespace() || c == '集' || c == '话') {
+                let cleaned = t[..idx].trim();
+                if !cleaned.is_empty() {
+                    return cleaned.to_string();
+                }
+            }
+        }
+    }
+    t.to_string()
+}
+
 /// If the URL is an HTML webpage (e.g. MacCMS vod/play page, iframe host, or direct web scraper),
 static PLAYABLE_URL_CACHE: std::sync::LazyLock<std::sync::RwLock<std::collections::HashMap<String, String>>> =
     std::sync::LazyLock::new(|| std::sync::RwLock::new(std::collections::HashMap::new()));
+
+/// Returns cached pre-resolved media stream URL if available
+pub fn get_cached_playable_url(url: &str) -> Option<String> {
+    PLAYABLE_URL_CACHE.read().ok()?.get(url).cloned()
+}
 
 static SHARED_HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
     reqwest::Client::builder()
@@ -1947,14 +2614,6 @@ pub async fn resolve_playable_stream_url(url: &str, proxy: Option<&str>) -> Stri
     if let Ok(resp) = client.get(url).send().await {
         if resp.status().is_success() {
             if let Ok(html) = resp.text().await {
-                // 0. Check Universal Media Sniffer
-                if let Some(sniffed) = universal_sniff_media_from_html(&html, url) {
-                    info!("Resolved universal stream URL: {} -> {}", url, sniffed.url);
-                    if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
-                        cache.insert(url.to_string(), sniffed.url.clone());
-                    }
-                    return sniffed.url;
-                }
                 // 1. Check MacCMS player_aaaa configuration (used by donghuafun, animevietsub, etc.)
                 if let Some(maccms) = extract_maccms_player(&html) {
                     info!("Resolved MacCMS playable stream URL: {} -> {}", url, maccms.video_url);
@@ -1981,11 +2640,90 @@ pub async fn resolve_playable_stream_url(url: &str, proxy: Option<&str>) -> Stri
                     }
                     return stream_url;
                 }
+                // 4. Check Universal Media Sniffer ONLY if it returns a genuine direct media stream
+                if let Some(sniffed) = universal_sniff_media_from_html(&html, url) {
+                    if !sniffed.url.is_empty()
+                        && (is_streaming_platform(&sniffed.url)
+                            || is_direct_media_url(&sniffed.url)
+                            || is_media_stream_candidate(&sniffed.url))
+                        && !sniffed.url.ends_with(".html")
+                        && !sniffed.url.ends_with(".htm")
+                        && !sniffed.url.ends_with(".php")
+                    {
+                        info!("Resolved universal stream URL: {} -> {}", url, sniffed.url);
+                        if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
+                            cache.insert(url.to_string(), sniffed.url.clone());
+                        }
+                        return sniffed.url;
+                    }
+                }
             }
         }
     }
 
     url.to_string()
+}
+
+/// Recursively sniffs HTML, player configs, and embedded iframes to extract a direct stream when a site is unsupported by yt-dlp
+pub async fn resolve_deep_fallback_stream(url: &str, proxy: Option<&str>) -> Result<String> {
+    let client = if let Some(prx_str) = proxy {
+        let trimmed = prx_str.trim();
+        if !trimmed.is_empty() {
+            if let Ok(prx) = reqwest::Proxy::all(trimmed) {
+                reqwest::Client::builder()
+                    .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                    .timeout(std::time::Duration::from_secs(10))
+                    .proxy(prx)
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new())
+            } else {
+                SHARED_HTTP_CLIENT.clone()
+            }
+        } else {
+            SHARED_HTTP_CLIENT.clone()
+        }
+    } else {
+        SHARED_HTTP_CLIENT.clone()
+    };
+
+    let resp = client.get(url).send().await?;
+    let html = resp.text().await?;
+
+    // 1. Check MacCMS player_aaaa configuration
+    if let Some(maccms) = extract_maccms_player(&html) {
+        return Ok(maccms.video_url);
+    }
+
+    // 2. Check embedded iframes recursively
+    for iframe in extract_iframes_from_html(&html, url) {
+        if is_streaming_platform(&iframe) || iframe.contains(".m3u8") || iframe.contains(".mp4") {
+            return Ok(iframe);
+        }
+        if let Ok(iframe_resp) = client.get(&iframe).send().await {
+            if let Ok(iframe_html) = iframe_resp.text().await {
+                if let Some(maccms) = extract_maccms_player(&iframe_html) {
+                    return Ok(maccms.video_url);
+                }
+                if let Some(stream) = extract_stream_from_html(&iframe_html, &iframe) {
+                    return Ok(stream);
+                }
+            }
+        }
+    }
+
+    // 3. Check direct HTML stream (<video>, <source>, og:video, regex m3u8/mp4)
+    if let Some(stream) = extract_stream_from_html(&html, url) {
+        return Ok(stream);
+    }
+
+    // 4. Universal JSON sniffer
+    if let Some(meta) = universal_sniff_media_from_html(&html, url) {
+        if !meta.url.ends_with(".html") && !meta.url.ends_with(".htm") && !meta.url.ends_with(".php") {
+            return Ok(meta.url);
+        }
+    }
+
+    Err(AppError::Generic("No playable stream discovered during deep fallback sniffing".to_string()))
 }
 
 /// Downloads a streaming URL via yt-dlp, streaming real-time progress events
@@ -2047,14 +2785,19 @@ where
         .arg("--progress-template")
         .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress._percent)s|%(info.ext)s|%(progress.filename)s");
 
-    if let Some(ref_url) = referer {
-        let trimmed = ref_url.trim();
-        if !trimmed.is_empty() {
-            info!("Auto-forwarding Referer & Origin to yt-dlp: {}", trimmed);
-            cmd.arg("--referer").arg(trimmed);
-            if let Ok(parsed) = reqwest::Url::parse(trimmed) {
-                let origin = format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""));
-                cmd.arg("--add-header").arg(format!("Origin: {}", origin));
+    let target_url = resolve_playable_stream_url(url, proxy).await;
+    info!("Target URL for extractor download resolved: {} -> {}", url, target_url);
+
+    // Only forward referer for non-platform streams (e.g. custom CDNs or direct HLS/MP4 streams).
+    // Do NOT forward foreign referrers or Origin headers to major platforms (like Dailymotion, YouTube, Vimeo, TikTok, Bilibili)
+    // because platforms have their own auth tokens and will reject foreign cross-origin referrers with HTTP 403 Forbidden.
+    let is_platform = is_streaming_platform(&target_url);
+    if !is_platform {
+        if let Some(ref_url) = referer {
+            let trimmed = ref_url.trim();
+            if !trimmed.is_empty() {
+                info!("Auto-forwarding Referer to yt-dlp: {}", trimmed);
+                cmd.arg("--referer").arg(trimmed);
             }
         }
     }
@@ -2155,9 +2898,6 @@ where
     cmd.arg("--fragment-retries").arg("5");
     cmd.arg("--file-access-retries").arg("5");
 
-    let target_url = resolve_playable_stream_url(url, proxy).await;
-    info!("Target URL for extractor download resolved: {}", target_url);
-
     cmd.arg("-o")
         .arg(output_template.to_string_lossy().to_string())
         .arg(&target_url)
@@ -2231,6 +2971,47 @@ where
         } else {
             format!("Extractor process finished with exit code {:?}", status.code())
         };
+
+        // Self-healing Universal Fallback: If yt-dlp reported Unsupported URL or format error on an arbitrary webpage,
+        // automatically sniff the page and retry!
+        let lower_err = err_detail.to_lowercase();
+        let is_format_or_url_err = lower_err.contains("unsupported url")
+            || lower_err.contains("unsupported")
+            || lower_err.contains("no video formats found")
+            || lower_err.contains("no downloadable video formats");
+
+        if is_format_or_url_err
+            && !target_url.contains(".m3u8")
+            && !target_url.contains(".mp4")
+            && !is_streaming_platform(&target_url)
+        {
+            info!("yt-dlp reported error ({}) for {}. Activating universal deep stream sniffer fallback...", err_detail, target_url);
+            if let Ok(deep_stream) = resolve_deep_fallback_stream(&target_url, proxy).await {
+                if !deep_stream.is_empty() && deep_stream != target_url {
+                    info!("Universal fallback found playable stream: {}. Retrying download seamlessly...", deep_stream);
+                    return Box::pin(download_stream(
+                        &deep_stream,
+                        destination_path,
+                        is_audio_only,
+                        quality,
+                        download_subtitles,
+                        subtitle_language,
+                        download_thumbnail,
+                        audio_format,
+                        audio_bitrate,
+                        embed_artwork,
+                        speed_limit,
+                        cookies_browser,
+                        proxy,
+                        concurrent_fragments,
+                        None,
+                        cancel_token,
+                        on_progress,
+                    )).await;
+                }
+            }
+        }
+
         return Err(AppError::Generic(err_detail));
     }
 
@@ -2345,9 +3126,9 @@ mod tests {
         let msg = res.unwrap();
         assert!(msg.contains("Cleared") || msg.contains("clean"));
 
-        // Verify URL cache is now empty
+        // Verify URL cache cleared the test entry
         if let Ok(cache) = PLAYABLE_URL_CACHE.read() {
-            assert!(cache.is_empty());
+            assert!(!cache.contains_key("https://test.example/play/1"));
         }
         assert!(!dummy_cookie.exists());
     }
@@ -2604,6 +3385,49 @@ mod tests {
     }
 
     #[test]
+    fn test_strip_html_tags_and_donghuafun_maccms() {
+        // 1. Verify HTML tags like <span> and <em class="play-on"><i></i>...</em> are completely stripped
+        let dirty_label = r#"<span>EP07</span> <em class="play-on"><i></i><i></i><i></i><i></i><i></i></em>"#;
+        assert_eq!(strip_html_tags_and_clean(dirty_label), "EP07");
+
+        let dirty_ep5 = "<span>EP05</span>";
+        assert_eq!(strip_html_tags_and_clean(dirty_ep5), "EP05");
+
+        // 2. Verify cleaning episode number from series title
+        let raw_title = "The Great Ruler: Chibi Version EP07";
+        assert_eq!(clean_series_title_episodes(raw_title), "The Great Ruler: Chibi Version");
+
+        // 3. Verify DonghuaFun episode 13 player configuration (Dailymotion)
+        let donghuafun_html = r#"
+            <script type="text/javascript">var player_aaaa={"flag":"play","encrypt":0,"trysee":0,"points":0,"link":"\/index.php\/vod\/play\/id\/234\/sid\/1\/nid\/1.html","link_next":"","link_pre":"\/index.php\/vod\/play\/id\/234\/sid\/1\/nid\/12.html","vod_data":{"vod_name":"The Great Ruler: Chibi Version","vod_actor":"","vod_director":"","vod_class":"Fantasy,Comedy"},"url":"k3bqPfn2nZyi6IIw5h0","url_next":"","from":"dailymotion","server":"no","note":"","id":"234","sid":1,"nid":13}</script>
+            <ul class="anthology-list-play">
+                <li><a href="/index.php/vod/play/id/234/sid/1/nid/12.html"><span>EP12</span></a></li>
+                <li><a href="/index.php/vod/play/id/234/sid/1/nid/13.html"><span>EP13</span> <em class="play-on"><i></i></em></a></li>
+            </ul>
+        "#;
+        let maccms = extract_maccms_player(donghuafun_html).expect("Should extract MacCMS Dailymotion player");
+        assert_eq!(maccms.video_url, "https://www.dailymotion.com/video/k3bqPfn2nZyi6IIw5h0");
+        assert_eq!(maccms.series_name, Some("The Great Ruler: Chibi Version".to_string()));
+        assert_eq!(maccms.nid, Some(13));
+
+        // 4. Verify extract_playlist_from_detail_html incorporates player stream and strips tags
+        let playlist = extract_playlist_from_detail_html(donghuafun_html, "https://donghuafun.com/index.php/vod/play/id/234/sid/1/nid/13.html")
+            .expect("Should extract playlist");
+        assert_eq!(playlist.title, "The Great Ruler: Chibi Version");
+        assert_eq!(playlist.url, "https://www.dailymotion.com/video/k3bqPfn2nZyi6IIw5h0");
+        assert_eq!(playlist.playlist_entries.len(), 2);
+        assert_eq!(playlist.playlist_entries[0].title, "EP12");
+        assert_eq!(playlist.playlist_entries[1].title, "EP13");
+        // EP13 is current page player so its URL was directly resolved to Dailymotion
+        assert_eq!(playlist.playlist_entries[1].url, "https://www.dailymotion.com/video/k3bqPfn2nZyi6IIw5h0");
+
+        // 5. Verify encrypt: 2 (base64)
+        let b64_sample = r#"var player_aaaa={"flag":"play","encrypt":2,"trysee":0,"points":0,"link":"","vod_data":{"vod_name":"Anime"},"url":"aHR0cHM6Ly9jZG4uZXhhbXBsZS5jb20vbWFzdGVyLm0zdTg=","from":"dplayer","id":"1","nid":1};"#;
+        let b64_info = extract_maccms_player(b64_sample).expect("Should decode base64");
+        assert_eq!(b64_info.video_url, "https://cdn.example.com/master.m3u8");
+    }
+
+    #[test]
     fn test_parse_episode_range() {
         // Range 1-5 from 41
         let r1 = parse_episode_range("1-5", 41);
@@ -2758,6 +3582,162 @@ mod tests {
             assert!(meta.url.contains(".m3u8"));
             assert_eq!(meta.referer, Some("https://www.anyreel.app/".to_string()));
         }
+    }
+
+    #[test]
+    fn test_extract_dramabox_drama() {
+        let sample = r#"
+            <!DOCTYPE html>
+            <html>
+            <head><title>My Bossy CEO Husband - DramaBox</title></head>
+            <body>
+            <script id="__NEXT_DATA__" type="application/json">
+            {
+                "props": {
+                    "pageProps": {
+                        "dramaInfo": {
+                            "dramaName": "My Bossy CEO Husband",
+                            "coverUrl": "https://img.dramaboxdb.com/cover/ceo.jpg"
+                        },
+                        "chapterList": [
+                            {
+                                "chapterName": "Episode 1: The Contract",
+                                "videoUrl": "https://vod.dramaboxdb.com/stream/ep1.m3u8"
+                            },
+                            {
+                                "chapterName": "Episode 2: The Secret",
+                                "videoUrl": "https://vod.dramaboxdb.com/stream/ep2.m3u8"
+                            }
+                        ]
+                    }
+                }
+            }
+            </script>
+            </body>
+            </html>
+        "#;
+        let meta = extract_dramabox_drama(sample, "https://www.dramaboxdb.com/drama/1001").expect("Must extract DramaBox drama");
+        assert_eq!(meta.title, "My Bossy CEO Husband");
+        assert!(meta.is_playlist);
+        assert_eq!(meta.playlist_count, 2);
+        assert_eq!(meta.playlist_entries[0].url, "https://vod.dramaboxdb.com/stream/ep1.m3u8");
+        assert_eq!(meta.playlist_entries[0].title, "My Bossy CEO Husband - Episode 1: The Contract");
+        assert_eq!(meta.playlist_entries[1].url, "https://vod.dramaboxdb.com/stream/ep2.m3u8");
+        assert_eq!(meta.thumbnail_url, Some("https://img.dramaboxdb.com/cover/ceo.jpg".to_string()));
+        assert_eq!(meta.referer, Some("https://www.dramaboxdb.com/".to_string()));
+    }
+
+    #[test]
+    fn test_extract_shortmax_drama() {
+        let sample = r#"
+            <!DOCTYPE html>
+            <html>
+            <body>
+            <script id="__NEXT_DATA__" type="application/json">
+            {
+                "props": {
+                    "pageProps": {
+                        "seriesInfo": {
+                            "seriesName": "Alpha's Forgotten Luna",
+                            "coverUrl": "https://img.shortmax.com/luna.jpg"
+                        },
+                        "episodes": [
+                            {
+                                "episodeNum": 1,
+                                "title": "The Rejection",
+                                "playUrl": "https://video.shortmax.com/luna/ep1.mp4"
+                            },
+                            {
+                                "episodeNum": 2,
+                                "title": "The Return",
+                                "playUrl": "https://video.shortmax.com/luna/ep2.mp4"
+                            }
+                        ]
+                    }
+                }
+            }
+            </script>
+            </body>
+            </html>
+        "#;
+        let meta = extract_shortmax_drama(sample, "https://www.shortmax.com/drama/555").expect("Must extract ShortMax drama");
+        assert_eq!(meta.title, "Alpha's Forgotten Luna");
+        assert!(meta.is_playlist);
+        assert_eq!(meta.playlist_count, 2);
+        assert_eq!(meta.playlist_entries[0].url, "https://video.shortmax.com/luna/ep1.mp4");
+        assert_eq!(meta.playlist_entries[0].title, "Alpha's Forgotten Luna - The Rejection");
+        assert_eq!(meta.thumbnail_url, Some("https://img.shortmax.com/luna.jpg".to_string()));
+    }
+
+    #[test]
+    fn test_extract_reelshort_drama() {
+        let sample = r#"
+            <!DOCTYPE html>
+            <html>
+            <body>
+            <script id="__NEXT_DATA__" type="application/json">
+            {
+                "props": {
+                    "pageProps": {
+                        "book": {
+                            "title": "Never Divorce a Secret Billionaire",
+                            "cover_image": "https://img.reelshort.com/billionaire.jpg"
+                        },
+                        "chapter_list": [
+                            {
+                                "chapter_name": "Part 1",
+                                "video_url": "https://stream.reelshort.com/b1.m3u8"
+                            },
+                            {
+                                "chapter_name": "Part 2",
+                                "video_url": "https://stream.reelshort.com/b2.m3u8"
+                            }
+                        ]
+                    }
+                }
+            }
+            </script>
+            </body>
+            </html>
+        "#;
+        let meta = extract_reelshort_drama(sample, "https://www.reelshort.com/drama/777").expect("Must extract ReelShort drama");
+        assert_eq!(meta.title, "Never Divorce a Secret Billionaire");
+        assert!(meta.is_playlist);
+        assert_eq!(meta.playlist_count, 2);
+        assert_eq!(meta.playlist_entries[0].url, "https://stream.reelshort.com/b1.m3u8");
+        assert_eq!(meta.playlist_entries[0].title, "Never Divorce a Secret Billionaire - Part 1");
+        assert_eq!(meta.thumbnail_url, Some("https://img.reelshort.com/billionaire.jpg".to_string()));
+    }
+
+    #[test]
+    fn test_extract_generic_short_drama() {
+        let sample = r#"
+            <!DOCTYPE html>
+            <html>
+            <head><title>FlickReels Mystery</title></head>
+            <body>
+            <script id="__NEXT_DATA__" type="application/json">
+            {
+                "props": {
+                    "pageProps": {
+                        "customPayload": {
+                            "episodesList": [
+                                { "chapterName": "Intro", "video_url": "https://flickreels.com/ep1.mp4" },
+                                { "chapterName": "Climax", "video_url": "https://flickreels.com/ep2.mp4" }
+                            ]
+                        }
+                    }
+                }
+            }
+            </script>
+            </body>
+            </html>
+        "#;
+        let meta = universal_sniff_media_from_html(sample, "https://flickreels.com/drama/999").expect("Must extract generic drama");
+        assert_eq!(meta.title, "FlickReels Mystery");
+        assert!(meta.is_playlist);
+        assert_eq!(meta.playlist_count, 2);
+        assert_eq!(meta.playlist_entries[0].url, "https://flickreels.com/ep1.mp4");
     }
 }
 

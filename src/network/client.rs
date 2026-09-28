@@ -375,10 +375,6 @@ impl NetworkClient {
             if !trimmed.is_empty() {
                 info!("Auto-forwarding Referer to native download: {}", trimmed);
                 request_builder = request_builder.header(REFERER, trimmed);
-                if let Ok(parsed) = reqwest::Url::parse(trimmed) {
-                    let origin = format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""));
-                    request_builder = request_builder.header("Origin", origin);
-                }
             }
         }
 

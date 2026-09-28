@@ -130,6 +130,7 @@ export component AppWindow inherits Window {
     in-out property <bool> clipboard_monitor_enabled: true;
     in-out property <string> filename_template: "{title}.{ext}";
     in-out property <int> selected_asset_org_mode: 0;
+    in-out property <int> selected_file_conflict_policy: 0;
     in-out property <int> selected_sub_lang_index: 0;
     in-out property <bool> sub_lang_all: true;
     in-out property <bool> sub_lang_en: false;
@@ -215,6 +216,7 @@ export component AppWindow inherits Window {
     callback open_current_download_dir();
     callback set_filename_template(string);
     callback set_asset_organization_mode(int);
+    callback set_file_conflict_policy(int);
     callback set_speed_limit(int);
     callback set_custom_speed_limit(string);
     callback run_network_diagnostics(string);
@@ -658,6 +660,7 @@ export component AppWindow inherits Window {
                 default_embed_audio_metadata <=> root.embed_audio_metadata;
                 filename_template <=> root.filename_template;
                 selected_asset_org_mode <=> root.selected_asset_org_mode;
+                selected_file_conflict_policy <=> root.selected_file_conflict_policy;
                 selected_sub_lang_index <=> root.selected_sub_lang_index;
                 sub_lang_all <=> root.sub_lang_all;
                 sub_lang_en <=> root.sub_lang_en;
@@ -684,6 +687,7 @@ export component AppWindow inherits Window {
                 reset_download_dir() => { root.reset_download_dir(); }
                 set_filename_template(tpl) => { root.set_filename_template(tpl); }
                 set_asset_organization_mode(m) => { root.set_asset_organization_mode(m); }
+                set_file_conflict_policy(p) => { root.set_file_conflict_policy(p); }
                 set_sub_lang(idx) => { root.set_sub_lang(idx); }
                 set_speed_limit(idx) => { root.set_speed_limit(idx); }
                 set_max_concurrency(c) => { root.set_max_concurrency(c); }

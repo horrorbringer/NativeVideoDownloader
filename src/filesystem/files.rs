@@ -500,12 +500,58 @@ pub fn apply_filename_template(template: &str, ctx: &FilenameContext) -> PathBuf
     }
 }
 
-/// Resolves a full destination path using template formatting, creating subfolders if needed, and avoiding file collisions
-pub fn resolve_template_destination(
+/// Collision and resume resolution strategy when target file already exists or has an incomplete download
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[repr(u8)]
+pub enum FileConflictPolicy {
+    /// Auto-Resume or Auto-Rename (Default): Reuses incomplete .part/.ytdl downloads to resume byte streams.
+    /// If an already-completed file exists, generates a numbered copy (1), (2), etc.
+    AutoResumeOrRename = 0,
+    /// Always appends (1), (2) on any existing file or partial download.
+    AutoRename = 1,
+    /// Overwrites existing files or removes old .part files to re-download from scratch.
+    Overwrite = 2,
+    /// Skips the download entirely if a completed target file already exists on disk.
+    SkipExisting = 3,
+}
+
+impl Default for FileConflictPolicy {
+    fn default() -> Self {
+        FileConflictPolicy::AutoResumeOrRename
+    }
+}
+
+impl FileConflictPolicy {
+    pub fn from_u8(val: u8) -> Self {
+        match val {
+            0 => FileConflictPolicy::AutoResumeOrRename,
+            1 => FileConflictPolicy::AutoRename,
+            2 => FileConflictPolicy::Overwrite,
+            3 => FileConflictPolicy::SkipExisting,
+            _ => FileConflictPolicy::AutoResumeOrRename,
+        }
+    }
+
+    pub fn to_u8(self) -> u8 {
+        self as u8
+    }
+}
+
+/// Destination path resolution result
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedDestination {
+    pub path: PathBuf,
+    pub should_skip: bool,
+    pub is_resuming: bool,
+}
+
+/// Resolves a full destination path using template formatting, creating subfolders if needed, and applying FileConflictPolicy
+pub fn resolve_template_destination_with_policy(
     dir: &Path,
     template: &str,
     ctx: &FilenameContext,
-) -> Result<PathBuf> {
+    policy: FileConflictPolicy,
+) -> Result<ResolvedDestination> {
     let rel_path = apply_filename_template(template, ctx);
     let full_path = dir.join(&rel_path);
 
@@ -520,7 +566,18 @@ pub fn resolve_template_destination(
         .and_then(|s| s.to_str())
         .unwrap_or("media");
     let parent = full_path.parent().unwrap_or(dir);
-    Ok(resolve_unique_path(parent, file_name))
+    Ok(resolve_path_with_policy(parent, file_name, policy))
+}
+
+/// Resolves a full destination path using template formatting, creating subfolders if needed, and avoiding file collisions
+#[allow(dead_code)]
+pub fn resolve_template_destination(
+    dir: &Path,
+    template: &str,
+    ctx: &FilenameContext,
+) -> Result<PathBuf> {
+    resolve_template_destination_with_policy(dir, template, ctx, FileConflictPolicy::AutoResumeOrRename)
+        .map(|res| res.path)
 }
 
 fn parse_stem_and_index(stem: &str) -> (&str, usize) {
@@ -538,49 +595,161 @@ fn parse_stem_and_index(stem: &str) -> (&str, usize) {
     (stem, 1)
 }
 
-/// Checks whether a file with this stem and extension (or common media extensions / .part files) exists
-pub fn does_conflict_exist(dir: &Path, stem: &str, ext: Option<&str>) -> bool {
+/// Checks whether a completed file with this stem and extension exists on disk
+pub fn has_completed_file(dir: &Path, stem: &str, ext: Option<&str>) -> bool {
     match ext {
         Some(ext_str) => {
             let clean_ext = ext_str.trim_start_matches('.');
-            // Direct file: <stem>.<clean_ext>
-            if dir.join(format!("{}.{}", stem, clean_ext)).exists() {
-                return true;
-            }
-            // Partial downloads: <stem>.<clean_ext>.part or .ytdl
-            if dir.join(format!("{}.{}.part", stem, clean_ext)).exists() {
-                return true;
-            }
-            if dir.join(format!("{}.{}.ytdl", stem, clean_ext)).exists() {
-                return true;
-            }
+            dir.join(format!("{}.{}", stem, clean_ext)).exists()
         }
         None => {
-            // Exact file match without extension
             if dir.join(stem).exists() {
                 return true;
             }
-            if dir.join(format!("{}.part", stem)).exists() {
-                return true;
-            }
-            if dir.join(format!("{}.ytdl", stem)).exists() {
-                return true;
-            }
-            // Extractor download without extension: check all common media extensions
             for &media_ext in MEDIA_EXTENSIONS {
                 if dir.join(format!("{}.{}", stem, media_ext)).exists() {
                     return true;
                 }
-                if dir.join(format!("{}.{}.part", stem, media_ext)).exists() {
-                    return true;
-                }
-                if dir.join(format!("{}.{}.ytdl", stem, media_ext)).exists() {
+            }
+            false
+        }
+    }
+}
+
+/// Checks whether an incomplete partial download (.part or .ytdl) exists on disk
+pub fn has_incomplete_part(dir: &Path, stem: &str, ext: Option<&str>) -> bool {
+    match ext {
+        Some(ext_str) => {
+            let clean_ext = ext_str.trim_start_matches('.');
+            dir.join(format!("{}.{}.part", stem, clean_ext)).exists()
+                || dir.join(format!("{}.{}.ytdl", stem, clean_ext)).exists()
+        }
+        None => {
+            if dir.join(format!("{}.part", stem)).exists()
+                || dir.join(format!("{}.ytdl", stem)).exists()
+            {
+                return true;
+            }
+            for &media_ext in MEDIA_EXTENSIONS {
+                if dir.join(format!("{}.{}.part", stem, media_ext)).exists()
+                    || dir.join(format!("{}.{}.ytdl", stem, media_ext)).exists()
+                {
                     return true;
                 }
             }
+            false
         }
     }
-    false
+}
+
+/// Checks whether a file with this stem and extension (or common media extensions / .part files) exists
+pub fn does_conflict_exist(dir: &Path, stem: &str, ext: Option<&str>) -> bool {
+    has_completed_file(dir, stem, ext) || has_incomplete_part(dir, stem, ext)
+}
+
+/// Resolves a target destination path based on the selected FileConflictPolicy
+pub fn resolve_path_with_policy(
+    dir: &Path,
+    filename: &str,
+    policy: FileConflictPolicy,
+) -> ResolvedDestination {
+    let (stem, ext_opt) = split_stem_and_ext(filename);
+    let ext_suffix = ext_opt.map(|e| format!(".{}", e)).unwrap_or_default();
+
+    match policy {
+        FileConflictPolicy::Overwrite => {
+            // Overwrite: clear any partial .part file so download starts cleanly from 0
+            if let Some(ext_str) = ext_opt {
+                let clean_ext = ext_str.trim_start_matches('.');
+                let part_file = dir.join(format!("{}.{}.part", stem, clean_ext));
+                if part_file.exists() {
+                    let _ = std::fs::remove_file(part_file);
+                }
+            } else {
+                let part_file = dir.join(format!("{}.part", stem));
+                if part_file.exists() {
+                    let _ = std::fs::remove_file(part_file);
+                }
+            }
+            ResolvedDestination {
+                path: dir.join(filename),
+                should_skip: false,
+                is_resuming: false,
+            }
+        }
+        FileConflictPolicy::SkipExisting => {
+            if has_completed_file(dir, stem, ext_opt) {
+                ResolvedDestination {
+                    path: dir.join(filename),
+                    should_skip: true,
+                    is_resuming: false,
+                }
+            } else {
+                let is_resuming = has_incomplete_part(dir, stem, ext_opt);
+                ResolvedDestination {
+                    path: dir.join(filename),
+                    should_skip: false,
+                    is_resuming,
+                }
+            }
+        }
+        FileConflictPolicy::AutoRename => {
+            let unique_path = resolve_unique_path(dir, filename);
+            ResolvedDestination {
+                path: unique_path,
+                should_skip: false,
+                is_resuming: false,
+            }
+        }
+        FileConflictPolicy::AutoResumeOrRename => {
+            // If incomplete .part exists and complete file does NOT exist: resume it!
+            if has_incomplete_part(dir, stem, ext_opt) && !has_completed_file(dir, stem, ext_opt) {
+                return ResolvedDestination {
+                    path: dir.join(filename),
+                    should_skip: false,
+                    is_resuming: true,
+                };
+            }
+
+            // If neither complete file nor incomplete part exists: fresh file!
+            if !has_completed_file(dir, stem, ext_opt) && !has_incomplete_part(dir, stem, ext_opt) {
+                return ResolvedDestination {
+                    path: dir.join(filename),
+                    should_skip: false,
+                    is_resuming: false,
+                };
+            }
+
+            // Completed file exists! We must find an unused or partial-resumable copy: (1), (2)...
+            let (base_stem, mut counter) = parse_stem_and_index(stem);
+            loop {
+                let candidate_stem = format!("{} ({})", base_stem, counter);
+                let candidate_name = format!("{}{}", candidate_stem, ext_suffix);
+
+                if has_incomplete_part(dir, &candidate_stem, ext_opt)
+                    && !has_completed_file(dir, &candidate_stem, ext_opt)
+                {
+                    return ResolvedDestination {
+                        path: dir.join(candidate_name),
+                        should_skip: false,
+                        is_resuming: true,
+                    };
+                }
+
+                if !has_completed_file(dir, &candidate_stem, ext_opt)
+                    && !has_incomplete_part(dir, &candidate_stem, ext_opt)
+                {
+                    return ResolvedDestination {
+                        path: dir.join(candidate_name),
+                        should_skip: false,
+                        is_resuming: false,
+                    };
+                }
+
+                counter += 1;
+            }
+        }
+    }
 }
 
 /// If a file already exists at the destination, resolves a unique non-conflicting filename (e.g. video (1).mp4)
@@ -698,7 +867,11 @@ pub fn play_stream_url(stream_url: &str, referer: Option<&str>) -> Result<()> {
         if let Ok(_) = std::process::Command::new("mpv")
             .arg(trimmed)
             .args(if let Some(r) = referer {
-                vec![format!("--http-header-fields=Referer: {}, Origin: {}", r, r)]
+                if crate::downloader::extractor::is_streaming_platform(trimmed) {
+                    vec![]
+                } else {
+                    vec![format!("--http-header-fields=Referer: {}", r)]
+                }
             } else {
                 vec![]
             })
@@ -1460,5 +1633,68 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
         let p5 = apply_filename_template("[{date}] {title}.{ext}", &ctx1);
         assert_eq!(p5, PathBuf::from("[2026-09-27] Nature Documentary.mp4"));
     }
+
+    #[test]
+    fn test_file_conflict_policies() {
+        let temp_dir = std::env::temp_dir().join(format!("test_conflict_policies_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // 1. Fresh file - all policies return base name
+        let r_fresh = resolve_path_with_policy(&temp_dir, "video.mp4", FileConflictPolicy::AutoResumeOrRename);
+        assert_eq!(r_fresh.path, temp_dir.join("video.mp4"));
+        assert!(!r_fresh.is_resuming);
+        assert!(!r_fresh.should_skip);
+
+        // 2. Partial file exists (video.mp4.part)
+        std::fs::write(temp_dir.join("video.mp4.part"), b"partial 50%").unwrap();
+
+        // AutoResumeOrRename: reuses video.mp4 to resume downloading!
+        let r_resume = resolve_path_with_policy(&temp_dir, "video.mp4", FileConflictPolicy::AutoResumeOrRename);
+        assert_eq!(r_resume.path, temp_dir.join("video.mp4"));
+        assert!(r_resume.is_resuming);
+        assert!(!r_resume.should_skip);
+
+        // AutoRename: forces (1) because part file counts as conflict
+        let r_rename = resolve_path_with_policy(&temp_dir, "video.mp4", FileConflictPolicy::AutoRename);
+        assert_eq!(r_rename.path, temp_dir.join("video (1).mp4"));
+        assert!(!r_rename.is_resuming);
+
+        // SkipExisting: since file is NOT yet complete, it resumes the partial download
+        let r_skip_part = resolve_path_with_policy(&temp_dir, "video.mp4", FileConflictPolicy::SkipExisting);
+        assert_eq!(r_skip_part.path, temp_dir.join("video.mp4"));
+        assert!(r_skip_part.is_resuming);
+        assert!(!r_skip_part.should_skip);
+
+        // 3. Completed file exists (video.mp4)
+        std::fs::remove_file(temp_dir.join("video.mp4.part")).unwrap();
+        std::fs::write(temp_dir.join("video.mp4"), b"complete video").unwrap();
+
+        // SkipExisting: should_skip is true
+        let r_skip_done = resolve_path_with_policy(&temp_dir, "video.mp4", FileConflictPolicy::SkipExisting);
+        assert_eq!(r_skip_done.path, temp_dir.join("video.mp4"));
+        assert!(r_skip_done.should_skip);
+
+        // AutoResumeOrRename: complete file exists, so it advances to (1)
+        let r_resume_after_complete = resolve_path_with_policy(&temp_dir, "video.mp4", FileConflictPolicy::AutoResumeOrRename);
+        assert_eq!(r_resume_after_complete.path, temp_dir.join("video (1).mp4"));
+        assert!(!r_resume_after_complete.is_resuming);
+
+        // 4. Incomplete part for copy (1) exists
+        std::fs::write(temp_dir.join("video (1).mp4.part"), b"partial copy 1").unwrap();
+        let r_resume_copy1 = resolve_path_with_policy(&temp_dir, "video.mp4", FileConflictPolicy::AutoResumeOrRename);
+        assert_eq!(r_resume_copy1.path, temp_dir.join("video (1).mp4"));
+        assert!(r_resume_copy1.is_resuming);
+
+        // 5. Overwrite: clears any .part and returns base target path
+        let r_overwrite = resolve_path_with_policy(&temp_dir, "video (1).mp4", FileConflictPolicy::Overwrite);
+        assert_eq!(r_overwrite.path, temp_dir.join("video (1).mp4"));
+        assert!(!r_overwrite.is_resuming);
+        assert!(!r_overwrite.should_skip);
+        assert!(!temp_dir.join("video (1).mp4.part").exists()); // Cleaned up
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
 }
+
 
