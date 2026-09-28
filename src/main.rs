@@ -772,6 +772,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })
                     .collect();
 
+                let active_speed_limit = mgr.get_speed_limit().await;
+                let active_speed_limit_bytes = downloader::manager::parse_speed_limit_bytes(active_speed_limit.as_deref());
+                let speed_limit_ratio: f32 = match active_speed_limit_bytes {
+                    Some(cap) if max_in_window > 0.0 => (cap as f64 / max_in_window).clamp(0.0, 1.0) as f32,
+                    _ => 0.0,
+                };
+                let speed_limit_label = active_speed_limit_bytes
+                    .map(|b| DownloadProgress::format_speed_val(b as f64))
+                    .unwrap_or_default();
+
+                let recent_count = hist.len().min(10);
+                let recent_sum: f64 = hist.iter().rev().take(recent_count).copied().sum();
+                let avg_speed = if recent_count > 0 { recent_sum / recent_count as f64 } else { 0.0 };
+                let avg_speed_text = DownloadProgress::format_speed_val(avg_speed);
+
+                let stability_text = if active_count == 0 || avg_speed < 1000.0 {
+                    "Idle".to_string()
+                } else {
+                    let variance: f64 = hist.iter().rev().take(recent_count)
+                        .map(|&s| (s - avg_speed).powi(2))
+                        .sum::<f64>() / recent_count as f64;
+                    let std_dev = variance.sqrt();
+                    let coeff_var = (std_dev / avg_speed).clamp(0.0, 1.0);
+                    let stability_pct = ((1.0 - coeff_var * 0.7) * 100.0).clamp(50.0, 99.0) as u32;
+                    format!("{}% (Stable)", stability_pct)
+                };
+
                 let cur_speed_text = DownloadProgress::format_speed_val(total_current_speed);
                 let peak_speed_text = DownloadProgress::format_speed_val(peak_val);
                 let session_text = DownloadProgress::format_size(session_val);
@@ -857,6 +884,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     window.set_peak_speed_text(peak_speed_text.clone().into());
                     window.set_session_downloaded_text(session_text.into());
                     window.set_is_downloading_active(is_active);
+                    window.set_avg_speed_text(avg_speed_text.into());
+                    window.set_network_stability_text(stability_text.into());
+                    window.set_speed_limit_ratio(speed_limit_ratio);
+                    window.set_speed_limit_label(speed_limit_label.into());
 
                     let previously_downloading = was_dl_tracker.swap(active_count > 0, Ordering::Relaxed);
                     if active_count > 0 {
@@ -1116,7 +1147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
 
-                let is_new = {
+                let is_new_clipboard = {
                     let mut last = last_clip_watcher.lock().unwrap();
                     if *last != trimmed {
                         *last = trimmed.clone();
@@ -1126,22 +1157,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                if is_new && downloader::extractor::is_candidate_media_url(&trimmed) {
-                    tracing::info!("Clipboard watcher detected candidate media URL: {}", trimmed);
-                    let url = trimmed.clone();
-                    let _ = weak_clip_watcher.upgrade_in_event_loop(move |win| {
-                        win.set_clipboard_detected_url(url.clone().into());
-                        win.set_clipboard_detected_url_visible(true);
-                        win.set_status_message(format!("Clipboard detected media link: {}", url).into());
-                    });
+                if is_new_clipboard {
+                    if let Some(candidate_url) = downloader::extractor::extract_candidate_media_url(&trimmed) {
+                        tracing::info!("Clipboard watcher detected candidate media URL: {}", candidate_url);
+                        let url = candidate_url.clone();
+                        let _ = weak_clip_watcher.upgrade_in_event_loop(move |win| {
+                            win.set_clipboard_detected_url(url.clone().into());
+                            win.set_clipboard_detected_url_visible(true);
+                            win.set_status_message(format!("Clipboard detected media link: {}", url).into());
+                        });
 
-                    let notif_url = trimmed.clone();
-                    notifications::send_notification(
-                        "Native Video Downloader",
-                        "Media Link Copied",
-                        &format!("Ready to inspect: {}", notif_url),
-                        false,
-                    );
+                        // Auto-dismiss floating toast after 10 seconds if not clicked
+                        let weak_timer = weak_clip_watcher.clone();
+                        let url_timer = candidate_url.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                            let _ = weak_timer.upgrade_in_event_loop(move |win| {
+                                if win.get_clipboard_detected_url().as_str() == url_timer {
+                                    win.set_clipboard_detected_url_visible(false);
+                                }
+                            });
+                        });
+
+                        let notif_url = candidate_url.clone();
+                        notifications::send_notification(
+                            "Native Video Downloader",
+                            "Media Link Copied",
+                            &format!("Ready to inspect: {}", notif_url),
+                            false,
+                        );
+                    }
                 }
             }
         }
@@ -1169,6 +1214,145 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 win.set_status_message(format!("Analyzing copied link: {}", url).into());
                 run_url_analysis(url, weak, meta, client, cookies, proxy);
             }
+        });
+    });
+
+    // Callback: Quick Download Detected Clipboard URL
+    let weak_quick_dl = main_window.as_weak();
+    let mgr_quick_dl = download_manager.clone();
+    let current_dir_quick_dl = current_download_dir.clone();
+    let client_quick_dl = network_client.clone();
+    let cookies_quick_dl = current_cookies_browser.clone();
+    let proxy_quick_dl = current_proxy.clone();
+
+    main_window.on_quick_download_clipboard_detected(move || {
+        let weak = weak_quick_dl.clone();
+        let mgr = mgr_quick_dl.clone();
+        let dir_lock = current_dir_quick_dl.clone();
+        let client = client_quick_dl.clone();
+        let cookies_lock = cookies_quick_dl.clone();
+        let proxy_lock = proxy_quick_dl.clone();
+
+        let _ = weak_quick_dl.upgrade_in_event_loop(move |win| {
+            let url = win.get_clipboard_detected_url().to_string();
+            win.set_clipboard_detected_url_visible(false);
+            if url.is_empty() {
+                return;
+            }
+            win.set_status_message(format!("Quick downloading media: {}", url).into());
+            win.set_active_tab(1); // Switch to Downloads tab
+
+            tokio::spawn(async move {
+                let cookies = cookies_lock.read().await.clone();
+                let proxy = proxy_lock.read().await.clone();
+
+                let meta_res = if downloader::is_streaming_platform(&url) || url.contains("anyreel.app") {
+                    downloader::inspect_video_with_options(&url, cookies.as_deref(), proxy.as_deref()).await
+                } else {
+                    match client.inspect_url(&url).await {
+                        Ok(meta) if downloader::is_valid_direct_media(&meta) => Ok(meta),
+                        _ => downloader::inspect_video_with_options(&url, cookies.as_deref(), proxy.as_deref()).await,
+                    }
+                };
+
+                let metadata = match meta_res {
+                    Ok(m) => m,
+                    Err(e) => {
+                        let _ = weak.upgrade_in_event_loop(move |w| {
+                            w.set_status_message(format!("Quick download inspection failed: {}", e).into());
+                        });
+                        return;
+                    }
+                };
+
+                let download_dir = dir_lock.read().await.clone();
+
+                if metadata.is_playlist && !metadata.playlist_entries.is_empty() {
+                    let series_title = metadata.title.clone();
+                    let mut added = 0;
+                    for (i, entry) in metadata.playlist_entries.iter().enumerate() {
+                        let entry_referer = entry.referer.clone().or_else(|| metadata.referer.clone());
+                        if mgr
+                            .add_download_with_context(
+                                entry.url.clone(),
+                                entry.title.clone(),
+                                &download_dir,
+                                None,
+                                true,
+                                false,
+                                None,
+                                false,
+                                None,
+                                false,
+                                None,
+                                None,
+                                None,
+                                false,
+                                Some(&series_title),
+                                Some(i + 1),
+                                entry_referer,
+                            )
+                            .await
+                            .is_ok()
+                        {
+                            added += 1;
+                        }
+                    }
+                    let series_title_notif = series_title.clone();
+                    let _ = weak.upgrade_in_event_loop(move |w| {
+                        w.set_status_message(format!("Queued {} episodes from series", added).into());
+                    });
+                    notifications::send_notification(
+                        "Download Started",
+                        "Quick Download Queued",
+                        &format!("{} episodes from {}", added, series_title_notif),
+                        false,
+                    );
+                } else {
+                    let is_extractor = metadata.is_extractor;
+                    let title_clone = metadata.title.clone();
+                    let title_notif = metadata.title.clone();
+                    match mgr
+                        .add_download_with_context(
+                            metadata.url.clone(),
+                            metadata.title.clone(),
+                            &download_dir,
+                            metadata.content_length,
+                            is_extractor,
+                            false,
+                            None,
+                            false,
+                            None,
+                            false,
+                            metadata.thumbnail_url.clone(),
+                            None,
+                            None,
+                            false,
+                            None,
+                            None,
+                            metadata.referer.clone(),
+                        )
+                        .await
+                    {
+                        Ok(_) => {
+                            let _ = weak.upgrade_in_event_loop(move |w| {
+                                w.set_status_message(format!("Queued download: {}", title_clone).into());
+                            });
+                            notifications::send_notification(
+                                "Download Started",
+                                "Quick Download Queued",
+                                &title_notif,
+                                false,
+                            );
+                        }
+                        Err(e) => {
+                            let _ = weak.upgrade_in_event_loop(move |w| {
+                                w.set_status_message(format!("Quick download failed: {}", e).into());
+                            });
+                        }
+                    }
+                }
+            });
         });
     });
 
@@ -2436,6 +2620,66 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
             let _ = weak.upgrade_in_event_loop(move |window| {
                 window.set_selected_speed_limit_index(idx);
                 window.set_status_message(format!("Download speed limit set to: {}", label).into());
+            });
+        });
+    });
+
+    // Callback: Set Custom Bandwidth Speed Limit
+    let db_custom_speed = db.clone();
+    let mgr_custom_speed = download_manager.clone();
+    let weak_custom_speed = main_window.as_weak();
+    main_window.on_set_custom_speed_limit(move |input| {
+        let db = db_custom_speed.clone();
+        let mgr = mgr_custom_speed.clone();
+        let weak = weak_custom_speed.clone();
+        let input_str = input.trim().to_string();
+        tokio::spawn(async move {
+            if let Some(bytes) = downloader::manager::parse_speed_limit_bytes(Some(&input_str)) {
+                let formatted = DownloadProgress::format_speed_val(bytes as f64);
+                mgr.set_speed_limit(Some(input_str.clone())).await;
+                let _ = db.set_setting("speed_limit", &input_str).await;
+                info!("Custom bandwidth throttling limit applied: {} ({})", input_str, formatted);
+                let _ = weak.upgrade_in_event_loop(move |window| {
+                    window.set_selected_speed_limit_index(5);
+                    window.set_status_message(format!("Custom speed limit active: {}", formatted).into());
+                });
+            } else {
+                let _ = weak.upgrade_in_event_loop(move |window| {
+                    window.set_status_message("Invalid speed format (e.g. use 1.5M, 500K, 20M)".into());
+                });
+            }
+        });
+    });
+
+    // Callback: Run Network Diagnostics & Stream Health Probe
+    let mgr_diag = download_manager.clone();
+    let weak_diag = main_window.as_weak();
+    main_window.on_run_network_diagnostics(move |target| {
+        let mgr = mgr_diag.clone();
+        let weak = weak_diag.clone();
+        let target_str = target.trim().to_string();
+        let _ = weak.upgrade_in_event_loop(|win| {
+            win.set_is_running_diagnostics(true);
+            win.set_diag_summary_headline("Probing network & CDN edge...".into());
+            win.set_diag_summary_details("Measuring DNS lookup latency, handshake ping RTT, and byte-range throughput...".into());
+            win.set_diag_overall_status("Probing...".into());
+        });
+        tokio::spawn(async move {
+            let report = mgr.run_network_diagnostics(&target_str).await;
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_is_running_diagnostics(false);
+                win.set_diag_dns_text(format!("{} ms", report.dns_ms).into());
+                win.set_diag_dns_status(report.dns_status.into());
+                win.set_diag_ping_text(format!("{} ms", report.rtt_ms).into());
+                win.set_diag_ping_status(report.rtt_status.into());
+                win.set_diag_range_text(if report.supports_range { "Yes (206)".into() } else { "No".into() });
+                win.set_diag_range_status(report.range_status.into());
+                win.set_diag_throughput_text(report.throughput_speed_text.into());
+                win.set_diag_throughput_status(report.throughput_status.into());
+                win.set_diag_summary_headline(report.summary_headline.into());
+                win.set_diag_summary_details(report.summary_details.into());
+                win.set_diag_overall_status(report.overall_status.into());
+                win.set_status_message("Network diagnostic probe completed".into());
             });
         });
     });

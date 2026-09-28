@@ -23,11 +23,11 @@ pub fn parse_speed_limit_bytes(limit_str: Option<&str>) -> Option<u64> {
         return None;
     }
     if s.ends_with('M') {
-        let mb: u64 = s.trim_end_matches('M').parse().ok()?;
-        Some(mb * 1024 * 1024)
+        let mb: f64 = s.trim_end_matches('M').parse().ok()?;
+        Some((mb * 1024.0 * 1024.0) as u64)
     } else if s.ends_with('K') {
-        let kb: u64 = s.trim_end_matches('K').parse().ok()?;
-        Some(kb * 1024)
+        let kb: f64 = s.trim_end_matches('K').parse().ok()?;
+        Some((kb * 1024.0) as u64)
     } else {
         s.parse::<u64>().ok()
     }
@@ -141,6 +141,10 @@ impl DownloadManager {
     pub async fn get_concurrent_fragments(&self) -> u8 {
         let guard = self.concurrent_fragments.read().await;
         *guard
+    }
+
+    pub async fn run_network_diagnostics(&self, target_url: &str) -> crate::network::NetworkDiagnosticReport {
+        self.network_client.run_diagnostics(target_url).await
     }
 
     pub async fn set_max_concurrency(self: &Arc<Self>, count: usize) {
@@ -811,6 +815,7 @@ mod tests {
         assert_eq!(parse_speed_limit_bytes(Some("5M")), Some(5 * 1024 * 1024));
         assert_eq!(parse_speed_limit_bytes(Some("10M")), Some(10 * 1024 * 1024));
         assert_eq!(parse_speed_limit_bytes(Some("20m")), Some(20 * 1024 * 1024));
+        assert_eq!(parse_speed_limit_bytes(Some("1.5M")), Some((1.5 * 1024.0 * 1024.0) as u64));
         assert_eq!(parse_speed_limit_bytes(Some("500K")), Some(500 * 1024));
     }
 

@@ -2,6 +2,7 @@ import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, Speed
 import { ActionButton } from "components/action_button.slint";
 import { NavButton } from "components/nav_button.slint";
 import { EpisodeModal } from "components/episode_modal.slint";
+import { NetworkDiagnosticModal } from "components/network_diagnostic_modal.slint";
 import { HomeTab } from "tabs/home_tab.slint";
 import { DownloadsTab } from "tabs/downloads_tab.slint";
 import { HistoryTab } from "tabs/history_tab.slint";
@@ -48,6 +49,28 @@ export component AppWindow inherits Window {
     in-out property <string> session_downloaded_text: "0 B";
     in-out property <bool> show_speed_graph: true;
     in-out property <bool> is_downloading_active: false;
+    in-out property <int> speed_graph_mode: 0;
+    in-out property <string> avg_speed_text: "0 B/s";
+    in-out property <string> network_stability_text: "Idle";
+    in-out property <float> speed_limit_ratio: 0.0;
+    in-out property <string> speed_limit_label: "";
+    in-out property <string> custom_speed_limit_input: "";
+
+    // Network Diagnostics Modal properties
+    in-out property <bool> show_network_diagnostics_modal: false;
+    in-out property <bool> is_running_diagnostics: false;
+    in-out property <string> diag_target_url: "https://cloudflare.com/cdn-cgi/trace";
+    in-out property <string> diag_dns_text: "--";
+    in-out property <string> diag_dns_status: "Pending";
+    in-out property <string> diag_ping_text: "--";
+    in-out property <string> diag_ping_status: "Pending";
+    in-out property <string> diag_range_text: "--";
+    in-out property <string> diag_range_status: "Pending";
+    in-out property <string> diag_throughput_text: "--";
+    in-out property <string> diag_throughput_status: "Pending";
+    in-out property <string> diag_summary_headline: "Ready to diagnose network";
+    in-out property <string> diag_summary_details: "Select a CDN endpoint or paste any video stream URL, then click 'Run Diagnostic Probe'.";
+    in-out property <string> diag_overall_status: "Ready";
 
     // History properties
     in-out property <[HistoryItemData]> history_items: [];
@@ -148,6 +171,7 @@ export component AppWindow inherits Window {
     callback paste_batch_from_clipboard();
     callback import_links_file();
     callback analyze_clipboard_detected();
+    callback quick_download_clipboard_detected();
     callback dismiss_clipboard_detected();
     callback set_clipboard_monitor(bool);
     callback set_default_audio_format(int);
@@ -192,6 +216,8 @@ export component AppWindow inherits Window {
     callback set_filename_template(string);
     callback set_asset_organization_mode(int);
     callback set_speed_limit(int);
+    callback set_custom_speed_limit(string);
+    callback run_network_diagnostics(string);
     callback set_max_concurrency(int);
     callback set_cookies_browser(int);
     callback test_notification();
@@ -473,94 +499,6 @@ export component AppWindow inherits Window {
                 }
             }
 
-            // Global Live Clipboard Detected Link Banner
-            if root.clipboard_detected_url_visible: Rectangle {
-                background: Theme.card_bg;
-                border-radius: 10px;
-                border-width: 1px;
-                border-color: #3b82f6;
-
-                HorizontalLayout {
-                    padding: 10px;
-                    padding-left: 14px;
-                    padding-right: 14px;
-                    spacing: 12px;
-                    alignment: space-between;
-
-                    HorizontalLayout {
-                        horizontal-stretch: 1;
-                        spacing: 10px;
-
-                        VerticalLayout {
-                            alignment: center;
-                            Rectangle {
-                                width: 28px;
-                                height: 28px;
-                                border-radius: 14px;
-                                background: #1e2942;
-                                border-width: 1px;
-                                border-color: #3b82f6;
-
-                                Image {
-                                    source: @image-url("icons/clipboard.svg");
-                                    width: 14px;
-                                    height: 14px;
-                                    colorize: #60a5fa;
-                                    x: (parent.width - self.width) / 2;
-                                    y: (parent.height - self.height) / 2;
-                                }
-                            }
-                        }
-
-                        VerticalLayout {
-                            horizontal-stretch: 1;
-                            spacing: 2px;
-                            alignment: center;
-
-                            Text {
-                                text: "Copied Media Link Detected";
-                                color: #60a5fa;
-                                font-size: 13px;
-                                font-weight: 700;
-                            }
-
-                            Text {
-                                text: root.clipboard_detected_url;
-                                color: Theme.text_secondary;
-                                font-size: 12px;
-                                overflow: elide;
-                            }
-                        }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-                        alignment: center;
-
-                        ActionButton {
-                            text: "Inspect & Download";
-                            icon: @image-url("icons/download.svg");
-                            has_icon: true;
-                            primary: true;
-                            height: 30px;
-                            clicked => {
-                                root.analyze_clipboard_detected();
-                            }
-                        }
-
-                        ActionButton {
-                            text: "Dismiss";
-                            icon: @image-url("icons/x.svg");
-                            has_icon: true;
-                            height: 30px;
-                            clicked => {
-                                root.dismiss_clipboard_detected();
-                            }
-                        }
-                    }
-                }
-            }
-
             // Tab Content Router
             if root.active_tab == 0: HomeTab {
                 has_error <=> root.has_error;
@@ -649,6 +587,12 @@ export component AppWindow inherits Window {
                 show_speed_graph <=> root.show_speed_graph;
                 is_downloading_active: root.is_downloading_active;
                 selected_speed_limit_index <=> root.selected_speed_limit_index;
+                speed_graph_mode <=> root.speed_graph_mode;
+                avg_speed_text: root.avg_speed_text;
+                network_stability_text: root.network_stability_text;
+                speed_limit_ratio: root.speed_limit_ratio;
+                speed_limit_label: root.speed_limit_label;
+                custom_speed_input <=> root.custom_speed_limit_input;
 
                 pause_all() => { root.pause_all(); }
                 resume_all() => { root.resume_all(); }
@@ -659,6 +603,8 @@ export component AppWindow inherits Window {
                 move_job_down(id) => { root.move_job_down(id); }
                 prioritize_job(id) => { root.prioritize_job(id); }
                 set_speed_limit(idx) => { root.set_speed_limit(idx); }
+                set_custom_speed_limit(val) => { root.set_custom_speed_limit(val); }
+                open_network_diagnostics => { root.show_network_diagnostics_modal = true; }
                 set_queue_filter(idx) => { root.set_queue_filter(idx); }
                 search_queue(q) => { root.search_queue(q); }
                 open_download_file(p) => { root.open_download_file(p); }
@@ -808,5 +754,167 @@ export component AppWindow inherits Window {
         select_first_n(n) => { root.select_first_n_episodes(n); }
         apply_range(range) => { root.apply_episode_range(range); }
         preview_episode(idx) => { root.preview_episode_stream(idx); }
+    }
+
+    // Floating Live Clipboard Stream Sniffer Toast
+    if root.clipboard_detected_url_visible: Rectangle {
+        x: parent.width - self.width - 24px;
+        y: parent.height - self.height - 48px;
+        width: min(520px, parent.width - 48px);
+        height: 68px;
+        z: 80;
+        background: Theme.is_dark ? #0f172aee : #fffffffa;
+        border-radius: 12px;
+        border-width: 1.5px;
+        border-color: Theme.is_dark ? #3b82f6 : #2563eb;
+        drop-shadow-blur: 20px;
+        drop-shadow-color: Theme.is_dark ? #000000cc : #00000030;
+        drop-shadow-offset-y: 6px;
+        clip: true;
+
+        // Top accent indicator bar
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: 100%;
+            height: 3px;
+            background: #3b82f6;
+        }
+
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 12px;
+            padding-top: 8px;
+            padding-bottom: 6px;
+            spacing: 12px;
+            alignment: space-between;
+
+            HorizontalLayout {
+                horizontal-stretch: 1;
+                spacing: 10px;
+
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 16px;
+                        background: Theme.is_dark ? #1e293b : #eff6ff;
+                        border-width: 1px;
+                        border-color: #3b82f6;
+
+                        Image {
+                            source: @image-url("icons/clipboard.svg");
+                            width: 15px;
+                            height: 15px;
+                            colorize: #3b82f6;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    alignment: center;
+
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: "Media Link Copied";
+                            color: Theme.is_dark ? #60a5fa : #1d4ed8;
+                            font-size: 13px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+
+                        Rectangle {
+                            height: 16px;
+                            background: Theme.chip_bg;
+                            border-radius: 3px;
+                            border-width: 1px;
+                            border-color: Theme.chip_border;
+                            HorizontalLayout {
+                                padding-left: 5px;
+                                padding-right: 5px;
+                                alignment: center;
+                                Text {
+                                    text: "Sniffed";
+                                    color: Theme.text_muted;
+                                    font-size: 9px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: root.clipboard_detected_url;
+                        color: Theme.text_secondary;
+                        font-size: 11px;
+                        overflow: elide;
+                        max-width: 210px;
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: center;
+
+                ActionButton {
+                    text: "Inspect";
+                    icon: @image-url("icons/search.svg");
+                    has_icon: true;
+                    primary: true;
+                    height: 28px;
+                    clicked => {
+                        root.analyze_clipboard_detected();
+                    }
+                }
+
+                ActionButton {
+                    text: "Quick Download";
+                    icon: @image-url("icons/download.svg");
+                    has_icon: true;
+                    height: 28px;
+                    clicked => {
+                        root.quick_download_clipboard_detected();
+                    }
+                }
+
+                ActionButton {
+                    icon: @image-url("icons/x.svg");
+                    has_icon: true;
+                    height: 28px;
+                    clicked => {
+                        root.dismiss_clipboard_detected();
+                    }
+                }
+            }
+        }
+    }
+
+    // Network Diagnostic & Stream Health Probe Modal
+    NetworkDiagnosticModal {
+        is_open: root.show_network_diagnostics_modal;
+        is_running: root.is_running_diagnostics;
+        target_url <=> root.diag_target_url;
+        dns_latency_text: root.diag_dns_text;
+        dns_status: root.diag_dns_status;
+        ping_latency_text: root.diag_ping_text;
+        ping_status: root.diag_ping_status;
+        range_support_text: root.diag_range_text;
+        range_status: root.diag_range_status;
+        throughput_text: root.diag_throughput_text;
+        throughput_status: root.diag_throughput_status;
+        summary_headline: root.diag_summary_headline;
+        summary_details: root.diag_summary_details;
+        overall_status: root.diag_overall_status;
+
+        close => { root.show_network_diagnostics_modal = false; }
+        run_diagnostics(target) => { root.run_network_diagnostics(target); }
     }
 }

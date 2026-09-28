@@ -265,8 +265,9 @@ pub fn is_candidate_media_url(text: &str) -> bool {
     }
     let lower = trimmed.to_lowercase();
     let video_keywords = [
-        "/video/", "/play/", "/watch", "/item/", "/episode/",
-        "/stream", "m3u8", "/shorts/", "/reel/", "/status/"
+        "/video/", "/play/", "/watch", "/item/", "/episode/", "/episodes/",
+        "/movie/", "/drama/", "/series/", "/stream", "m3u8", ".mp4", "/shorts/",
+        "/reel/", "/status/", "anyreel", "shortdrama", "vod"
     ];
     for kw in &video_keywords {
         if lower.contains(kw) {
@@ -274,6 +275,53 @@ pub fn is_candidate_media_url(text: &str) -> bool {
         }
     }
     false
+}
+
+/// Extracts the first candidate media stream URL found in arbitrary text (e.g. from messages or notes copied to clipboard)
+pub fn extract_candidate_media_url(text: &str) -> Option<String> {
+    let clean_token = |token: &str| -> String {
+        token
+            .trim_matches(|c: char| {
+                matches!(
+                    c,
+                    '"' | '\''
+                        | '<'
+                        | '>'
+                        | '('
+                        | ')'
+                        | '['
+                        | ']'
+                        | '{'
+                        | '}'
+                        | ','
+                        | ';'
+                        | '!'
+                        | '?'
+                        | '`'
+                        | '*'
+                        | '。'
+                        | '！'
+                        | '，'
+                        | '；'
+                )
+            })
+            .trim_end_matches('.')
+            .to_string()
+    };
+
+    let trimmed = text.trim();
+    let cleaned_full = clean_token(trimmed);
+    if is_candidate_media_url(&cleaned_full) {
+        return Some(cleaned_full);
+    }
+    // Search words in text for a valid candidate URL
+    for word in trimmed.split_whitespace() {
+        let cleaned = clean_token(word);
+        if is_candidate_media_url(&cleaned) {
+            return Some(cleaned);
+        }
+    }
+    None
 }
 
 /// Verifies whether a VideoMetadata returned from direct HTTP inspection is actually a playable media file
@@ -2452,9 +2500,17 @@ mod tests {
         assert!(is_candidate_media_url("https://cdn.example.com/video/stream.m3u8"));
         assert!(is_candidate_media_url("https://example.com/downloads/episode1.mp4"));
         assert!(is_candidate_media_url("https://myanime.org/play/episode-10"));
+        assert!(is_candidate_media_url("https://www.anyreel.app/episodes/i-swapped-my-vampire-husband-6135"));
         assert!(!is_candidate_media_url("not a url"));
         assert!(!is_candidate_media_url("https://en.wikipedia.org/wiki/Rust"));
         assert!(!is_candidate_media_url("ftp://example.com/file.txt"));
+
+        // Test extracting URL embedded in surrounding message text
+        let msg = "Hey, check out this episode: https://www.anyreel.app/episodes/i-swapped-my-vampire-husband-6135!";
+        assert_eq!(
+            extract_candidate_media_url(msg),
+            Some("https://www.anyreel.app/episodes/i-swapped-my-vampire-husband-6135".to_string())
+        );
     }
 
     #[test]

@@ -35,6 +35,17 @@ export component DownloadsTab inherits VerticalLayout {
     callback prioritize_job(string);
     callback set_speed_limit(int);
 
+    in-out property <int> speed_graph_mode: 0; // 0 = Bars, 1 = Area, 2 = Stats
+    in-out property <string> avg_speed_text: "0 B/s";
+    in-out property <string> network_stability_text: "Idle";
+    in-out property <float> speed_limit_ratio: 0.0;
+    in-out property <string> speed_limit_label: "";
+    in-out property <bool> show_custom_speed_dialog: false;
+    in-out property <string> custom_speed_input: "";
+
+    callback set_custom_speed_limit(string);
+    callback open_network_diagnostics();
+
     spacing: 12px;
 
     // Live Bandwidth & Speed Graph Monitor Card
@@ -43,7 +54,7 @@ export component DownloadsTab inherits VerticalLayout {
         border-radius: 12px;
         border-width: 1px;
         border-color: Theme.graph_card_border;
-        height: root.show_speed_graph ? 124px : 44px;
+        height: root.show_speed_graph ? (root.show_custom_speed_dialog ? 158px : 126px) : 44px;
         animate height { duration: 150ms; }
 
         VerticalLayout {
@@ -51,9 +62,9 @@ export component DownloadsTab inherits VerticalLayout {
             padding-right: 14px;
             padding-top: 10px;
             padding-bottom: 10px;
-            spacing: 8px;
+            spacing: 6px;
 
-            // Header: Live Speed, Metrics, and Toggle
+            // Header: Live Speed, Metrics, Modes, and Controls
             HorizontalLayout {
                 alignment: space-between;
 
@@ -165,15 +176,113 @@ export component DownloadsTab inherits VerticalLayout {
                             }
                         }
                     }
+
+                    // Diagnostics Tool Pill Button
+                    Rectangle {
+                        background: diag_touch.has_hover ? (Theme.is_dark ? #2e1065 : #f3e8ff) : Theme.sidebar_status_bg;
+                        border-radius: 5px;
+                        border-width: 1px;
+                        border-color: Theme.is_dark ? #7c3aed : #c084fc;
+                        height: 24px;
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 5px;
+                            alignment: center;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../icons/bolt.svg");
+                                    width: 11px;
+                                    height: 11px;
+                                    colorize: Theme.brand_purple;
+                                }
+                            }
+
+                            Text {
+                                text: "Diagnostics";
+                                color: Theme.brand_purple;
+                                font-size: 11px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        diag_touch := TouchArea {
+                            clicked => { root.open_network_diagnostics(); }
+                        }
+                    }
                 }
 
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: end;
 
-                    // Dynamic Bandwidth Limiter Presets
+                    // Graph View Modes: Bars | Area | Stats
                     HorizontalLayout {
-                        spacing: 3px;
+                        spacing: 2px;
+                        alignment: center;
+
+                        Rectangle {
+                            background: root.speed_graph_mode == 0 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
+                            border-radius: 4px;
+                            height: 22px;
+                            width: 36px;
+                            Text {
+                                text: "Bars";
+                                color: root.speed_graph_mode == 0 ? #ffffff : Theme.text_secondary;
+                                font-size: 10px;
+                                font-weight: 700;
+                                x: (parent.width - self.width) / 2;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => { root.speed_graph_mode = 0; }
+                            }
+                        }
+
+                        Rectangle {
+                            background: root.speed_graph_mode == 1 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
+                            border-radius: 4px;
+                            height: 22px;
+                            width: 36px;
+                            Text {
+                                text: "Area";
+                                color: root.speed_graph_mode == 1 ? #ffffff : Theme.text_secondary;
+                                font-size: 10px;
+                                font-weight: 700;
+                                x: (parent.width - self.width) / 2;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => { root.speed_graph_mode = 1; }
+                            }
+                        }
+
+                        Rectangle {
+                            background: root.speed_graph_mode == 2 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
+                            border-radius: 4px;
+                            height: 22px;
+                            width: 36px;
+                            Text {
+                                text: "Stats";
+                                color: root.speed_graph_mode == 2 ? #ffffff : Theme.text_secondary;
+                                font-size: 10px;
+                                font-weight: 700;
+                                x: (parent.width - self.width) / 2;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => { root.speed_graph_mode = 2; }
+                            }
+                        }
+                    }
+
+                    // Bandwidth Limiter Presets
+                    HorizontalLayout {
+                        spacing: 2px;
                         alignment: center;
 
                         Text {
@@ -188,17 +297,20 @@ export component DownloadsTab inherits VerticalLayout {
                             background: root.selected_speed_limit_index == 0 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
                             border-radius: 4px;
                             height: 22px;
+                            width: 34px;
                             Text {
                                 text: "Max";
                                 color: root.selected_speed_limit_index == 0 ? #ffffff : Theme.text_secondary;
                                 font-size: 10px;
                                 font-weight: 700;
-                                x: 6px;
+                                x: (parent.width - self.width) / 2;
                                 vertical-alignment: center;
                             }
-                            width: 34px;
                             TouchArea {
-                                clicked => { root.set_speed_limit(0); }
+                                clicked => {
+                                    root.show_custom_speed_dialog = false;
+                                    root.set_speed_limit(0);
+                                }
                             }
                         }
 
@@ -206,17 +318,20 @@ export component DownloadsTab inherits VerticalLayout {
                             background: root.selected_speed_limit_index == 1 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
                             border-radius: 4px;
                             height: 22px;
+                            width: 28px;
                             Text {
                                 text: "2M";
                                 color: root.selected_speed_limit_index == 1 ? #ffffff : Theme.text_secondary;
                                 font-size: 10px;
                                 font-weight: 700;
-                                x: 6px;
+                                x: (parent.width - self.width) / 2;
                                 vertical-alignment: center;
                             }
-                            width: 28px;
                             TouchArea {
-                                clicked => { root.set_speed_limit(1); }
+                                clicked => {
+                                    root.show_custom_speed_dialog = false;
+                                    root.set_speed_limit(1);
+                                }
                             }
                         }
 
@@ -224,17 +339,20 @@ export component DownloadsTab inherits VerticalLayout {
                             background: root.selected_speed_limit_index == 2 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
                             border-radius: 4px;
                             height: 22px;
+                            width: 28px;
                             Text {
                                 text: "5M";
                                 color: root.selected_speed_limit_index == 2 ? #ffffff : Theme.text_secondary;
                                 font-size: 10px;
                                 font-weight: 700;
-                                x: 6px;
+                                x: (parent.width - self.width) / 2;
                                 vertical-alignment: center;
                             }
-                            width: 28px;
                             TouchArea {
-                                clicked => { root.set_speed_limit(2); }
+                                clicked => {
+                                    root.show_custom_speed_dialog = false;
+                                    root.set_speed_limit(2);
+                                }
                             }
                         }
 
@@ -242,17 +360,20 @@ export component DownloadsTab inherits VerticalLayout {
                             background: root.selected_speed_limit_index == 3 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
                             border-radius: 4px;
                             height: 22px;
+                            width: 32px;
                             Text {
                                 text: "10M";
                                 color: root.selected_speed_limit_index == 3 ? #ffffff : Theme.text_secondary;
                                 font-size: 10px;
                                 font-weight: 700;
-                                x: 4px;
+                                x: (parent.width - self.width) / 2;
                                 vertical-alignment: center;
                             }
-                            width: 32px;
                             TouchArea {
-                                clicked => { root.set_speed_limit(3); }
+                                clicked => {
+                                    root.show_custom_speed_dialog = false;
+                                    root.set_speed_limit(3);
+                                }
                             }
                         }
 
@@ -260,27 +381,51 @@ export component DownloadsTab inherits VerticalLayout {
                             background: root.selected_speed_limit_index == 4 ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
                             border-radius: 4px;
                             height: 22px;
+                            width: 32px;
                             Text {
                                 text: "20M";
                                 color: root.selected_speed_limit_index == 4 ? #ffffff : Theme.text_secondary;
                                 font-size: 10px;
                                 font-weight: 700;
-                                x: 4px;
+                                x: (parent.width - self.width) / 2;
                                 vertical-alignment: center;
                             }
-                            width: 32px;
                             TouchArea {
-                                clicked => { root.set_speed_limit(4); }
+                                clicked => {
+                                    root.show_custom_speed_dialog = false;
+                                    root.set_speed_limit(4);
+                                }
+                            }
+                        }
+
+                        // Custom Cap Button
+                        Rectangle {
+                            background: (root.selected_speed_limit_index == 5 || root.show_custom_speed_dialog) ? Theme.brand_purple : (Theme.is_dark ? #1e293b : #e2e8f0);
+                            border-radius: 4px;
+                            height: 22px;
+                            width: 44px;
+                            Text {
+                                text: "Custom";
+                                color: (root.selected_speed_limit_index == 5 || root.show_custom_speed_dialog) ? #ffffff : Theme.text_secondary;
+                                font-size: 10px;
+                                font-weight: 700;
+                                x: (parent.width - self.width) / 2;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => {
+                                    root.show_custom_speed_dialog = !root.show_custom_speed_dialog;
+                                }
                             }
                         }
                     }
 
                     // Show/Hide Graph Button
                     ActionButton {
-                        text: root.show_speed_graph ? "Hide Graph" : "Show Graph";
+                        text: root.show_speed_graph ? "Hide" : "Show";
                         icon: root.show_speed_graph ? @image-url("../icons/x.svg") : @image-url("../icons/bolt.svg");
                         has_icon: true;
-                        height: 26px;
+                        height: 22px;
                         clicked => {
                             root.show_speed_graph = !root.show_speed_graph;
                         }
@@ -288,9 +433,42 @@ export component DownloadsTab inherits VerticalLayout {
                 }
             }
 
-            // Real-time Bar Visualizer Area
+            // Custom Speed Cap Input Row
+            if root.show_custom_speed_dialog: HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                padding-right: 4px;
+
+                Text {
+                    text: "Enter Custom Throttling Cap:";
+                    color: Theme.text_secondary;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+
+                custom_edit := LineEdit {
+                    text: root.custom_speed_input;
+                    placeholder_text: "e.g. 1.5M, 500K, 30M";
+                    width: 140px;
+                    height: 24px;
+                    accepted => {
+                        root.set_custom_speed_limit(custom_edit.text);
+                    }
+                }
+
+                ActionButton {
+                    text: "Apply Cap";
+                    height: 24px;
+                    clicked => {
+                        root.set_custom_speed_limit(custom_edit.text);
+                    }
+                }
+            }
+
+            // Real-time Visualizer Area
             if root.show_speed_graph: VerticalLayout {
-                spacing: 4px;
+                spacing: 3px;
 
                 Rectangle {
                     background: Theme.graph_bg;
@@ -316,7 +494,8 @@ export component DownloadsTab inherits VerticalLayout {
                         background: Theme.is_dark ? #ffffff08 : #0000000a;
                     }
 
-                    HorizontalLayout {
+                    // Mode 0: Dynamic Bars View
+                    if root.speed_graph_mode == 0: HorizontalLayout {
                         padding-left: 6px;
                         padding-right: 6px;
                         padding-top: 4px;
@@ -350,6 +529,161 @@ export component DownloadsTab inherits VerticalLayout {
                                     border-top-right-radius: 1.5px;
                                     background: #ffffff99;
                                 }
+                            }
+                        }
+                    }
+
+                    // Mode 1: Stepped Wave Area View
+                    if root.speed_graph_mode == 1: HorizontalLayout {
+                        padding-left: 6px;
+                        padding-right: 6px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
+                        spacing: 0px; // Seamless wave flow
+
+                        for sample in root.speed_samples: VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: end;
+
+                            Rectangle {
+                                height: Math.max(2px, sample.ratio * 45px);
+                                background: sample.ratio > 0.6 ? (Theme.is_dark ? #38bdf888 : #0284c788) :
+                                            sample.ratio > 0.3 ? (Theme.is_dark ? #60a5fa77 : #2563eb77) :
+                                            sample.ratio > 0.05 ? (Theme.is_dark ? #3b82f666 : #3b82f666) :
+                                            (Theme.is_dark ? #1a203244 : #e2e8f066);
+                                animate height { duration: 100ms; }
+
+                                // Illuminated Top Crest
+                                Rectangle {
+                                    y: 0;
+                                    width: parent.width;
+                                    height: 2px;
+                                    background: sample.ratio > 0.05 ? #38bdf8 : transparent;
+                                }
+                            }
+                        }
+                    }
+
+                    // Mode 2: Compact Telemetry & Stability View
+                    if root.speed_graph_mode == 2: HorizontalLayout {
+                        padding: 6px;
+                        spacing: 12px;
+
+                        // Stat 1: Rolling 5s Average
+                        Rectangle {
+                            background: Theme.is_dark ? #172033 : #ffffff;
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: Theme.inner_border;
+                            horizontal-stretch: 1;
+
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                alignment: space-between;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Text {
+                                        text: "5s Rolling Average";
+                                        color: Theme.text_muted;
+                                        font-size: 10px;
+                                        font-weight: 600;
+                                    }
+                                    Text {
+                                        text: root.avg_speed_text;
+                                        color: #38bdf8;
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Stat 2: Connection Stability
+                        Rectangle {
+                            background: Theme.is_dark ? #172033 : #ffffff;
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: Theme.inner_border;
+                            horizontal-stretch: 1;
+
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                alignment: space-between;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Text {
+                                        text: "Connection Stability";
+                                        color: Theme.text_muted;
+                                        font-size: 10px;
+                                        font-weight: 600;
+                                    }
+                                    Text {
+                                        text: root.network_stability_text;
+                                        color: root.network_stability_text == "Idle" ? Theme.text_muted : #10b981;
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Stat 3: Bandwidth Limit Saturation
+                        Rectangle {
+                            background: Theme.is_dark ? #172033 : #ffffff;
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: Theme.inner_border;
+                            horizontal-stretch: 1;
+
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                alignment: space-between;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Text {
+                                        text: "Active Bandwidth Cap";
+                                        color: Theme.text_muted;
+                                        font-size: 10px;
+                                        font-weight: 600;
+                                    }
+                                    Text {
+                                        text: root.speed_limit_label != "" ? root.speed_limit_label : "Uncapped Max";
+                                        color: root.speed_limit_label != "" ? #f59e0b : Theme.text_secondary;
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Horizontal Speed Limit Cap Guideline across Modes 0 & 1
+                    if (root.speed_graph_mode == 0 || root.speed_graph_mode == 1) && root.speed_limit_ratio > 0.05 && root.speed_limit_ratio <= 1.0: Rectangle {
+                        y: parent.height * (1.0 - root.speed_limit_ratio);
+                        x: 0;
+                        width: parent.width;
+                        height: 1.5px;
+                        background: #f43f5e;
+
+                        Rectangle {
+                            x: parent.width - 85px;
+                            y: -14px;
+                            height: 14px;
+                            background: #f43f5ecc;
+                            border-radius: 3px;
+                            Text {
+                                text: "Cap: " + root.speed_limit_label;
+                                color: #ffffff;
+                                font-size: 9px;
+                                font-weight: 700;
+                                x: 4px;
+                                vertical-alignment: center;
                             }
                         }
                     }

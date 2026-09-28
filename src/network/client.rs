@@ -40,6 +40,22 @@ fn build_http_client(proxy_url: Option<&str>) -> reqwest::Client {
     builder.build().unwrap_or_else(|_| reqwest::Client::new())
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NetworkDiagnosticReport {
+    pub target: String,
+    pub dns_ms: u128,
+    pub dns_status: String,
+    pub rtt_ms: u128,
+    pub rtt_status: String,
+    pub supports_range: bool,
+    pub range_status: String,
+    pub throughput_speed_text: String,
+    pub throughput_status: String,
+    pub overall_status: String,
+    pub summary_headline: String,
+    pub summary_details: String,
+}
+
 #[derive(Clone)]
 pub struct NetworkClient {
     client: Arc<RwLock<reqwest::Client>>,
@@ -100,6 +116,135 @@ impl NetworkClient {
                     }
                 }
             }
+        }
+    }
+
+    /// Performs comprehensive network diagnostic testing (DNS, HTTP Handshake RTT, Range support, Burst throughput)
+    pub async fn run_diagnostics(&self, target_url: &str) -> NetworkDiagnosticReport {
+        let trimmed = target_url.trim();
+        let target = if trimmed.is_empty() {
+            "https://cloudflare.com/cdn-cgi/trace"
+        } else {
+            trimmed
+        };
+
+        let host = match reqwest::Url::parse(target) {
+            Ok(u) => u.host_str().unwrap_or("cloudflare.com").to_string(),
+            Err(_) => "cloudflare.com".to_string(),
+        };
+
+        // 1. Measure DNS Lookup Latency
+        let dns_start = std::time::Instant::now();
+        let dns_port = format!("{}:443", host);
+        let _ = tokio::net::lookup_host(&dns_port).await;
+        let dns_ms = dns_start.elapsed().as_millis().max(1);
+        let dns_status = if dns_ms < 35 {
+            "Fast".to_string()
+        } else if dns_ms < 120 {
+            "Normal".to_string()
+        } else {
+            "Slow".to_string()
+        };
+
+        // 2. Measure HTTP Handshake & RTT Ping
+        let client = self.client.read().unwrap().clone();
+        let rtt_start = std::time::Instant::now();
+        let _ = client.head(target).send().await;
+        let rtt_ms = rtt_start.elapsed().as_millis().max(1);
+        let rtt_status = if rtt_ms < 70 {
+            "Optimal".to_string()
+        } else if rtt_ms < 190 {
+            "Moderate".to_string()
+        } else {
+            "High Latency".to_string()
+        };
+
+        // 3. Test Byte-Range Support & Micro-Burst Throughput
+        let probe_start = std::time::Instant::now();
+        let get_res = client
+            .get(target)
+            .header(reqwest::header::RANGE, "bytes=0-131071")
+            .send()
+            .await;
+
+        let (supports_range, range_status, throughput_text, throughput_status, overall_status, headline, details) = match get_res {
+            Ok(resp) => {
+                let code = resp.status();
+                let range_ok = code.as_u16() == 206
+                    || resp
+                        .headers()
+                        .get(reqwest::header::ACCEPT_RANGES)
+                        .map(|v| v == "bytes")
+                        .unwrap_or(false);
+
+                let r_stat = if range_ok { "Supported".to_string() } else { "No Resume".to_string() };
+
+                let bytes = resp.bytes().await.unwrap_or_default();
+                let elapsed = probe_start.elapsed().as_secs_f64().max(0.001);
+                let bps = (bytes.len() as f64) / elapsed;
+                let spd_text = DownloadProgress::format_speed_val(bps);
+                let tp_stat = if bps > 10.0 * 1024.0 * 1024.0 {
+                    "Fast (10M+)".to_string()
+                } else if bps > 2.0 * 1024.0 * 1024.0 {
+                    "Normal (2-10M)".to_string()
+                } else {
+                    "Limited (<2M)".to_string()
+                };
+
+                let (ov_stat, head, det) = if rtt_ms < 85 && range_ok {
+                    (
+                        "Optimal".to_string(),
+                        "Connection is healthy and optimal for streaming".to_string(),
+                        format!("Edge CDN responded in {} ms with byte-range resume verified. Burst throughput reached {}.", rtt_ms, spd_text)
+                    )
+                } else if !range_ok {
+                    (
+                        "Degraded".to_string(),
+                        "Server lacks byte-range resume support".to_string(),
+                        "This media server does not support HTTP 206 Partial Content. Paused or interrupted downloads cannot be resumed and will restart from byte 0.".to_string()
+                    )
+                } else if rtt_ms >= 200 {
+                    (
+                        "Degraded".to_string(),
+                        "High network latency detected".to_string(),
+                        format!("Round-trip latency is {} ms. Consider checking your ISP or enabling a proxy to improve routing.", rtt_ms)
+                    )
+                } else {
+                    (
+                        "Good".to_string(),
+                        "Connection is stable and ready".to_string(),
+                        format!("Latency: {} ms, DNS: {} ms. Streams and downloads will operate smoothly.", rtt_ms, dns_ms)
+                    )
+                };
+
+                (range_ok, r_stat, spd_text, tp_stat, ov_stat, head, det)
+            }
+            Err(e) => {
+                (
+                    false,
+                    "Failed".to_string(),
+                    "0 B/s".to_string(),
+                    "Offline".to_string(),
+                    "Unreachable".to_string(),
+                    "Host unreachable or connection failed".to_string(),
+                    format!("Could not connect to target host: {}. Check network connection or proxy configuration.", e)
+                )
+            }
+        };
+
+        NetworkDiagnosticReport {
+            target: target.to_string(),
+            dns_ms,
+            dns_status,
+            rtt_ms,
+            rtt_status,
+            supports_range,
+            range_status,
+            throughput_speed_text: throughput_text,
+            throughput_status,
+            overall_status,
+            summary_headline: headline,
+            summary_details: details,
         }
     }
 
@@ -329,5 +474,41 @@ impl NetworkClient {
         info!("Download completed successfully: {:?}", destination_path);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_network_diagnostic_report_defaults() {
+        let report = NetworkDiagnosticReport {
+            target: "https://cloudflare.com".to_string(),
+            dns_ms: 12,
+            dns_status: "Fast".to_string(),
+            rtt_ms: 25,
+            rtt_status: "Optimal".to_string(),
+            supports_range: true,
+            range_status: "Supported".to_string(),
+            throughput_speed_text: "15.2 MB/s".to_string(),
+            throughput_status: "Fast (10M+)".to_string(),
+            overall_status: "Optimal".to_string(),
+            summary_headline: "Optimal connection".to_string(),
+            summary_details: "Connection verified".to_string(),
+        };
+
+        assert_eq!(report.target, "https://cloudflare.com");
+        assert!(report.supports_range);
+        assert_eq!(report.overall_status, "Optimal");
+    }
+
+    #[tokio::test]
+    async fn test_network_client_diagnostics_unreachable_target() {
+        let client = NetworkClient::new();
+        let report = client.run_diagnostics("http://127.0.0.1:9").await;
+        assert_eq!(report.target, "http://127.0.0.1:9");
+        assert!(!report.supports_range);
+        assert_eq!(report.overall_status, "Unreachable");
     }
 }
