@@ -13,6 +13,7 @@ export component EpisodeModal inherits Rectangle {
 
     callback close();
     callback toggle_episode(int);
+    callback preview_episode(int);
     callback select_all(bool);
     callback select_invert();
     callback select_first_n(int);
@@ -350,26 +351,44 @@ export component EpisodeModal inherits Rectangle {
                                     }
                                 }
 
-                                // Right status pill
-                                VerticalLayout {
-                                    alignment: center;
-                                    Rectangle {
-                                        height: 22px;
-                                        border-radius: 4px;
-                                        background: ep.selected ? (Theme.is_dark ? #064e3b : #d1fae5) : transparent;
-                                        border-width: 1px;
-                                        border-color: ep.selected ? (Theme.is_dark ? #059669 : #34d399) : transparent;
+                                // Right status pill & Play preview button
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: end;
 
-                                        HorizontalLayout {
-                                            padding-left: 8px;
-                                            padding-right: 8px;
-                                            alignment: center;
-                                            Text {
-                                                text: ep.selected ? "Ready to Queue" : "Excluded";
-                                                color: ep.selected ? (Theme.is_dark ? #34d399 : #047857) : Theme.text_dimmed;
-                                                font-size: 11px;
-                                                font-weight: 600;
-                                                vertical-alignment: center;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Rectangle {
+                                            height: 22px;
+                                            border-radius: 4px;
+                                            background: ep.selected ? (Theme.is_dark ? #064e3b : #d1fae5) : transparent;
+                                            border-width: 1px;
+                                            border-color: ep.selected ? (Theme.is_dark ? #059669 : #34d399) : transparent;
+
+                                            HorizontalLayout {
+                                                padding-left: 8px;
+                                                padding-right: 8px;
+                                                alignment: center;
+                                                Text {
+                                                    text: ep.selected ? "Ready to Queue" : "Excluded";
+                                                    color: ep.selected ? (Theme.is_dark ? #34d399 : #047857) : Theme.text_dimmed;
+                                                    font-size: 11px;
+                                                    font-weight: 600;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        ActionButton {
+                                            text: "Play";
+                                            icon: @image-url("../icons/play.svg");
+                                            has_icon: true;
+                                            height: 26px;
+                                            clicked => {
+                                                root.preview_episode(ep.index);
                                             }
                                         }
                                     }

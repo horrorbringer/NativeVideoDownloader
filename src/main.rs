@@ -966,6 +966,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // Callback: Preview primary stream URL
+    let meta_preview = current_metadata.clone();
+    main_window.on_preview_current_stream(move || {
+        let meta_preview = meta_preview.clone();
+        tokio::spawn(async move {
+            let meta_guard = meta_preview.lock().await;
+            if let Some(ref meta) = *meta_guard {
+                let stream_url = meta.url.clone();
+                let referer = meta.referer.clone();
+                if let Err(e) = filesystem::play_stream_url(&stream_url, referer.as_deref()) {
+                    warn!("Failed to preview stream URL {}: {}", stream_url, e);
+                }
+            }
+        });
+    });
+
+    // Callback: Preview specific episode stream URL
+    let meta_preview_ep = current_metadata.clone();
+    main_window.on_preview_episode_stream(move |idx| {
+        let meta_preview_ep = meta_preview_ep.clone();
+        tokio::spawn(async move {
+            let meta_guard = meta_preview_ep.lock().await;
+            if let Some(ref meta) = *meta_guard {
+                let idx_usize = idx as usize;
+                if let Some(entry) = meta.playlist_entries.get(idx_usize) {
+                    let stream_url = entry.url.clone();
+                    let referer = entry.referer.clone().or_else(|| meta.referer.clone());
+                    if let Err(e) = filesystem::play_stream_url(&stream_url, referer.as_deref()) {
+                        warn!("Failed to preview episode stream URL {}: {}", stream_url, e);
+                    }
+                }
+            }
+        });
+    });
+
     // Callback: Toggle single episode selection
     let weak_toggle = main_window.as_weak();
     main_window.on_toggle_episode(move |idx| {

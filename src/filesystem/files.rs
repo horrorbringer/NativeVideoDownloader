@@ -683,6 +683,67 @@ pub fn play_media_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Plays or previews a streaming media URL (e.g. mp4, m3u8, or web link) with the system default player or browser
+#[allow(dead_code)]
+pub fn play_stream_url(stream_url: &str, referer: Option<&str>) -> Result<()> {
+    let trimmed = stream_url.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    tracing::info!("Launching stream preview: {} (referer: {:?})", trimmed, referer);
+
+    #[cfg(target_os = "macos")]
+    {
+        // 1. If mpv CLI is installed, use mpv with header forwarding
+        if let Ok(_) = std::process::Command::new("mpv")
+            .arg(trimmed)
+            .args(if let Some(r) = referer {
+                vec![format!("--http-header-fields=Referer: {}, Origin: {}", r, r)]
+            } else {
+                vec![]
+            })
+            .spawn()
+        {
+            return Ok(());
+        }
+
+        // 2. If IINA is installed on macOS
+        if std::path::Path::new("/Applications/IINA.app").exists() {
+            if let Ok(_) = std::process::Command::new("open")
+                .args(["-a", "IINA", trimmed])
+                .spawn()
+            {
+                return Ok(());
+            }
+        }
+
+        // 3. If VLC is installed on macOS
+        if std::path::Path::new("/Applications/VLC.app").exists() {
+            if let Ok(_) = std::process::Command::new("open")
+                .args(["-a", "VLC", trimmed])
+                .spawn()
+            {
+                return Ok(());
+            }
+        }
+
+        // 4. Default: launch system handler / browser (QuickTime / Safari / Chrome)
+        let _ = std::process::Command::new("open").arg(trimmed).spawn();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd").args(["/C", "start", "", trimmed]).spawn();
+    }
+
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(trimmed).spawn();
+    }
+
+    Ok(())
+}
+
 /// Reads text currently stored in the system clipboard
 pub fn read_clipboard_text() -> Option<String> {
     #[cfg(target_os = "macos")]

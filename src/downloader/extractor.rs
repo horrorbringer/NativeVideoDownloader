@@ -539,6 +539,11 @@ pub async fn inspect_video_with_options(
     cookies_browser: Option<&str>,
     proxy: Option<&str>,
 ) -> Result<VideoMetadata> {
+    // Fast path: AnyReel short dramas have custom native parser without yt-dlp delay
+    if url.contains("anyreel.app") {
+        return scrape_page_for_media_with_proxy(url, proxy).await;
+    }
+
     let ytdlp_bin = ensure_ytdlp_installed().await?;
 
     info!(
@@ -742,8 +747,21 @@ pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str
         }
     }
 
+    let target_page_url = if page_url.contains("anyreel.app") {
+        let trimmed = page_url.trim_end_matches('/');
+        if trimmed.contains("/episodes/") {
+            trimmed.replace("/episodes/", "/video/episode-1-")
+        } else if trimmed.contains("/movie/") {
+            trimmed.replace("/movie/", "/video/episode-1-")
+        } else {
+            trimmed.to_string()
+        }
+    } else {
+        page_url.to_string()
+    };
+
     let client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
-    let resp = client.get(page_url).send().await?;
+    let resp = client.get(&target_page_url).send().await?;
     if !resp.status().is_success() {
         return Err(AppError::Generic(format!("HTTP {}", resp.status())));
     }
@@ -751,7 +769,7 @@ pub async fn scrape_page_for_media_with_proxy(page_url: &str, proxy: Option<&str
     let html = resp.text().await?;
 
     // 1. Run Universal Media Sniffer across structured JSON, HTML5 video, MacCMS, and script streams
-    if let Some(meta) = universal_sniff_media_from_html(&html, page_url) {
+    if let Some(meta) = universal_sniff_media_from_html(&html, &target_page_url) {
         info!("Universal sniffer discovered media source: '{}' (playlist: {}, url: {})", meta.title, meta.is_playlist, meta.url);
 
         // If series playlist, probe first episode to detect stream quality in background
@@ -1419,6 +1437,11 @@ pub fn sniff_embedded_json_streams(html: &str, base_url: &str) -> Option<VideoMe
 /// Universal Media Sniffer: Automatically extracts media streams (.mp4, .m3u8, etc.)
 /// from any website's embedded JSON, HTML5 tags, MacCMS configs, player scripts, or regex patterns.
 pub fn universal_sniff_media_from_html(html: &str, page_url: &str) -> Option<VideoMetadata> {
+    // 0. AnyReel Short Drama series (Next.js App Router RSC streams)
+    if let Some(anyreel_meta) = extract_anyreel_drama(html, page_url) {
+        return Some(anyreel_meta);
+    }
+
     // 1. Structured JSON (Next.js __NEXT_DATA__, Nuxt, player configs, state objects)
     if let Some(json_meta) = sniff_embedded_json_streams(html, page_url) {
         return Some(json_meta);
@@ -1592,6 +1615,140 @@ pub fn extract_next_data_drama(html: &str, page_url: &str) -> Option<VideoMetada
         vcodec: Some("H.264".to_string()),
         acodec: Some("AAC".to_string()),
         referer: Some(page_url.to_string()),
+        ..Default::default()
+    })
+}
+
+/// Extracts short drama series playlist and direct M3U8 streams from AnyReel (Next.js App Router RSC streams)
+pub fn extract_anyreel_drama(html: &str, page_url: &str) -> Option<VideoMetadata> {
+    if !html.contains("dramaEpisodes") {
+        return None;
+    }
+
+    let idx = html.find("dramaEpisodes")?;
+    let rest = &html[idx..];
+    let bracket_rel_start = rest.find('[')?;
+    let bracket_start = idx + bracket_rel_start;
+
+    let mut depth = 0;
+    let mut end_idx = 0;
+    for (i, c) in html[bracket_start..].char_indices() {
+        if c == '[' {
+            depth += 1;
+        } else if c == ']' {
+            depth -= 1;
+            if depth == 0 {
+                end_idx = bracket_start + i + 1;
+                break;
+            }
+        }
+    }
+
+    if end_idx == 0 {
+        return None;
+    }
+
+    let raw_slice = &html[bracket_start..end_idx];
+    // Unescape JSON string literal escaping (\", \\, \/)
+    let unescaped = raw_slice
+        .replace(r#"\""#, "\"")
+        .replace(r#"\\"#, "\\")
+        .replace(r#"\/"#, "/");
+
+    let episodes_arr: Vec<serde_json::Value> = serde_json::from_str(&unescaped).ok()?;
+    if episodes_arr.is_empty() {
+        return None;
+    }
+
+    // Extract series title
+    let series_title = html
+        .find("seriesName")
+        .and_then(|pos| {
+            let slice = &html[pos..pos + 200.min(html.len() - pos)];
+            let colon_pos = slice.find(':')?;
+            let after_colon = &slice[colon_pos + 1..];
+            let start = after_colon.find(|c: char| c.is_alphanumeric())?;
+            let rest = &after_colon[start..];
+            let end = rest.find(|c: char| c == '"' || c == '\\')?;
+            Some(rest[..end].trim().to_string())
+        })
+        .or_else(|| extract_html_title(html))
+        .unwrap_or_else(|| "AnyReel Drama Series".to_string());
+
+    // Extract thumbnail
+    let thumbnail_url = extract_html_thumbnail(html, page_url);
+
+    let mut entries = Vec::new();
+    let mut primary_stream_url = String::new();
+    let mut primary_duration = None;
+
+    for (idx, ep) in episodes_arr.iter().enumerate() {
+        let ep_num = ep.get("episodeSort").and_then(|v| v.as_u64()).unwrap_or((idx + 1) as u64);
+        let ep_name = ep.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        let title = if !ep_name.is_empty() {
+            format!("{} - {}", series_title, ep_name)
+        } else {
+            format!("{} - Episode {}", series_title, ep_num)
+        };
+
+        let duration = ep.get("totalDuration").and_then(|v| v.as_u64());
+
+        // Derive direct master m3u8 playlist URL
+        let mut stream_url = String::new();
+        if let Some(imgs) = ep.get("imageSprite").and_then(|s| s.get("imageUrlSet")).and_then(|a| a.as_array()) {
+            if let Some(first_img) = imgs.first().and_then(|v| v.as_str()) {
+                if let Some(base) = first_img.split("imageSprite").next() {
+                    stream_url = format!("{}adp.1936796.m3u8", base);
+                }
+            }
+        }
+
+        // Fallback to Tencent Cloud VOD playinfo endpoint if imageSprite was not found
+        if stream_url.is_empty() {
+            if let Some(vid) = ep.get("videoId").and_then(|v| v.as_str()) {
+                let psign = ep.get("pSign").and_then(|v| v.as_str()).unwrap_or("");
+                stream_url = format!("https://playvideo.vodplayvideo.net/getplayinfo/v4/1500065780/{}?psign={}", vid, psign);
+            }
+        }
+
+        if !stream_url.is_empty() {
+            if primary_stream_url.is_empty() {
+                primary_stream_url = stream_url.clone();
+                primary_duration = duration;
+            }
+            entries.push(crate::models::PlaylistEntry {
+                title,
+                url: stream_url,
+                referer: Some("https://www.anyreel.app/".to_string()),
+            });
+        }
+    }
+
+    if entries.is_empty() {
+        return None;
+    }
+
+    let count = entries.len();
+    Some(VideoMetadata {
+        url: primary_stream_url,
+        title: series_title,
+        content_length: None,
+        content_type: Some("application/x-mpegURL".to_string()),
+        supports_ranges: true,
+        is_extractor: true,
+        duration_seconds: primary_duration,
+        resolution: Some(format!("{} Episodes • 1080p Full HD", count)),
+        ext: Some("m3u8".to_string()),
+        is_playlist: count > 1,
+        playlist_count: count,
+        playlist_entries: entries,
+        has_subtitles: false,
+        subtitles_summary: String::new(),
+        thumbnail_url,
+        fps: Some(30.0),
+        vcodec: Some("H.264".to_string()),
+        acodec: Some("AAC".to_string()),
+        referer: Some("https://www.anyreel.app/".to_string()),
         ..Default::default()
     })
 }
@@ -2503,6 +2660,48 @@ mod tests {
         assert_eq!(meta.url, "https://cdn.livebroadcast.com/live/hls/master.m3u8");
         assert_eq!(meta.ext, Some("m3u8".to_string()));
         assert_eq!(meta.title, "Live Event Stream");
+    }
+
+    #[test]
+    fn test_extract_anyreel_drama() {
+        let sample = r#"
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>I Swapped My Vampire Husband - Anyreel</title>
+                <meta property="og:image" content="https://anyoss.anyreel.app/shortdrama/cover123.jpg" />
+            </head>
+            <body>
+            <script>
+                self.__next_f.push([1,"6:[[\"$\",\"$L1\",null,{\"data\":{\"seriesName\":\"I Swapped My Vampire Husband\",\"dramaEpisodes\":[{\"episodeSort\":1,\"title\":\"Episode 1\",\"videoId\":\"5001\",\"totalDuration\":79,\"imageSprite\":{\"imageUrlSet\":[\"http://videoint.anyreel.app/43a3213bvoduse1500065780/hash1/imageSprite/thumb_0.jpg\"]}},{\"episodeSort\":2,\"title\":\"Episode 2\",\"videoId\":\"5002\",\"totalDuration\":66,\"imageSprite\":{\"imageUrlSet\":[\"http://videoint.anyreel.app/43a3213bvoduse1500065780/hash2/imageSprite/thumb_0.jpg\"]}}]}}]]"]);
+            </script>
+            </body>
+            </html>
+        "#;
+        let meta = extract_anyreel_drama(sample, "https://www.anyreel.app/video/episode-1-i-swapped-my-vampire-husband-6135").expect("Must extract AnyReel drama");
+        assert_eq!(meta.title, "I Swapped My Vampire Husband");
+        assert!(meta.is_playlist);
+        assert_eq!(meta.playlist_count, 2);
+        assert_eq!(meta.playlist_entries[0].url, "http://videoint.anyreel.app/43a3213bvoduse1500065780/hash1/adp.1936796.m3u8");
+        assert_eq!(meta.playlist_entries[0].title, "I Swapped My Vampire Husband - Episode 1");
+        assert_eq!(meta.playlist_entries[1].url, "http://videoint.anyreel.app/43a3213bvoduse1500065780/hash2/adp.1936796.m3u8");
+        assert_eq!(meta.playlist_entries[1].title, "I Swapped My Vampire Husband - Episode 2");
+        assert_eq!(meta.thumbnail_url, Some("https://anyoss.anyreel.app/shortdrama/cover123.jpg".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_inspect_anyreel_live_url() {
+        let res = scrape_page_for_media_with_proxy(
+            "https://www.anyreel.app/episodes/i-swapped-my-vampire-husband-6135",
+            None,
+        ).await;
+        if let Ok(meta) = res {
+            assert!(meta.is_playlist);
+            assert_eq!(meta.title, "I Swapped My Vampire Husband");
+            assert_eq!(meta.playlist_count, 6);
+            assert!(meta.url.contains(".m3u8"));
+            assert_eq!(meta.referer, Some("https://www.anyreel.app/".to_string()));
+        }
     }
 }
 

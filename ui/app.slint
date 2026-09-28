@@ -142,6 +142,8 @@ export component AppWindow inherits Window {
 
     // Callbacks
     callback analyze_url(string);
+    callback preview_current_stream();
+    callback preview_episode_stream(int);
     callback paste_from_clipboard();
     callback paste_batch_from_clipboard();
     callback import_links_file();
@@ -618,6 +620,8 @@ export component AppWindow inherits Window {
 
                 analyze_url(url) => { root.analyze_url(url); }
                 clear_analysis() => { root.clear_analysis(); }
+                preview_current_stream() => { root.preview_current_stream(); }
+                preview_episode_stream(idx) => { root.preview_episode_stream(idx); }
                 toggle_episode(idx) => { root.toggle_episode(idx); }
                 select_all_episodes(all) => { root.select_all_episodes(all); }
                 apply_episode_range(range) => { root.apply_episode_range(range); }
@@ -803,5 +807,6 @@ export component AppWindow inherits Window {
         select_invert => { root.invert_episode_selection(); }
         select_first_n(n) => { root.select_first_n_episodes(n); }
         apply_range(range) => { root.apply_episode_range(range); }
+        preview_episode(idx) => { root.preview_episode_stream(idx); }
     }
 }
