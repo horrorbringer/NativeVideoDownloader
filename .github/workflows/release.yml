@@ -48,6 +48,26 @@ jobs:
           cp target/universal-apple-darwin/release/native_video_downloader "$APP_DIR/Contents/MacOS/native_video_downloader"
           chmod +x "$APP_DIR/Contents/MacOS/native_video_downloader"
 
+          # Copy or generate AppIcon.icns for macOS bundle
+          if [ -f "assets/AppIcon.icns" ]; then
+            cp assets/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
+          elif [ -f "assets/app_icon.png" ]; then
+            ICONSET="AppIcon.iconset"
+            mkdir -p "$ICONSET"
+            sips -z 16 16     assets/app_icon.png --out "$ICONSET/icon_16x16.png"
+            sips -z 32 32     assets/app_icon.png --out "$ICONSET/icon_16x16@2x.png"
+            sips -z 32 32     assets/app_icon.png --out "$ICONSET/icon_32x32.png"
+            sips -z 64 64     assets/app_icon.png --out "$ICONSET/icon_32x32@2x.png"
+            sips -z 128 128   assets/app_icon.png --out "$ICONSET/icon_128x128.png"
+            sips -z 256 256   assets/app_icon.png --out "$ICONSET/icon_128x128@2x.png"
+            sips -z 256 256   assets/app_icon.png --out "$ICONSET/icon_256x256.png"
+            sips -z 512 512   assets/app_icon.png --out "$ICONSET/icon_256x256@2x.png"
+            sips -z 512 512   assets/app_icon.png --out "$ICONSET/icon_512x512.png"
+            sips -z 1024 1024 assets/app_icon.png --out "$ICONSET/icon_512x512@2x.png"
+            iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/AppIcon.icns"
+            rm -rf "$ICONSET"
+          fi
+
           cat << 'EOF' > "$APP_DIR/Contents/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -59,6 +79,8 @@ jobs:
               <string>com.nativevideodownloader.app</string>
               <key>CFBundleName</key>
               <string>Native Video Downloader</string>
+              <key>CFBundleIconFile</key>
+              <string>AppIcon</string>
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
@@ -108,6 +130,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist-win
           Copy-Item target/x86_64-pc-windows-msvc/release/native_video_downloader.exe dist-win/
           Copy-Item README.md dist-win/ -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path dist-win/assets
+          Copy-Item assets/* dist-win/assets/ -ErrorAction SilentlyContinue
           Compress-Archive -Path dist-win/* -DestinationPath NativeVideoDownloader-Windows-x64.zip
 
       - name: Upload Windows Assets to Release
@@ -148,6 +172,8 @@ jobs:
           mkdir -p dist-linux
           cp target/x86_64-unknown-linux-gnu/release/native_video_downloader dist-linux/
           chmod +x dist-linux/native_video_downloader
+          mkdir -p dist-linux/assets
+          cp assets/* dist-linux/assets/ 2>/dev/null || true
           tar -czvf NativeVideoDownloader-Linux-x64.tar.gz -C dist-linux .
 
       - name: Upload Linux Assets to Release

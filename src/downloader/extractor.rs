@@ -229,6 +229,7 @@ pub fn is_streaming_platform(url: &str) -> bool {
         || lower.contains("bilibili.com")
         || lower.contains("b23.tv")
         || lower.contains("douyin.com")
+        || lower.contains("iesdouyin.com")
         || lower.contains("iq.com")
         || lower.contains("iqiyi.com")
         || lower.contains("youku.com")
@@ -332,6 +333,17 @@ pub fn extract_candidate_media_url(text: &str) -> Option<String> {
             return Some(cleaned);
         }
     }
+    // Direct substring search for embedded URLs without whitespace (common in Douyin / TikTok share copy)
+    if let Some(start_idx) = trimmed.find("http://").or_else(|| trimmed.find("https://")) {
+        let candidate = &trimmed[start_idx..];
+        let end_idx = candidate
+            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '。' | '！' | '，' | '；' | '）' | '】' | '》' | ']' | ')'))
+            .unwrap_or(candidate.len());
+        let extracted = clean_token(&candidate[..end_idx]);
+        if is_candidate_media_url(&extracted) {
+            return Some(extracted);
+        }
+    }
     None
 }
 
@@ -388,7 +400,11 @@ pub fn apply_browser_cookies(cmd: &mut Command, browser: &str) {
     let _ = std::fs::create_dir_all(&bin_dir);
     let cache_file = bin_dir.join(format!("cookies_{}.txt", trimmed));
     let is_fresh = if let Ok(metadata) = std::fs::metadata(&cache_file) {
-        if let Ok(modified) = metadata.modified() {
+        if metadata.len() > 64 * 1024 || metadata.len() == 0 {
+            // Delete bloated or empty cookie cache that exceeds typical HTTP header buffers and causes HTTP 413
+            let _ = std::fs::remove_file(&cache_file);
+            false
+        } else if let Ok(modified) = metadata.modified() {
             if let Ok(elapsed) = modified.elapsed() {
                 // Cookies cached within the last 45 minutes are reused immediately
                 elapsed.as_secs() < 2700 && metadata.len() > 100
@@ -402,14 +418,30 @@ pub fn apply_browser_cookies(cmd: &mut Command, browser: &str) {
         false
     };
 
-    if is_fresh {
+    if is_fresh && cache_file.exists() {
         info!("Applying cached browser cookies from {:?} (bypassing Keychain decryption)", cache_file);
         cmd.arg("--cookies").arg(&cache_file);
     } else {
+        if cache_file.exists() {
+            let _ = std::fs::remove_file(&cache_file);
+        }
         info!("Extracting fresh browser cookies from {} and updating cache at {:?}", trimmed, cache_file);
         cmd.arg("--cookies-from-browser").arg(trimmed);
         cmd.arg("--cookies").arg(&cache_file);
     }
+}
+
+/// Detailed quality presets and codecs extracted from stream formats
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct QualityAndCodecs {
+    pub fps: Option<f64>,
+    pub vcodec: Option<String>,
+    pub acodec: Option<String>,
+    pub size_best: Option<u64>,
+    pub size_1080p: Option<u64>,
+    pub size_720p: Option<u64>,
+    pub size_480p: Option<u64>,
+    pub size_audio: Option<u64>,
 }
 
 /// Analyzes yt-dlp format streams to extract fps, codecs, and calculate estimated sizes for each quality preset
@@ -417,16 +449,7 @@ pub fn parse_quality_and_codecs(
     json_val: &serde_json::Value,
     duration_secs: Option<u64>,
     top_filesize: Option<u64>,
-) -> (
-    Option<f64>,
-    Option<String>,
-    Option<String>,
-    Option<u64>,
-    Option<u64>,
-    Option<u64>,
-    Option<u64>,
-    Option<u64>,
-) {
+) -> QualityAndCodecs {
     let formats = json_val.get("formats").and_then(|v| v.as_array());
 
     // FPS
@@ -451,6 +474,8 @@ pub fn parse_quality_and_codecs(
             "AV1".to_string()
         } else if r.starts_with("hev1") || r.starts_with("hvc1") || r.starts_with("h265") {
             "H.265 (HEVC)".to_string()
+        } else if r.starts_with("vvc1") || r.starts_with("h266") {
+            "H.266 (VVC)".to_string()
         } else {
             r.split('.').next().unwrap_or(r).to_uppercase()
         }
@@ -466,6 +491,14 @@ pub fn parse_quality_and_codecs(
             "Vorbis".to_string()
         } else if r.starts_with("mp3") {
             "MP3".to_string()
+        } else if r.starts_with("flac") {
+            "FLAC".to_string()
+        } else if r.starts_with("alac") {
+            "ALAC".to_string()
+        } else if r.starts_with("ac-3") || r.starts_with("ac3") {
+            "AC-3".to_string()
+        } else if r.starts_with("ec-3") || r.starts_with("eac3") {
+            "E-AC-3".to_string()
         } else {
             r.split('.').next().unwrap_or(r).to_uppercase()
         }
@@ -511,7 +544,7 @@ pub fn parse_quality_and_codecs(
         }
     }
 
-    // Best Audio size estimate
+    // Best Audio size estimate (inspects byte sizes or calculates from abr/tbr audio bitrates)
     let mut best_audio_size: Option<u64> = None;
     if let Some(arr) = formats {
         for f in arr {
@@ -521,7 +554,14 @@ pub fn parse_quality_and_codecs(
 
             if (vc == "none" || h.is_none() || h == Some(0)) && ac != "none" {
                 let size = f.get("filesize").and_then(|v| v.as_u64())
-                    .or_else(|| f.get("filesize_approx").and_then(|v| v.as_u64()));
+                    .or_else(|| f.get("filesize_approx").and_then(|v| v.as_u64()))
+                    .or_else(|| {
+                        // Calculate from bitrate (abr or tbr in kbps) and duration
+                        let abr = f.get("abr").and_then(|v| v.as_f64())
+                            .or_else(|| f.get("tbr").and_then(|v| v.as_f64()))?;
+                        let d = duration_secs? as f64;
+                        Some(((abr * 1000.0 / 8.0) * d) as u64)
+                    });
                 if let Some(s) = size {
                     best_audio_size = Some(best_audio_size.map_or(s, |curr| curr.max(s)));
                 }
@@ -544,7 +584,14 @@ pub fn parse_quality_and_codecs(
             let h = f.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
             if h >= min_h && h <= target_height {
                 let size = f.get("filesize").and_then(|v| v.as_u64())
-                    .or_else(|| f.get("filesize_approx").and_then(|v| v.as_u64()));
+                    .or_else(|| f.get("filesize_approx").and_then(|v| v.as_u64()))
+                    .or_else(|| {
+                        // Fallback to real stream bitrate (tbr or vbr in kbps) and duration
+                        let bitrate_kbps = f.get("tbr").and_then(|v| v.as_f64())
+                            .or_else(|| f.get("vbr").and_then(|v| v.as_f64()))?;
+                        let d = duration_secs? as f64;
+                        Some(((bitrate_kbps * 1000.0 / 8.0) * d) as u64)
+                    });
                 let ac = f.get("acodec").and_then(|v| v.as_str()).unwrap_or("none");
 
                 if let Some(base_size) = size {
@@ -575,12 +622,24 @@ pub fn parse_quality_and_codecs(
 
     let size_audio = best_audio_size;
 
+    // Check for high-res formats (4K / 2160p, 1440p)
+    let max_format_height = formats.and_then(|arr| {
+        arr.iter().filter_map(|f| f.get("height").and_then(|v| v.as_u64())).max()
+    }).unwrap_or(0);
+
+    let high_res_size = if max_format_height > 1080 {
+        get_format_size_for_height(max_format_height)
+    } else {
+        None
+    };
+
     let size_best = top_filesize
+        .or(high_res_size)
         .or(size_1080p)
         .or(size_720p)
         .or(size_480p);
 
-    (
+    QualityAndCodecs {
         fps,
         vcodec,
         acodec,
@@ -589,7 +648,7 @@ pub fn parse_quality_and_codecs(
         size_720p,
         size_480p,
         size_audio,
-    )
+    }
 }
 
 /// Inspects a video or album/playlist streaming URL to fetch metadata with optional browser cookies and proxy
@@ -636,6 +695,37 @@ pub async fn inspect_video_with_options(
         .await?;
 
     if !output.status.success() {
+        if cookies_browser.is_some() {
+            let err_text = String::from_utf8_lossy(&output.stderr);
+            let lower_err = err_text.to_lowercase();
+            let is_cookie_related = lower_err.contains("413")
+                || lower_err.contains("cookie")
+                || lower_err.contains("database is locked")
+                || lower_err.contains("could not copy")
+                || lower_err.contains("keychain")
+                || lower_err.contains("keyring")
+                || lower_err.contains("permission denied");
+
+            if is_cookie_related {
+                let first_line = err_text
+                    .lines()
+                    .find(|l| l.contains("ERROR:"))
+                    .unwrap_or("cookie lock or header overflow");
+                warn!(
+                    "Stream inspection failed with browser cookies ({}). Auto-healing: retrying without cookies in guest mode...",
+                    first_line
+                );
+                if let Some(b) = cookies_browser {
+                    let cache_file = get_bin_dir().join(format!("cookies_{}.txt", b.trim()));
+                    let _ = std::fs::remove_file(&cache_file);
+                }
+                if let Ok(guest_meta) = Box::pin(inspect_video_with_options(url, None, proxy)).await {
+                    info!("Guest mode inspection succeeded for {}", url);
+                    return Ok(guest_meta);
+                }
+            }
+        }
+
         // Attempt fallback: Scrape HTML for embedded video/m3u8 sources
         if let Ok(scraped_meta) = scrape_page_for_media_with_proxy(url, proxy).await {
             info!("Successfully scraped media from webpage: {:?}", scraped_meta);
@@ -754,13 +844,12 @@ pub async fn inspect_video_with_options(
         })
         .map(|s| s.to_string());
 
-    let (fps, vcodec, acodec, size_best, size_1080p, size_720p, size_480p, size_audio) =
-        parse_quality_and_codecs(&json_val, duration_secs, filesize);
+    let q = parse_quality_and_codecs(&json_val, duration_secs, filesize);
 
     Ok(VideoMetadata {
         url: url.to_string(),
         title,
-        content_length: filesize.or(size_best),
+        content_length: filesize.or(q.size_best),
         content_type: Some(format!("video/{}", ext)),
         supports_ranges: true,
         is_extractor: true,
@@ -773,14 +862,14 @@ pub async fn inspect_video_with_options(
         has_subtitles,
         subtitles_summary,
         thumbnail_url,
-        fps,
-        vcodec,
-        acodec,
-        size_best,
-        size_1080p,
-        size_720p,
-        size_480p,
-        size_audio,
+        fps: q.fps,
+        vcodec: q.vcodec,
+        acodec: q.acodec,
+        size_best: q.size_best,
+        size_1080p: q.size_1080p,
+        size_720p: q.size_720p,
+        size_480p: q.size_480p,
+        size_audio: q.size_audio,
         referer: Some(url.to_string()),
     })
 }
@@ -2975,6 +3064,46 @@ where
         // Self-healing Universal Fallback: If yt-dlp reported Unsupported URL or format error on an arbitrary webpage,
         // automatically sniff the page and retry!
         let lower_err = err_detail.to_lowercase();
+
+        // Self-healing Cookie Fallback: If download failed because browser cookies were locked, bloated, or rejected,
+        // automatically purge corrupted cache and retry seamlessly in guest mode
+        let is_cookie_err = lower_err.contains("413")
+            || lower_err.contains("request entity too large")
+            || lower_err.contains("cookie")
+            || lower_err.contains("database is locked")
+            || lower_err.contains("could not copy")
+            || lower_err.contains("keychain")
+            || lower_err.contains("keyring");
+
+        if cookies_browser.is_some() && is_cookie_err {
+            warn!(
+                "Download failed with browser cookies ({}). Auto-healing: retrying without cookies in guest mode...",
+                err_detail
+            );
+            if let Some(b) = cookies_browser {
+                let cache_file = get_bin_dir().join(format!("cookies_{}.txt", b.trim()));
+                let _ = std::fs::remove_file(&cache_file);
+            }
+            return Box::pin(download_stream(
+                &target_url,
+                destination_path,
+                is_audio_only,
+                quality,
+                download_subtitles,
+                subtitle_language,
+                download_thumbnail,
+                audio_format,
+                audio_bitrate,
+                embed_artwork,
+                speed_limit,
+                None, // Retry without cookies!
+                proxy,
+                concurrent_fragments,
+                None,
+                cancel_token,
+                on_progress,
+            )).await;
+        }
         let is_format_or_url_err = lower_err.contains("unsupported url")
             || lower_err.contains("unsupported")
             || lower_err.contains("no video formats found")
@@ -3258,20 +3387,60 @@ mod tests {
             ]
         });
 
-        let (fps, vcodec, acodec, size_best, size_1080p, size_720p, size_480p, size_audio) =
-            parse_quality_and_codecs(&json, Some(300), Some(150_000_000));
+        let q = parse_quality_and_codecs(&json, Some(300), Some(150_000_000));
 
-        assert_eq!(fps, Some(60.0));
-        assert_eq!(vcodec, Some("H.264 (AVC)".to_string()));
-        assert_eq!(acodec, Some("AAC".to_string()));
-        assert_eq!(size_audio, Some(8_500_000));
+        assert_eq!(q.fps, Some(60.0));
+        assert_eq!(q.vcodec, Some("H.264 (AVC)".to_string()));
+        assert_eq!(q.acodec, Some("AAC".to_string()));
+        assert_eq!(q.size_audio, Some(8_500_000));
         // 1080p video (120M) + audio (8.5M) = 128.5M
-        assert_eq!(size_1080p, Some(128_500_000));
+        assert_eq!(q.size_1080p, Some(128_500_000));
         // 720p video (60M) + audio (8.5M) = 68.5M
-        assert_eq!(size_720p, Some(68_500_000));
+        assert_eq!(q.size_720p, Some(68_500_000));
         // 480p fallback estimated based on duration 300s * 120_000 = 36_000_000
-        assert_eq!(size_480p, Some(36_000_000));
-        assert_eq!(size_best, Some(150_000_000));
+        assert_eq!(q.size_480p, Some(36_000_000));
+        assert_eq!(q.size_best, Some(150_000_000));
+    }
+
+    #[test]
+    fn test_parse_quality_bitrate_and_4k() {
+        // Test bitrate fallback (e.g. YouTube DASH where filesize is null) and 4K (2160p) resolution handling
+        let json: serde_json::Value = serde_json::json!({
+            "formats": [
+                {
+                    "format_id": "251",
+                    "vcodec": "none",
+                    "acodec": "opus",
+                    "abr": 160.0, // 160 kbps -> 20,000 bytes/sec * 100s = 2,000,000
+                    "height": null
+                },
+                {
+                    "format_id": "137",
+                    "height": 1080,
+                    "vcodec": "av01.0.08M.08",
+                    "acodec": "none",
+                    "tbr": 4000.0 // 4 Mbps -> 500,000 bytes/sec * 100s = 50,000,000
+                },
+                {
+                    "format_id": "313",
+                    "height": 2160,
+                    "vcodec": "vp09.02.51.10",
+                    "acodec": "none",
+                    "vbr": 16000.0 // 16 Mbps -> 2,000,000 bytes/sec * 100s = 200,000,000
+                }
+            ]
+        });
+
+        let q = parse_quality_and_codecs(&json, Some(100), None);
+
+        assert_eq!(q.vcodec, Some("VP9".to_string()));
+        assert_eq!(q.acodec, Some("Opus".to_string()));
+        assert_eq!(q.size_audio, Some(2_000_000));
+        // 1080p: 50,000,000 + 2,000,000 audio = 52,000,000
+        assert_eq!(q.size_1080p, Some(52_000_000));
+        // 4K (2160p): 200,000,000 + 2,000,000 audio = 202,000,000
+        // size_best should pick the 4K size (202M) rather than being capped to 1080p (52M)
+        assert_eq!(q.size_best, Some(202_000_000));
     }
 
     #[test]
@@ -3291,6 +3460,15 @@ mod tests {
         assert_eq!(
             extract_candidate_media_url(msg),
             Some("https://www.anyreel.app/episodes/i-swapped-my-vampire-husband-6135".to_string())
+        );
+
+        // Test extracting Douyin share text without spaces
+        assert!(is_candidate_media_url("https://www.douyin.com/video/7345678901234567890"));
+        assert!(is_candidate_media_url("https://v.douyin.com/iJabcde/"));
+        let douyin_share = "7.32复制打开抖音，看看【某某的作品】https://v.douyin.com/iJabcde/。更多精彩内容";
+        assert_eq!(
+            extract_candidate_media_url(douyin_share),
+            Some("https://v.douyin.com/iJabcde/".to_string())
         );
     }
 
@@ -3792,8 +3970,11 @@ pub fn clean_extractor_error(raw_err: &str) -> String {
     if lower.contains("404") || lower.contains("not found") {
         return "Media stream not found (HTTP 404). The stream file was moved or removed.".to_string();
     }
-    if lower.contains("phantomjs") {
-        return "Stream requires PhantomJS JavaScript engine for signature decryption.".to_string();
+    if lower.contains("413") || lower.contains("request entity too large") {
+        return "Request header too large (HTTP 413). iQIYI server rejected cookie size. Clear or disable browser cookies in Settings.".to_string();
+    }
+    if lower.contains("phantomjs") || (lower.contains("iq.com") && lower.contains("phantomjs")) {
+        return "iQIYI stream decryption requires PhantomJS or is DRM-protected. DRM-encrypted content cannot be downloaded.".to_string();
     }
     if (lower.contains("iq.com") || lower.contains("iqiyi")) && lower.contains("no video formats found") {
         return "No video formats found from iQIYI. iQIYI limits simultaneous VIP streams: close active playback tabs in Chrome, wait 2-3 minutes, and retry.".to_string();
@@ -3813,6 +3994,11 @@ pub fn clean_extractor_error(raw_err: &str) -> String {
     }
     if lower.contains("no video formats found") {
         return "No downloadable video formats found. Stream may be DRM-protected, require VIP login, or be region-locked.".to_string();
+    }
+    if (lower.contains("douyin.com") || lower.contains("tiktok.com"))
+        && (lower.contains("unsupported url") || lower.contains("is not a valid url"))
+    {
+        return "Please provide a specific video or share link (e.g. https://www.douyin.com/video/... or https://v.douyin.com/...) rather than the homepage.".to_string();
     }
     if lower.contains("not available in your country")
         || lower.contains("geo-restricted")

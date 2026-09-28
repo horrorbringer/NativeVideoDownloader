@@ -39,13 +39,23 @@ pub type Result<T> = std::result::Result<T, AppError>;
 pub fn clean_user_error(err: &str) -> String {
     let lower = err.to_lowercase();
     if lower.contains("iq.com") || lower.contains("iqiyi") {
-        "iQIYI stream is DRM-protected or requires VIP login. DRM-encrypted content cannot be downloaded.".to_string()
+        if lower.contains("413") || lower.contains("request entity too large") {
+            "Request header too large (HTTP 413). iQIYI server rejected cookie size. Clear or disable browser cookies in Settings.".to_string()
+        } else {
+            "iQIYI stream is DRM-protected or requires VIP login. DRM-encrypted content cannot be downloaded.".to_string()
+        }
+    } else if lower.contains("413") || lower.contains("request entity too large") {
+        "Request header too large (HTTP 413). Server rejected oversized cookies. Disable browser cookies in Settings.".to_string()
     } else if lower.contains("drm") || lower.contains("widevine") {
         "This video stream is DRM-protected (encrypted) and cannot be downloaded.".to_string()
     } else if lower.contains("phantomjs") {
-        "Stream requires an external JavaScript execution engine or is DRM-encrypted.".to_string()
+        "iQIYI stream decryption requires PhantomJS or is DRM-protected. DRM-encrypted content cannot be downloaded.".to_string()
     } else if lower.contains("no video formats found") {
         "No downloadable video formats found. Stream may be DRM-protected, require VIP login, or be region-locked.".to_string()
+    } else if (lower.contains("douyin.com") || lower.contains("tiktok.com"))
+        && (lower.contains("unsupported url") || lower.contains("is not a valid url"))
+    {
+        "Please provide a specific video or share link (e.g. https://www.douyin.com/video/... or https://v.douyin.com/...) rather than the homepage.".to_string()
     } else if lower.contains("unsupported url") || lower.contains("is not a valid url") {
         "This URL format is not supported. Please verify the link and try again.".to_string()
     } else if lower.contains("private video")

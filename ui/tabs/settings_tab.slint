@@ -1136,13 +1136,13 @@ export component SettingsTab inherits ScrollView {
                     VerticalLayout {
                         spacing: 3px;
                         Text {
-                            text: "Browser Cookies & Authentication";
+                            text: "Browser Account & Member Login";
                             color: Theme.text_primary;
                             font-size: 15px;
                             font-weight: 700;
                         }
                         Text {
-                            text: "Extract session cookies from your web browser to download private, age-gated, or member-only videos.";
+                            text: "Use your logged-in browser accounts to download member-only, private, or age-restricted videos.";
                             color: Theme.text_secondary;
                             font-size: 13px;
                         }
@@ -1154,7 +1154,7 @@ export component SettingsTab inherits ScrollView {
                     alignment: start;
 
                     IconChip {
-                        text: "Disabled";
+                        text: "Guest (Off)";
                         selected: root.selected_cookies_browser_index == 0;
                         clicked => {
                             root.selected_cookies_browser_index = 0;
@@ -1229,13 +1229,13 @@ export component SettingsTab inherits ScrollView {
 
                         Text {
                             text: root.selected_cookies_browser_index == 0
-                                ? "Cookies disabled. Downloads use anonymous guest sessions."
-                                : "Using session cookies from " + (
+                                ? "Guest mode active. Downloads use clean public access (recommended for standard videos)."
+                                : "Using logged-in accounts from " + (
                                     root.selected_cookies_browser_index == 1 ? "Google Chrome" :
                                     root.selected_cookies_browser_index == 2 ? "Mozilla Firefox" :
                                     root.selected_cookies_browser_index == 3 ? "Apple Safari" :
                                     root.selected_cookies_browser_index == 4 ? "Brave Browser" : "Microsoft Edge"
-                                  ) + ". Logged-in accounts will be inherited automatically.";
+                                  ) + ". Member-only videos and watch permissions will be inherited automatically.";
                             color: #949db2;
                             font-size: 11px;
                             vertical-alignment: center;
@@ -1249,20 +1249,20 @@ export component SettingsTab inherits ScrollView {
                         spacing: 2px;
                         alignment: center;
                         Text {
-                            text: "Cookie & Stream Cache";
+                            text: "Login & Stream Cache";
                             color: Theme.text_primary;
                             font-size: 13px;
                             font-weight: 600;
                         }
                         Text {
-                            text: "Purge cached browser cookies, tokens, and stream URLs to force fresh authentication.";
+                            text: "Purge stored login tokens and temporary stream URLs to force a fresh authentication check.";
                             color: Theme.text_secondary;
                             font-size: 11px;
                         }
                     }
 
                     ActionButton {
-                        text: "Clear Cookie Cache";
+                        text: "Reset Login Cache";
                         icon: @image-url("../icons/broom.svg");
                         has_icon: true;
                         height: 32px;

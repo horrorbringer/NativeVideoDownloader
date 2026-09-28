@@ -27,6 +27,30 @@ impl ProgressCalculator {
         }
     }
 
+    /// Dynamically update total expected bytes if discovered after stream connection
+    #[allow(dead_code)]
+    pub fn set_total_bytes(&mut self, total_bytes: Option<u64>) {
+        self.total_bytes = total_bytes;
+    }
+
+    /// Total elapsed duration since the download started
+    #[allow(dead_code)]
+    pub fn elapsed(&self) -> std::time::Duration {
+        self._start_time.elapsed()
+    }
+
+    /// Current smoothed download speed in bytes/sec
+    #[allow(dead_code)]
+    pub fn current_speed(&self) -> f64 {
+        self.current_speed
+    }
+
+    /// Total bytes downloaded so far
+    #[allow(dead_code)]
+    pub fn downloaded_bytes(&self) -> u64 {
+        self.downloaded_bytes
+    }
+
     pub fn update(&mut self, chunk_len: usize) -> DownloadProgress {
         self.downloaded_bytes += chunk_len as u64;
         let now = Instant::now();
@@ -37,10 +61,16 @@ impl ProgressCalculator {
             let bytes_in_interval = (self.downloaded_bytes - self.last_sample_bytes) as f64;
             let instant_speed = bytes_in_interval / elapsed_since_sample;
 
-            // Exponential moving average for smooth display
-            if self.current_speed == 0.0 {
+            if bytes_in_interval == 0.0 && elapsed_since_sample >= 1.0 {
+                // Decay speed towards zero if stalled or idle
+                self.current_speed *= 0.5;
+                if self.current_speed < 1.0 {
+                    self.current_speed = 0.0;
+                }
+            } else if self.current_speed == 0.0 {
                 self.current_speed = instant_speed;
             } else {
+                // Exponential moving average for smooth display
                 self.current_speed = self.current_speed * 0.7 + instant_speed * 0.3;
             }
 
@@ -105,7 +135,20 @@ mod tests {
             progress_ratio: 0.5,
         };
 
-        assert_eq!(p.format_eta(), "01:05");
+        assert_eq!(p.format_eta(), "1m 05s");
         assert_eq!(p.format_speed(), "2.50 MB/s");
+    }
+
+    #[test]
+    fn test_progress_calculator_methods() {
+        let mut calc = ProgressCalculator::new(None);
+        assert_eq!(calc.downloaded_bytes(), 0);
+        assert!(calc.elapsed().as_millis() < 5000);
+
+        calc.set_total_bytes(Some(2000));
+        let p = calc.update(500);
+        assert_eq!(p.downloaded_bytes, 500);
+        assert_eq!(p.total_bytes, Some(2000));
+        assert_eq!(calc.downloaded_bytes(), 500);
     }
 }

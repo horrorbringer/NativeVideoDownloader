@@ -14,6 +14,7 @@ export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, Speed
 
 export component AppWindow inherits Window {
     title: root.active_downloads_count > 0 ? ("Native Video Downloader (" + root.active_downloads_count + " downloading • " + root.current_total_speed_text + ")") : "Native Video Downloader";
+    icon: @image-url("../assets/app_icon.png");
     preferred-width: 1180px;
     preferred-height: 760px;
     min-width: 860px;
@@ -557,6 +558,9 @@ export component AppWindow inherits Window {
                 sub_lang_ar <=> root.sub_lang_ar;
                 selected_sub_langs_summary <=> root.selected_sub_langs_summary;
                 toggle_sub_lang(idx) => { root.toggle_sub_lang(idx); }
+
+                selected_cookies_browser_index <=> root.selected_cookies_browser_index;
+                set_cookies_browser(idx) => { root.set_cookies_browser(idx); }
 
                 analyze_url(url) => { root.analyze_url(url); }
                 clear_analysis() => { root.clear_analysis(); }

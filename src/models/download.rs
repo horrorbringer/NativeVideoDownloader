@@ -103,12 +103,20 @@ impl DownloadProgress {
                 let minutes = (secs % 3600) / 60;
                 let seconds = secs % 60;
                 if hours > 0 {
-                    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+                    if minutes > 0 {
+                        format!("{}h {}m", hours, minutes)
+                    } else {
+                        format!("{}h", hours)
+                    }
+                } else if minutes > 0 {
+                    format!("{}m {:02}s", minutes, seconds)
+                } else if seconds > 0 {
+                    format!("{}s", seconds)
                 } else {
-                    format!("{:02}:{:02}", minutes, seconds)
+                    "Almost done".to_string()
                 }
             }
-            None => "--:--".to_string(),
+            None => "--".to_string(),
         }
     }
 }

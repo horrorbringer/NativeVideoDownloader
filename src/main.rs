@@ -2765,19 +2765,19 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
         let lock = cookies_lock.clone();
         tokio::spawn(async move {
             let (setting_val, browser_opt, label) = match idx {
-                1 => ("chrome", Some("chrome".to_string()), "Google Chrome"),
-                2 => ("firefox", Some("firefox".to_string()), "Mozilla Firefox"),
-                3 => ("safari", Some("safari".to_string()), "Apple Safari"),
-                4 => ("brave", Some("brave".to_string()), "Brave Browser"),
-                5 => ("edge", Some("edge".to_string()), "Microsoft Edge"),
-                _ => ("", None, "Disabled (Guest mode)"),
+                1 => ("chrome", Some("chrome".to_string()), "Google Chrome account"),
+                2 => ("firefox", Some("firefox".to_string()), "Mozilla Firefox account"),
+                3 => ("safari", Some("safari".to_string()), "Apple Safari account"),
+                4 => ("brave", Some("brave".to_string()), "Brave Browser account"),
+                5 => ("edge", Some("edge".to_string()), "Microsoft Edge account"),
+                _ => ("", None, "Guest mode (Public access)"),
             };
             mgr.set_cookies_browser(browser_opt.clone()).await;
             *lock.write().await = browser_opt;
             let _ = db.set_setting("cookies_browser", setting_val).await;
-            info!("Updated browser cookies authentication: {}", label);
+            info!("Updated browser account login: {}", label);
             let _ = weak.upgrade_in_event_loop(move |window| {
-                window.set_status_message(format!("Browser cookies: {}", label).into());
+                window.set_status_message(format!("Account login: {}", label).into());
             });
         });
     });
