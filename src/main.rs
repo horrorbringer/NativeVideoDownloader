@@ -205,8 +205,14 @@ fn run_url_analysis(
                     format!("Format: {}", res_str)
                 };
 
-                let has_subs = metadata.has_subtitles;
-                let subs_summary = metadata.subtitles_summary.clone();
+                let has_subs = metadata.has_subtitles || is_playlist;
+                let subs_summary = if !metadata.subtitles_summary.is_empty() {
+                    metadata.subtitles_summary.clone()
+                } else if is_playlist {
+                    "Multi-language (per-episode subtitles)".to_string()
+                } else {
+                    String::new()
+                };
 
                 let thumb_url = metadata.thumbnail_url.clone();
                 let thumb_path = if let Some(ref t_url) = thumb_url {
@@ -2042,19 +2048,10 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
 
             let download_dir = dir_lock.read().await.clone();
 
-            // Only download thumbnail if the analyzed link actually provided a thumbnail URL
-            let download_thumb = if metadata.thumbnail_url.is_some() {
-                download_thumb
-            } else {
-                false
-            };
-
-            // Only search for and download subtitles if the analyzed link confirmed subtitles exist
-            let download_subs = if metadata.has_subtitles {
-                download_subs
-            } else {
-                false
-            };
+            // Preserve user's download preferences for subtitles and thumbnails
+            // Even if the series index page did not list subtitles, individual episodes (e.g. Dailymotion) have subtitles.
+            let download_thumb = download_thumb;
+            let download_subs = download_subs;
 
             // If album/series playlist, queue selected episodes
             if metadata.is_playlist {
