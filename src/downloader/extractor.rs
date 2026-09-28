@@ -289,6 +289,35 @@ pub fn is_candidate_media_url(text: &str) -> bool {
     false
 }
 
+/// Normalizes media URLs, transforming web modal/feed URLs into direct canonical video URLs.
+/// Example: `https://www.douyin.com/jingxuan?modal_id=7685884183775841563` -> `https://www.douyin.com/video/7685884183775841563`
+pub fn normalize_media_url(url: &str) -> String {
+    let trimmed = url.trim();
+    if let Ok(parsed) = reqwest::Url::parse(trimmed) {
+        let host = parsed.host_str().unwrap_or("").to_lowercase();
+        if host.contains("douyin.com") {
+            for (k, v) in parsed.query_pairs() {
+                if (k == "modal_id" || k == "aweme_id" || k == "item_id")
+                    && !v.is_empty()
+                    && v.chars().all(|c| c.is_ascii_digit())
+                {
+                    return format!("https://www.douyin.com/video/{}", v);
+                }
+            }
+        } else if host.contains("tiktok.com") {
+            for (k, v) in parsed.query_pairs() {
+                if (k == "modal_id" || k == "item_id")
+                    && !v.is_empty()
+                    && v.chars().all(|c| c.is_ascii_digit())
+                {
+                    return format!("https://www.tiktok.com/video/{}", v);
+                }
+            }
+        }
+    }
+    trimmed.to_string()
+}
+
 /// Extracts the first candidate media stream URL found in arbitrary text (e.g. from messages or notes copied to clipboard)
 pub fn extract_candidate_media_url(text: &str) -> Option<String> {
     let clean_token = |token: &str| -> String {
@@ -324,13 +353,13 @@ pub fn extract_candidate_media_url(text: &str) -> Option<String> {
     let trimmed = text.trim();
     let cleaned_full = clean_token(trimmed);
     if is_candidate_media_url(&cleaned_full) {
-        return Some(cleaned_full);
+        return Some(normalize_media_url(&cleaned_full));
     }
     // Search words in text for a valid candidate URL
     for word in trimmed.split_whitespace() {
         let cleaned = clean_token(word);
         if is_candidate_media_url(&cleaned) {
-            return Some(cleaned);
+            return Some(normalize_media_url(&cleaned));
         }
     }
     // Direct substring search for embedded URLs without whitespace (common in Douyin / TikTok share copy)
@@ -341,7 +370,7 @@ pub fn extract_candidate_media_url(text: &str) -> Option<String> {
             .unwrap_or(candidate.len());
         let extracted = clean_token(&candidate[..end_idx]);
         if is_candidate_media_url(&extracted) {
-            return Some(extracted);
+            return Some(normalize_media_url(&extracted));
         }
     }
     None
@@ -657,6 +686,9 @@ pub async fn inspect_video_with_options(
     cookies_browser: Option<&str>,
     proxy: Option<&str>,
 ) -> Result<VideoMetadata> {
+    let normalized_url = normalize_media_url(url);
+    let url = normalized_url.as_str();
+
     // Fast path: Custom short drama native parsers without yt-dlp delay
     if url.contains("anyreel.app")
         || url.contains("dramabox")
@@ -667,6 +699,19 @@ pub async fn inspect_video_with_options(
         || url.contains("kuaikaw.cn")
     {
         return scrape_page_for_media_with_proxy(url, proxy).await;
+    }
+
+    // Fast path: Native Douyin resolver via DouyinSaver (no cookies needed, bypasses Douyin 403 anti-bot block)
+    if url.contains("douyin.com") || url.contains("iesdouyin.com") {
+        match resolve_douyin_via_douyinsaver(url, proxy).await {
+            Ok(meta) => {
+                info!("Successfully extracted Douyin media without watermark via DouyinSaver API: {:?}", meta.title);
+                return Ok(meta);
+            }
+            Err(e) => {
+                warn!("DouyinSaver API extraction failed ({:?}), falling back to yt-dlp", e);
+            }
+        }
     }
 
     let ytdlp_bin = ensure_ytdlp_installed().await?;
@@ -884,6 +929,134 @@ pub async fn inspect_video_with_cookies(url: &str, cookies_browser: Option<&str>
 #[allow(dead_code)]
 pub async fn inspect_video(url: &str) -> Result<VideoMetadata> {
     inspect_video_with_options(url, None, None).await
+}
+
+/// Resolves Douyin videos without watermark via the DouyinSaver API (bypasses Douyin 403 anti-bot and cookie requirements)
+pub async fn resolve_douyin_via_douyinsaver(url: &str, proxy: Option<&str>) -> Result<VideoMetadata> {
+    info!("Resolving Douyin video via DouyinSaver API: {} (proxy: {:?})", url, proxy);
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15));
+
+    if let Some(p) = proxy {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            if let Ok(prx) = reqwest::Proxy::all(trimmed) {
+                builder = builder.proxy(prx);
+            }
+        }
+    }
+
+    let client = builder.build()
+        .map_err(|e| AppError::Generic(format!("Failed to build HTTP client: {}", e)))?;
+
+    let payload = serde_json::json!({
+        "url": url
+    }).to_string();
+
+    let resp = client
+        .post("https://api.douyinsaver.com/api/parse")
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+        .header(reqwest::header::ORIGIN, "https://douyinsaver.com")
+        .header(reqwest::header::REFERER, "https://douyinsaver.com/")
+        .body(payload)
+        .send()
+        .await
+        .map_err(|e| AppError::Generic(format!("DouyinSaver API request failed: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(AppError::Generic(format!("DouyinSaver API returned HTTP status {}", resp.status())));
+    }
+
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| AppError::Generic(format!("Failed to read DouyinSaver response: {}", e)))?;
+
+    let val: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| AppError::Generic(format!("Failed to parse DouyinSaver response JSON: {}", e)))?;
+
+    let title = val.get("title").and_then(|v| v.as_str()).unwrap_or("douyin_video").trim().to_string();
+    let author = val.get("author").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let full_title = if !author.is_empty() && !title.is_empty() {
+        format!("{} - {}", title, author)
+    } else if !title.is_empty() {
+        title
+    } else {
+        "douyin_video".to_string()
+    };
+
+    let duration_ms = val.get("duration").and_then(|v| v.as_u64()).unwrap_or(0);
+    let duration_seconds = if duration_ms > 0 { Some(duration_ms / 1000) } else { None };
+    let cover = val.get("cover").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+    let qualities = val.get("qualities").and_then(|v| v.as_array());
+    let best_stream = qualities.and_then(|arr| arr.first());
+
+    let best_url = best_stream
+        .and_then(|s| s.get("url"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::Generic("No downloadable video stream found in DouyinSaver response".to_string()))?
+        .to_string();
+
+    let resolution = best_stream
+        .and_then(|s| s.get("label").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .or_else(|| {
+            best_stream.and_then(|s| {
+                let h = s.get("height").and_then(|v| v.as_u64())?;
+                Some(format!("{}p", h))
+            })
+        })
+        .or_else(|| Some("720p".to_string()));
+
+    let bitrate = best_stream.and_then(|s| s.get("bitrate").and_then(|v| v.as_u64())).unwrap_or(0);
+    let estimated_size = if bitrate > 0 && duration_seconds.unwrap_or(0) > 0 {
+        Some((bitrate * duration_seconds.unwrap()) / 8)
+    } else {
+        None
+    };
+
+    let mut size_720p = None;
+    let mut size_480p = None;
+    if let Some(arr) = qualities {
+        for q in arr {
+            let h = q.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
+            let b = q.get("bitrate").and_then(|v| v.as_u64()).unwrap_or(0);
+            let d = duration_seconds.unwrap_or(0);
+            if h == 720 && size_720p.is_none() && b > 0 && d > 0 {
+                size_720p = Some((b * d) / 8);
+            } else if h == 480 && size_480p.is_none() && b > 0 && d > 0 {
+                size_480p = Some((b * d) / 8);
+            }
+        }
+    }
+
+    Ok(VideoMetadata {
+        url: best_url,
+        title: full_title,
+        content_length: estimated_size,
+        content_type: Some("video/mp4".to_string()),
+        supports_ranges: true,
+        is_extractor: false,
+        duration_seconds,
+        resolution,
+        ext: Some("mp4".to_string()),
+        is_playlist: false,
+        playlist_count: 0,
+        playlist_entries: Vec::new(),
+        has_subtitles: false,
+        subtitles_summary: "No subtitles".to_string(),
+        thumbnail_url: cover,
+        fps: Some(30.0),
+        vcodec: Some("H.264 (AVC)".to_string()),
+        acodec: Some("AAC".to_string()),
+        size_best: size_720p.or(estimated_size),
+        size_1080p: None,
+        size_720p,
+        size_480p,
+        size_audio: None,
+        referer: Some("https://www.douyin.com/".to_string()),
+    })
 }
 
 /// Scrapes a generic webpage's HTML to locate embedded video tags, OpenGraph video, or .m3u8/.mp4 stream URLs with optional proxy
@@ -2838,6 +3011,9 @@ pub async fn download_stream<F>(
 where
     F: FnMut(DownloadProgress) + Send + 'static,
 {
+    let normalized_url = normalize_media_url(url);
+    let url = normalized_url.as_str();
+
     let ytdlp_bin = ensure_ytdlp_installed().await?;
     let bin_dir = get_bin_dir();
 
@@ -3465,10 +3641,54 @@ mod tests {
         // Test extracting Douyin share text without spaces
         assert!(is_candidate_media_url("https://www.douyin.com/video/7345678901234567890"));
         assert!(is_candidate_media_url("https://v.douyin.com/iJabcde/"));
+        assert!(is_candidate_media_url("https://www.douyin.com/jingxuan?modal_id=7685884183775841563"));
         let douyin_share = "7.32复制打开抖音，看看【某某的作品】https://v.douyin.com/iJabcde/。更多精彩内容";
         assert_eq!(
             extract_candidate_media_url(douyin_share),
             Some("https://v.douyin.com/iJabcde/".to_string())
+        );
+
+        // Test extracting Douyin jingxuan / modal URL embedded in text
+        let modal_text = "Check this out https://www.douyin.com/jingxuan?modal_id=7685884183775841563 amazing video";
+        assert_eq!(
+            extract_candidate_media_url(modal_text),
+            Some("https://www.douyin.com/video/7685884183775841563".to_string())
+        );
+    }
+
+    #[test]
+    fn test_normalize_media_url() {
+        // Douyin feed modal URLs
+        assert_eq!(
+            normalize_media_url("https://www.douyin.com/jingxuan?modal_id=7685884183775841563"),
+            "https://www.douyin.com/video/7685884183775841563"
+        );
+        assert_eq!(
+            normalize_media_url("https://www.douyin.com/discover?modal_id=7685884183775841563"),
+            "https://www.douyin.com/video/7685884183775841563"
+        );
+        assert_eq!(
+            normalize_media_url("https://www.douyin.com/user/MS4wLjABAAAA?modal_id=7685884183775841563"),
+            "https://www.douyin.com/video/7685884183775841563"
+        );
+        assert_eq!(
+            normalize_media_url("https://www.douyin.com/?aweme_id=7685884183775841563"),
+            "https://www.douyin.com/video/7685884183775841563"
+        );
+        // Already canonical Douyin video URL unchanged
+        assert_eq!(
+            normalize_media_url("https://www.douyin.com/video/7685884183775841563"),
+            "https://www.douyin.com/video/7685884183775841563"
+        );
+        // TikTok modal URL
+        assert_eq!(
+            normalize_media_url("https://www.tiktok.com/explore?modal_id=7123456789012345678"),
+            "https://www.tiktok.com/video/7123456789012345678"
+        );
+        // Standard YouTube URL unchanged
+        assert_eq!(
+            normalize_media_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         );
     }
 
@@ -3661,6 +3881,9 @@ mod tests {
 
         let exit_err = "Application error: Extractor process finished with exit code Some(1)";
         assert!(clean_extractor_error(exit_err).contains("Stream extraction failed"));
+
+        let douyin_cookie_err = "[Douyin] 7685884183775841563: Fresh cookies (not necessarily logged in) are needed";
+        assert!(clean_extractor_error(douyin_cookie_err).contains("fresh session cookies"));
     }
 
     #[test]
@@ -3917,6 +4140,19 @@ mod tests {
         assert_eq!(meta.playlist_count, 2);
         assert_eq!(meta.playlist_entries[0].url, "https://flickreels.com/ep1.mp4");
     }
+
+    #[tokio::test]
+    async fn test_douyin_via_douyinsaver_live_inspection() {
+        // Test that live inspection of Douyin URL resolves successfully without requiring cookies
+        let test_url = "https://www.douyin.com/video/7685884183775841563";
+        if let Ok(meta) = resolve_douyin_via_douyinsaver(test_url, None).await {
+            assert!(meta.url.starts_with("http"));
+            assert!(!meta.title.is_empty());
+            assert!(meta.supports_ranges);
+            assert_eq!(meta.ext, Some("mp4".to_string()));
+            assert_eq!(meta.referer, Some("https://www.douyin.com/".to_string()));
+        }
+    }
 }
 
 /// Parses an episode selection range string (e.g. "1-10", "1, 3, 5", "1-5, 10-15") into a set of 0-based indices
@@ -3999,6 +4235,9 @@ pub fn clean_extractor_error(raw_err: &str) -> String {
         && (lower.contains("unsupported url") || lower.contains("is not a valid url"))
     {
         return "Please provide a specific video or share link (e.g. https://www.douyin.com/video/... or https://v.douyin.com/...) rather than the homepage.".to_string();
+    }
+    if lower.contains("fresh cookies") || (lower.contains("douyin") && lower.contains("cookie")) {
+        return "Douyin requires fresh session cookies: open the video in your browser (e.g. Chrome), play it for 2-3 seconds to refresh session tokens, then retry downloading.".to_string();
     }
     if lower.contains("not available in your country")
         || lower.contains("geo-restricted")

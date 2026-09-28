@@ -79,7 +79,7 @@ fn run_url_analysis(
     cookies_browser_clone: Arc<tokio::sync::RwLock<Option<String>>>,
     proxy_clone: Arc<tokio::sync::RwLock<Option<String>>>,
 ) {
-    let url_str = url_str.trim().to_string();
+    let url_str = downloader::normalize_media_url(url_str.trim());
     info!("Received URL analysis request: {}", url_str);
 
     if url_str.is_empty() {
