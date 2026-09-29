@@ -49,6 +49,24 @@ export component SettingsTab inherits ScrollView {
     in-out property <bool> notifications_enabled: true;
     in-out property <bool> notification_sound_enabled: true;
 
+    // Scheduler & Automation
+    in-out property <bool> scheduler_enabled: false;
+    in-out property <int> scheduler_start_hour: 2;
+    in-out property <int> scheduler_start_minute: 0;
+    in-out property <int> scheduler_end_hour: 7;
+    in-out property <int> scheduler_end_minute: 0;
+    in-out property <string> scheduler_window_status: "Off-Peak Window: 02:00 – 07:00";
+    in-out property <bool> auto_retry_enabled: true;
+    in-out property <int> auto_retry_interval_index: 1;
+    in-out property <int> auto_retry_max_index: 0;
+
+    callback set_scheduler_enabled(bool);
+    callback set_scheduler_start_time(int, int);
+    callback set_scheduler_end_time(int, int);
+    callback set_auto_retry_enabled(bool);
+    callback set_auto_retry_interval(int);
+    callback set_auto_retry_max(int);
+
     callback set_notifications_enabled(bool);
     callback set_notification_sound_enabled(bool);
     callback set_theme_mode(int);
@@ -1100,7 +1118,361 @@ export component SettingsTab inherits ScrollView {
             }
         }
 
-        // 3. Browser Cookies & Authentication
+        // 3. Download Scheduler & Automation
+        Rectangle {
+            background: Theme.card_bg;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.card_border;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 18px;
+
+                // Header
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 8px;
+                        background: Theme.sidebar_brand_bg;
+                        border-width: 1px;
+                        border-color: Theme.sidebar_brand_border;
+
+                        Image {
+                            source: @image-url("../icons/moon.svg");
+                            width: 18px;
+                            height: 18px;
+                            colorize: Theme.brand_purple;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 2px;
+                        alignment: center;
+
+                        Text {
+                            text: "Scheduler & Automation";
+                            color: Theme.text_primary;
+                            font-size: 15px;
+                            font-weight: 700;
+                        }
+
+                        Text {
+                            text: "Configure off-peak download hours and automated retry timers for network dropouts";
+                            color: Theme.text_secondary;
+                            font-size: 12px;
+                        }
+                    }
+                }
+
+                // Feature 1: Off-Peak Download Window
+                VerticalLayout {
+                    spacing: 10px;
+
+                    HorizontalLayout {
+                        alignment: space-between;
+
+                        VerticalLayout {
+                            spacing: 2px;
+                            alignment: center;
+
+                            Text {
+                                text: "Off-Peak Download Window";
+                                color: Theme.text_primary;
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
+
+                            Text {
+                                text: "Hold queued downloads until scheduled hours to save daytime bandwidth";
+                                color: Theme.text_muted;
+                                font-size: 11px;
+                            }
+                        }
+
+                        ActionButton {
+                            text: root.scheduler_enabled ? "Enabled" : "Disabled";
+                            icon: root.scheduler_enabled ? @image-url("../icons/check.svg") : @image-url("../icons/moon.svg");
+                            has_icon: true;
+                            primary: root.scheduler_enabled;
+                            height: 30px;
+                            clicked => {
+                                root.scheduler_enabled = !root.scheduler_enabled;
+                                root.set_scheduler_enabled(root.scheduler_enabled);
+                            }
+                        }
+                    }
+
+                    if root.scheduler_enabled: VerticalLayout {
+                        spacing: 10px;
+
+                        // Start Hour Presets
+                        VerticalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: "Window Start Hour:";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                font-weight: 600;
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                IconChip {
+                                    text: "00:00 (Midnight)";
+                                    selected: root.scheduler_start_hour == 0;
+                                    clicked => {
+                                        root.scheduler_start_hour = 0;
+                                        root.set_scheduler_start_time(0, root.scheduler_start_minute);
+                                    }
+                                }
+                                IconChip {
+                                    text: "01:00 AM";
+                                    selected: root.scheduler_start_hour == 1;
+                                    clicked => {
+                                        root.scheduler_start_hour = 1;
+                                        root.set_scheduler_start_time(1, root.scheduler_start_minute);
+                                    }
+                                }
+                                IconChip {
+                                    text: "02:00 AM (Recommended)";
+                                    selected: root.scheduler_start_hour == 2;
+                                    clicked => {
+                                        root.scheduler_start_hour = 2;
+                                        root.set_scheduler_start_time(2, root.scheduler_start_minute);
+                                    }
+                                }
+                                IconChip {
+                                    text: "03:00 AM";
+                                    selected: root.scheduler_start_hour == 3;
+                                    clicked => {
+                                        root.scheduler_start_hour = 3;
+                                        root.set_scheduler_start_time(3, root.scheduler_start_minute);
+                                    }
+                                }
+                            }
+                        }
+
+                        // End Hour Presets
+                        VerticalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: "Window End Hour:";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                font-weight: 600;
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                IconChip {
+                                    text: "05:00 AM";
+                                    selected: root.scheduler_end_hour == 5;
+                                    clicked => {
+                                        root.scheduler_end_hour = 5;
+                                        root.set_scheduler_end_time(5, root.scheduler_end_minute);
+                                    }
+                                }
+                                IconChip {
+                                    text: "06:00 AM";
+                                    selected: root.scheduler_end_hour == 6;
+                                    clicked => {
+                                        root.scheduler_end_hour = 6;
+                                        root.set_scheduler_end_time(6, root.scheduler_end_minute);
+                                    }
+                                }
+                                IconChip {
+                                    text: "07:00 AM (Recommended)";
+                                    selected: root.scheduler_end_hour == 7;
+                                    clicked => {
+                                        root.scheduler_end_hour = 7;
+                                        root.set_scheduler_end_time(7, root.scheduler_end_minute);
+                                    }
+                                }
+                                IconChip {
+                                    text: "08:00 AM";
+                                    selected: root.scheduler_end_hour == 8;
+                                    clicked => {
+                                        root.scheduler_end_hour = 8;
+                                        root.set_scheduler_end_time(8, root.scheduler_end_minute);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Status pill
+                        Rectangle {
+                            background: Theme.is_dark ? #1e1b4b : #ede9fe;
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: Theme.is_dark ? #4338ca : #c7d2fe;
+                            height: 28px;
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                alignment: start;
+                                spacing: 6px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: @image-url("../icons/moon.svg");
+                                        width: 13px;
+                                        height: 13px;
+                                        colorize: Theme.brand_purple;
+                                    }
+                                }
+                                Text {
+                                    text: root.scheduler_window_status;
+                                    color: Theme.brand_purple;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    height: 1px;
+                    background: Theme.card_border;
+                }
+
+                // Feature 2: Auto-Retry Failed Downloads
+                VerticalLayout {
+                    spacing: 10px;
+
+                    HorizontalLayout {
+                        alignment: space-between;
+
+                        VerticalLayout {
+                            spacing: 2px;
+                            alignment: center;
+
+                            Text {
+                                text: "Auto-Retry Failed Downloads";
+                                color: Theme.text_primary;
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
+
+                            Text {
+                                text: "Automatically re-attempt failed downloads after temporary network drops or server timeouts";
+                                color: Theme.text_muted;
+                                font-size: 11px;
+                            }
+                        }
+
+                        ActionButton {
+                            text: root.auto_retry_enabled ? "Enabled" : "Disabled";
+                            icon: root.auto_retry_enabled ? @image-url("../icons/check.svg") : @image-url("../icons/refresh.svg");
+                            has_icon: true;
+                            primary: root.auto_retry_enabled;
+                            height: 30px;
+                            clicked => {
+                                root.auto_retry_enabled = !root.auto_retry_enabled;
+                                root.set_auto_retry_enabled(root.auto_retry_enabled);
+                            }
+                        }
+                    }
+
+                    if root.auto_retry_enabled: VerticalLayout {
+                        spacing: 10px;
+
+                        // Retry Interval Presets
+                        VerticalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: "Retry Countdown Delay:";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                font-weight: 600;
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                IconChip {
+                                    text: "30 Seconds";
+                                    selected: root.auto_retry_interval_index == 0;
+                                    clicked => {
+                                        root.auto_retry_interval_index = 0;
+                                        root.set_auto_retry_interval(0);
+                                    }
+                                }
+                                IconChip {
+                                    text: "1 Minute (Default)";
+                                    selected: root.auto_retry_interval_index == 1;
+                                    clicked => {
+                                        root.auto_retry_interval_index = 1;
+                                        root.set_auto_retry_interval(1);
+                                    }
+                                }
+                                IconChip {
+                                    text: "2 Minutes";
+                                    selected: root.auto_retry_interval_index == 2;
+                                    clicked => {
+                                        root.auto_retry_interval_index = 2;
+                                        root.set_auto_retry_interval(2);
+                                    }
+                                }
+                                IconChip {
+                                    text: "5 Minutes";
+                                    selected: root.auto_retry_interval_index == 3;
+                                    clicked => {
+                                        root.auto_retry_interval_index = 3;
+                                        root.set_auto_retry_interval(3);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Max Retry Attempts
+                        VerticalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: "Maximum Retry Attempts:";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                font-weight: 600;
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                IconChip {
+                                    text: "3 Attempts";
+                                    selected: root.auto_retry_max_index == 0;
+                                    clicked => {
+                                        root.auto_retry_max_index = 0;
+                                        root.set_auto_retry_max(0);
+                                    }
+                                }
+                                IconChip {
+                                    text: "5 Attempts";
+                                    selected: root.auto_retry_max_index == 1;
+                                    clicked => {
+                                        root.auto_retry_max_index = 1;
+                                        root.set_auto_retry_max(1);
+                                    }
+                                }
+                                IconChip {
+                                    text: "10 Attempts (High Resilience)";
+                                    selected: root.auto_retry_max_index == 2;
+                                    clicked => {
+                                        root.auto_retry_max_index = 2;
+                                        root.set_auto_retry_max(2);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Browser Cookies & Authentication
         Rectangle {
             background: Theme.card_bg;
             border-radius: 12px;

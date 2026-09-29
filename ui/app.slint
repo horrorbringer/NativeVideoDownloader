@@ -165,6 +165,27 @@ export component AppWindow inherits Window {
     in-out property <bool> notifications_enabled: true;
     in-out property <bool> notification_sound_enabled: true;
 
+    // Scheduler & Automation properties
+    in-out property <bool> scheduler_active: false;
+    in-out property <string> scheduler_status_banner_text: "";
+    in-out property <bool> scheduler_enabled: false;
+    in-out property <int> scheduler_start_hour: 2;
+    in-out property <int> scheduler_start_minute: 0;
+    in-out property <int> scheduler_end_hour: 7;
+    in-out property <int> scheduler_end_minute: 0;
+    in-out property <string> scheduler_window_status: "Off-Peak Window: 02:00 – 07:00";
+    in-out property <bool> auto_retry_enabled: true;
+    in-out property <int> auto_retry_interval_index: 1;
+    in-out property <int> auto_retry_max_index: 0;
+
+    callback bypass_scheduler_now();
+    callback set_scheduler_enabled(bool);
+    callback set_scheduler_start_time(int, int);
+    callback set_scheduler_end_time(int, int);
+    callback set_auto_retry_enabled(bool);
+    callback set_auto_retry_interval(int);
+    callback set_auto_retry_max(int);
+
     // Callbacks
     callback analyze_url(string);
     callback preview_current_stream();
@@ -599,7 +620,10 @@ export component AppWindow inherits Window {
                 speed_limit_ratio: root.speed_limit_ratio;
                 speed_limit_label: root.speed_limit_label;
                 custom_speed_input <=> root.custom_speed_limit_input;
+                scheduler_active: root.scheduler_active;
+                scheduler_status_banner_text: root.scheduler_status_banner_text;
 
+                bypass_scheduler_now() => { root.bypass_scheduler_now(); }
                 pause_all() => { root.pause_all(); }
                 resume_all() => { root.resume_all(); }
                 cancel_all() => { root.cancel_all(); }
@@ -713,6 +737,23 @@ export component AppWindow inherits Window {
                 theme_mode: root.theme_mode;
                 set_theme_mode(m) => { root.set_theme_mode(m); }
                 set_theme_dark(d) => { root.set_theme_mode(d ? 1 : 0); }
+
+                scheduler_enabled <=> root.scheduler_enabled;
+                scheduler_start_hour <=> root.scheduler_start_hour;
+                scheduler_start_minute <=> root.scheduler_start_minute;
+                scheduler_end_hour <=> root.scheduler_end_hour;
+                scheduler_end_minute <=> root.scheduler_end_minute;
+                scheduler_window_status <=> root.scheduler_window_status;
+                auto_retry_enabled <=> root.auto_retry_enabled;
+                auto_retry_interval_index <=> root.auto_retry_interval_index;
+                auto_retry_max_index <=> root.auto_retry_max_index;
+
+                set_scheduler_enabled(en) => { root.set_scheduler_enabled(en); }
+                set_scheduler_start_time(h, m) => { root.set_scheduler_start_time(h, m); }
+                set_scheduler_end_time(h, m) => { root.set_scheduler_end_time(h, m); }
+                set_auto_retry_enabled(en) => { root.set_auto_retry_enabled(en); }
+                set_auto_retry_interval(idx) => { root.set_auto_retry_interval(idx); }
+                set_auto_retry_max(idx) => { root.set_auto_retry_max(idx); }
             }
 
             // Status bar at bottom

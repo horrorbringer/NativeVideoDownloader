@@ -637,6 +637,102 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.set_notifications_enabled(saved_notifs_enabled);
     main_window.set_notification_sound_enabled(saved_sound_enabled);
 
+    // Restore scheduler and automated downloads configuration
+    let saved_sched_enabled = db
+        .get_setting("scheduler_enabled")
+        .await
+        .unwrap_or(None)
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let saved_sched_start_h: u32 = db
+        .get_setting("scheduler_start_hour")
+        .await
+        .unwrap_or(None)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2);
+    let saved_sched_start_m: u32 = db
+        .get_setting("scheduler_start_minute")
+        .await
+        .unwrap_or(None)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let saved_sched_end_h: u32 = db
+        .get_setting("scheduler_end_hour")
+        .await
+        .unwrap_or(None)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(7);
+    let saved_sched_end_m: u32 = db
+        .get_setting("scheduler_end_minute")
+        .await
+        .unwrap_or(None)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let saved_auto_retry_en = db
+        .get_setting("auto_retry_enabled")
+        .await
+        .unwrap_or(None)
+        .map(|v| v == "true")
+        .unwrap_or(true);
+    let saved_retry_interval: u64 = db
+        .get_setting("auto_retry_interval_secs")
+        .await
+        .unwrap_or(None)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(60);
+    let saved_retry_max: u32 = db
+        .get_setting("auto_retry_max_attempts")
+        .await
+        .unwrap_or(None)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3);
+
+    let retry_interval_idx = match saved_retry_interval {
+        30 => 0,
+        60 => 1,
+        120 => 2,
+        300 => 3,
+        _ => 1,
+    };
+    let retry_max_idx = match saved_retry_max {
+        3 => 0,
+        5 => 1,
+        10 => 2,
+        _ => 0,
+    };
+
+    download_manager
+        .set_scheduler_config(
+            saved_sched_enabled,
+            saved_sched_start_h,
+            saved_sched_start_m,
+            saved_sched_end_h,
+            saved_sched_end_m,
+        )
+        .await;
+    download_manager
+        .set_auto_retry_config(saved_auto_retry_en, saved_retry_interval, saved_retry_max)
+        .await;
+
+    main_window.set_scheduler_enabled(saved_sched_enabled);
+    main_window.set_scheduler_start_hour(saved_sched_start_h as i32);
+    main_window.set_scheduler_start_minute(saved_sched_start_m as i32);
+    main_window.set_scheduler_end_hour(saved_sched_end_h as i32);
+    main_window.set_scheduler_end_minute(saved_sched_end_m as i32);
+    main_window.set_scheduler_window_status(
+        format!(
+            "Off-Peak Window: {:02}:{:02} – {:02}:{:02}",
+            saved_sched_start_h, saved_sched_start_m, saved_sched_end_h, saved_sched_end_m
+        )
+        .into(),
+    );
+    main_window.set_auto_retry_enabled(saved_auto_retry_en);
+    main_window.set_auto_retry_interval_index(retry_interval_idx);
+    main_window.set_auto_retry_max_index(retry_max_idx);
+
+    // Launch background scheduler loop (checks auto-retries and scheduled windows every second)
+    download_manager.start_background_scheduler();
+
     // Initialize speed samples for the graph with 60 idle points (30s rolling window @ 2 Hz)
     let initial_samples: Vec<SpeedSampleData> = (0..60)
         .map(|_| SpeedSampleData {
@@ -851,6 +947,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })
                     .collect();
 
+                let now_ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let (_, _, auto_retry_max) = mgr.get_auto_retry_config().await;
+                let (sched_en, sh, sm, eh, em) = mgr.get_scheduler_config().await;
+                let in_sched_window = mgr.is_in_schedule_window().await;
+
                 let total_filtered = filtered_jobs.len();
                 let items: Vec<DownloadItemData> = filtered_jobs
                     .into_iter()
@@ -859,17 +963,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let is_dl = j.status == DownloadStatus::Downloading;
                         let is_paused = j.status == DownloadStatus::Paused;
                         let is_queued = j.status == DownloadStatus::Queued;
-                        let is_active = is_dl || is_paused || is_queued;
+                        let is_scheduled = j.status == DownloadStatus::Scheduled;
+                        let is_retrying = matches!(j.status, DownloadStatus::Retrying(_));
+                        let is_active = is_dl || is_paused || is_queued || is_scheduled || is_retrying;
                         let is_completed = j.status == DownloadStatus::Completed;
                         let output_path = j.output_path.to_string_lossy().to_string();
                         let size_text = j.size_display();
                         let speed_text = j.speed_display();
-                        let eta_text = j.eta_display();
+
+                        let (status_str, eta_text) = match &j.status {
+                            DownloadStatus::Retrying(target_ts) => {
+                                let rem = target_ts.saturating_sub(now_ts);
+                                (
+                                    "Retrying".to_string(),
+                                    format!("Auto-retry in {}s (Attempt {}/{})", rem, j.auto_retry_count + 1, auto_retry_max),
+                                )
+                            }
+                            DownloadStatus::Scheduled => {
+                                (
+                                    "Scheduled".to_string(),
+                                    format!("Scheduled for {:02}:{:02} – {:02}:{:02}", sh, sm, eh, em),
+                                )
+                            }
+                            DownloadStatus::Downloading => {
+                                ("Downloading".to_string(), j.eta_display())
+                            }
+                            other => (other.as_str().to_string(), "".to_string()),
+                        };
 
                         DownloadItemData {
                             id: j.id.to_string().into(),
                             title: j.title.into(),
-                            status: j.status.as_str().into(),
+                            status: status_str.into(),
                             progress: j.progress_ratio,
                             size_text: size_text.into(),
                             speed_text: speed_text.into(),
@@ -877,11 +1002,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             output_path: output_path.into(),
                             is_completed,
                             can_pause: is_dl,
-                            can_resume: is_paused || matches!(j.status, DownloadStatus::Failed(_)),
+                            can_resume: is_paused || matches!(j.status, DownloadStatus::Failed(_)) || is_retrying || is_scheduled,
                             can_cancel: is_active,
                             is_queued,
-                            can_move_up: is_queued && idx > 0,
-                            can_move_down: is_queued && idx + 1 < total_filtered,
+                            can_move_up: (is_queued || is_scheduled) && idx > 0,
+                            can_move_down: (is_queued || is_scheduled) && idx + 1 < total_filtered,
                         }
                     })
                     .collect();
@@ -889,11 +1014,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let reset_flag = rendering_flag.clone();
                 let rerender_check = rerender_flag.clone();
                 let mgr_followup = mgr.clone();
+                let has_waiting = items.iter().any(|item| item.status == "Scheduled") || (sched_en && !in_sched_window && total_queue_count > 0);
+                let banner_active = sched_en && !in_sched_window && has_waiting;
+                let banner_text = format!("🌙 Off-Peak Scheduler active — Downloads queued for {:02}:{:02} – {:02}:{:02}", sh, sm, eh, em);
+
                 let _ = weak.upgrade_in_event_loop(move |window| {
                     let model = Rc::new(VecModel::from(items));
                     window.set_download_items(ModelRc::from(model));
                     window.set_active_downloads_count(active_count);
                     window.set_total_queue_count(total_queue_count);
+                    window.set_scheduler_active(banner_active);
+                    window.set_scheduler_status_banner_text(banner_text.into());
 
                     let speed_model = Rc::new(VecModel::from(speed_samples));
                     window.set_speed_samples(ModelRc::from(speed_model));
@@ -1339,6 +1470,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let is_extractor = metadata.is_extractor;
                     let title_clone = metadata.title.clone();
                     let title_notif = metadata.title.clone();
+                    let download_subs = metadata.has_subtitles;
                     match mgr
                         .add_download_with_context(
                             metadata.url.clone(),
@@ -1348,7 +1480,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             is_extractor,
                             false,
                             None,
-                            false,
+                            download_subs,
                             None,
                             false,
                             metadata.thumbnail_url.clone(),
@@ -1680,12 +1812,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let weak_paste_batch = main_window.as_weak();
     main_window.on_paste_batch_from_clipboard(move || {
         if let Some(text) = filesystem::read_clipboard_text() {
+            let links = filesystem::parse_links_from_text(&text);
+            let to_append = if !links.is_empty() {
+                links
+                    .into_iter()
+                    .map(|l| downloader::normalize_media_url(&l))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            } else {
+                text
+            };
             let _ = weak_paste_batch.upgrade_in_event_loop(move |win| {
                 let current = win.get_batch_urls_text().to_string();
                 let new_val = if current.trim().is_empty() {
-                    text
+                    to_append
                 } else {
-                    format!("{}\n{}", current.trim_end(), text)
+                    format!("{}\n{}", current.trim_end(), to_append)
                 };
                 win.set_batch_urls_text(new_val.into());
                 win.set_status_message("Pasted links into batch input from clipboard".into());
@@ -2163,13 +2305,18 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
         let dir_lock = current_dir_batch.clone();
 
         tokio::spawn(async move {
-            let lines: Vec<String> = text_val
-                .lines()
-                .map(|l| l.trim().to_string())
-                .filter(|l| !l.is_empty() && (l.starts_with("http://") || l.starts_with("https://")))
-                .collect();
+            let parsed_links = filesystem::parse_links_from_text(&text_val);
+            let mut normalized_links = Vec::new();
+            let mut seen = std::collections::HashSet::new();
 
-            if lines.is_empty() {
+            for raw_url in parsed_links {
+                let norm = downloader::normalize_media_url(&raw_url);
+                if seen.insert(norm.clone()) {
+                    normalized_links.push(norm);
+                }
+            }
+
+            if normalized_links.is_empty() {
                 let _ = weak.upgrade_in_event_loop(|window| {
                     window.set_has_error(true);
                     window.set_error_message(
@@ -2181,19 +2328,46 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
 
             let download_dir = dir_lock.read().await.clone();
             let mut queued_count = 0;
+            let total = normalized_links.len();
 
-            for url in lines {
-                let title = url
-                    .split('/')
-                    .last()
-                    .and_then(|s| s.split('?').next())
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or("batch_media")
-                    .to_string();
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(format!("Enqueuing {} batch download(s)...", total).into());
+            });
 
+            for url in normalized_links {
                 let is_extractor = downloader::is_streaming_platform(&url);
+                let title = if url.contains("douyin.com") || url.contains("iesdouyin.com") {
+                    let id = url.split('/').last().unwrap_or("video").split('?').next().unwrap_or("video");
+                    format!("Douyin Video {}", id)
+                } else if url.contains("youtube.com") || url.contains("youtu.be") {
+                    let id = if url.contains("youtu.be/") {
+                        url.split("youtu.be/").nth(1).unwrap_or("video").split('?').next().unwrap_or("video")
+                    } else if url.contains("v=") {
+                        url.split("v=").nth(1).unwrap_or("video").split('&').next().unwrap_or("video")
+                    } else {
+                        "video"
+                    };
+                    format!("YouTube Video {}", id)
+                } else if url.contains("bilibili.com") {
+                    let bvid = url.split("/video/").nth(1).unwrap_or("video").split('?').next().unwrap_or("video");
+                    format!("Bilibili {}", bvid)
+                } else {
+                    url.split('/')
+                        .last()
+                        .and_then(|s| s.split('?').next())
+                        .filter(|s| !s.is_empty() && *s != "watch" && *s != "video")
+                        .unwrap_or("batch_media")
+                        .to_string()
+                };
+
+                let referer = if url.contains("douyin.com") || url.contains("iesdouyin.com") {
+                    Some("https://www.douyin.com/".to_string())
+                } else {
+                    None
+                };
+
                 if let Ok(_) = mgr
-                    .add_download(
+                    .add_download_with_context(
                         url,
                         title,
                         &download_dir,
@@ -2208,6 +2382,9 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                         audio_format.clone(),
                         audio_bitrate.clone(),
                         embed_meta,
+                        None,
+                        None,
+                        referer,
                     )
                     .await
                 {
@@ -2219,6 +2396,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
             let msg = format!("Queued {} batch download(s)", queued_count);
             let _ = weak.upgrade_in_event_loop(move |window| {
                 window.set_status_message(msg.into());
+                window.set_batch_urls_text("".into());
                 window.set_active_tab(1); // Switch to Downloads view
             });
         });
@@ -2957,6 +3135,172 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                     });
                 }
             }
+        });
+    });
+
+    // Callback: Bypass Off-Peak Scheduler and start all waiting downloads immediately
+    let mgr_bypass = download_manager.clone();
+    let weak_bypass = main_window.as_weak();
+    main_window.on_bypass_scheduler_now(move || {
+        let mgr = mgr_bypass.clone();
+        let weak = weak_bypass.clone();
+        tokio::spawn(async move {
+            mgr.bypass_scheduler_and_start_all().await;
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_status_message("Bypassed off-peak scheduler: Starting all queued downloads now".into());
+                win.set_scheduler_active(false);
+            });
+        });
+    });
+
+    // Callback: Set Off-Peak Scheduler Enabled / Disabled
+    let db_sched = db.clone();
+    let mgr_sched = download_manager.clone();
+    let weak_sched = main_window.as_weak();
+    main_window.on_set_scheduler_enabled(move |enabled| {
+        let db = db_sched.clone();
+        let mgr = mgr_sched.clone();
+        let weak = weak_sched.clone();
+        tokio::spawn(async move {
+            let (_, sh, sm, eh, em) = mgr.get_scheduler_config().await;
+            mgr.set_scheduler_config(enabled, sh, sm, eh, em).await;
+            let _ = db.set_setting("scheduler_enabled", if enabled { "true" } else { "false" }).await;
+            let in_win = mgr.is_in_schedule_window().await;
+            if enabled && in_win {
+                mgr.process_queue().await;
+            }
+            mgr.notify_update().await;
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(if enabled {
+                    format!("Off-peak scheduler enabled: {:02}:{:02} – {:02}:{:02}", sh, sm, eh, em).into()
+                } else {
+                    "Off-peak scheduler disabled: full speed downloads anytime".into()
+                });
+            });
+        });
+    });
+
+    // Callback: Set Scheduler Start Hour & Minute
+    let db_start_time = db.clone();
+    let mgr_start_time = download_manager.clone();
+    let weak_start_time = main_window.as_weak();
+    main_window.on_set_scheduler_start_time(move |h, m| {
+        let db = db_start_time.clone();
+        let mgr = mgr_start_time.clone();
+        let weak = weak_start_time.clone();
+        tokio::spawn(async move {
+            let (en, _, _, eh, em) = mgr.get_scheduler_config().await;
+            let h = (h as u32).min(23);
+            let m = (m as u32).min(59);
+            mgr.set_scheduler_config(en, h, m, eh, em).await;
+            let _ = db.set_setting("scheduler_start_hour", &h.to_string()).await;
+            let _ = db.set_setting("scheduler_start_minute", &m.to_string()).await;
+            let status = format!("Off-Peak Window: {:02}:{:02} – {:02}:{:02}", h, m, eh, em);
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_scheduler_window_status(status.into());
+            });
+            mgr.notify_update().await;
+        });
+    });
+
+    // Callback: Set Scheduler End Hour & Minute
+    let db_end_time = db.clone();
+    let mgr_end_time = download_manager.clone();
+    let weak_end_time = main_window.as_weak();
+    main_window.on_set_scheduler_end_time(move |h, m| {
+        let db = db_end_time.clone();
+        let mgr = mgr_end_time.clone();
+        let weak = weak_end_time.clone();
+        tokio::spawn(async move {
+            let (en, sh, sm, _, _) = mgr.get_scheduler_config().await;
+            let h = (h as u32).min(23);
+            let m = (m as u32).min(59);
+            mgr.set_scheduler_config(en, sh, sm, h, m).await;
+            let _ = db.set_setting("scheduler_end_hour", &h.to_string()).await;
+            let _ = db.set_setting("scheduler_end_minute", &m.to_string()).await;
+            let status = format!("Off-Peak Window: {:02}:{:02} – {:02}:{:02}", sh, sm, h, m);
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_scheduler_window_status(status.into());
+            });
+            mgr.notify_update().await;
+        });
+    });
+
+    // Callback: Set Auto-Retry Enabled / Disabled
+    let db_auto_retry = db.clone();
+    let mgr_auto_retry = download_manager.clone();
+    let weak_auto_retry = main_window.as_weak();
+    main_window.on_set_auto_retry_enabled(move |enabled| {
+        let db = db_auto_retry.clone();
+        let mgr = mgr_auto_retry.clone();
+        let weak = weak_auto_retry.clone();
+        tokio::spawn(async move {
+            let (_, interval, max_a) = mgr.get_auto_retry_config().await;
+            mgr.set_auto_retry_config(enabled, interval, max_a).await;
+            let _ = db.set_setting("auto_retry_enabled", if enabled { "true" } else { "false" }).await;
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(if enabled {
+                    "Auto-retry enabled: failed downloads will automatically restart".into()
+                } else {
+                    "Auto-retry disabled".into()
+                });
+            });
+        });
+    });
+
+    // Callback: Set Auto-Retry Delay Interval
+    let db_retry_int = db.clone();
+    let mgr_retry_int = download_manager.clone();
+    let weak_retry_int = main_window.as_weak();
+    main_window.on_set_auto_retry_interval(move |idx| {
+        let db = db_retry_int.clone();
+        let mgr = mgr_retry_int.clone();
+        let weak = weak_retry_int.clone();
+        tokio::spawn(async move {
+            let (en, _, max_a) = mgr.get_auto_retry_config().await;
+            let secs = match idx {
+                0 => 30,
+                1 => 60,
+                2 => 120,
+                3 => 300,
+                _ => 60,
+            };
+            mgr.set_auto_retry_config(en, secs, max_a).await;
+            let _ = db.set_setting("auto_retry_interval_secs", &secs.to_string()).await;
+            let label = match idx {
+                0 => "30 seconds",
+                1 => "1 minute",
+                2 => "2 minutes",
+                3 => "5 minutes",
+                _ => "1 minute",
+            };
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(format!("Auto-retry countdown delay set to: {}", label).into());
+            });
+        });
+    });
+
+    // Callback: Set Auto-Retry Maximum Attempts
+    let db_retry_max = db.clone();
+    let mgr_retry_max = download_manager.clone();
+    let weak_retry_max = main_window.as_weak();
+    main_window.on_set_auto_retry_max(move |idx| {
+        let db = db_retry_max.clone();
+        let mgr = mgr_retry_max.clone();
+        let weak = weak_retry_max.clone();
+        tokio::spawn(async move {
+            let (en, interval, _) = mgr.get_auto_retry_config().await;
+            let max_a = match idx {
+                0 => 3,
+                1 => 5,
+                2 => 10,
+                _ => 3,
+            };
+            mgr.set_auto_retry_config(en, interval, max_a).await;
+            let _ = db.set_setting("auto_retry_max_attempts", &max_a.to_string()).await;
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_status_message(format!("Auto-retry maximum attempts set to: {} times", max_a).into());
+            });
         });
     });
 

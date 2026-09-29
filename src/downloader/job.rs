@@ -31,6 +31,10 @@ pub struct DownloadJob {
     pub audio_bitrate: Option<String>,
     pub embed_artwork: bool,
     pub referer: Option<String>,
+    pub scheduled_at: Option<u64>,
+    pub auto_retry_at: Option<u64>,
+    pub auto_retry_count: u32,
+    pub bypass_schedule: bool,
 }
 
 impl DownloadJob {
@@ -76,6 +80,10 @@ impl DownloadJob {
             audio_bitrate,
             embed_artwork,
             referer: None,
+            scheduled_at: None,
+            auto_retry_at: None,
+            auto_retry_count: 0,
+            bypass_schedule: false,
         }
     }
 

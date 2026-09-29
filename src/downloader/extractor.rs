@@ -1471,8 +1471,14 @@ fn parse_episodes_from_block(block: &str, base_url: &str) -> Vec<crate::models::
             rest.find('"').map(|end| &rest[..end])
         });
 
-        let text_end = block[tag_close + 1..].find("</a>").map(|e| tag_close + 1 + e).unwrap_or(tag_close + 1);
-        let inner_text = strip_html_tags_and_clean(block[tag_close + 1..text_end].trim());
+        let (inner_text, next_cursor) = match block[tag_close + 1..].find("</a>") {
+            Some(e) => {
+                let close_start = tag_close + 1 + e;
+                let text = strip_html_tags_and_clean(block[tag_close + 1..close_start].trim());
+                (text, close_start + 4)
+            }
+            None => (String::new(), tag_close + 1),
+        };
 
         if let Some(h) = href {
             if !h.is_empty() && (h.contains("vod/play") || h.contains("/play/")) {
@@ -1489,7 +1495,10 @@ fn parse_episodes_from_block(block: &str, base_url: &str) -> Vec<crate::models::
                 });
             }
         }
-        cursor = text_end + 4;
+        cursor = next_cursor.min(block.len());
+        while cursor < block.len() && !block.is_char_boundary(cursor) {
+            cursor += 1;
+        }
         if cursor >= block.len() {
             break;
         }
@@ -1513,8 +1522,14 @@ fn parse_episodes_from_html_scan(html: &str, base_url: &str) -> Vec<crate::model
             rest.find('"').map(|end| &rest[..end])
         });
 
-        let text_end = html[tag_close + 1..].find("</a>").map(|e| tag_close + 1 + e).unwrap_or(tag_close + 1);
-        let inner_text = strip_html_tags_and_clean(html[tag_close + 1..text_end].trim());
+        let (inner_text, next_cursor) = match html[tag_close + 1..].find("</a>") {
+            Some(e) => {
+                let close_start = tag_close + 1 + e;
+                let text = strip_html_tags_and_clean(html[tag_close + 1..close_start].trim());
+                (text, close_start + 4)
+            }
+            None => (String::new(), tag_close + 1),
+        };
 
         if let Some(h) = href {
             if !h.is_empty() && (h.contains("vod/play") || h.contains("/play/id/")) {
@@ -1534,7 +1549,10 @@ fn parse_episodes_from_html_scan(html: &str, base_url: &str) -> Vec<crate::model
                 }
             }
         }
-        cursor = text_end + 4;
+        cursor = next_cursor.min(html.len());
+        while cursor < html.len() && !html.is_char_boundary(cursor) {
+            cursor += 1;
+        }
         if cursor >= html.len() {
             break;
         }
@@ -3012,7 +3030,21 @@ where
     F: FnMut(DownloadProgress) + Send + 'static,
 {
     let normalized_url = normalize_media_url(url);
-    let url = normalized_url.as_str();
+    let mut url_to_download = normalized_url.clone();
+    let mut effective_referer = referer.map(|s| s.to_string());
+
+    if url_to_download.contains("douyin.com") || url_to_download.contains("iesdouyin.com") {
+        if let Ok(meta) = resolve_douyin_via_douyinsaver(&url_to_download, proxy).await {
+            info!("Douyin stream resolved via DouyinSaver for download: {:?}", meta.title);
+            url_to_download = meta.url;
+            if effective_referer.is_none() {
+                effective_referer = meta.referer;
+            }
+        }
+    }
+
+    let url = url_to_download.as_str();
+    let referer = effective_referer.as_deref();
 
     let ytdlp_bin = ensure_ytdlp_installed().await?;
     let bin_dir = get_bin_dir();

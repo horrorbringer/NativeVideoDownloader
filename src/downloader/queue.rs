@@ -44,6 +44,31 @@ impl DownloadQueue {
             .map(|j| j.id)
     }
 
+    pub fn next_eligible_job(&self, sched_enabled: bool, in_window: bool) -> Option<Uuid> {
+        let now_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        self.jobs
+            .iter()
+            .find(|j| {
+                if j.status != DownloadStatus::Queued {
+                    return false;
+                }
+                if let Some(target_ts) = j.scheduled_at {
+                    if now_ts < target_ts {
+                        return false;
+                    }
+                }
+                if sched_enabled && !in_window && !j.bypass_schedule {
+                    return false;
+                }
+                true
+            })
+            .map(|j| j.id)
+    }
+
     pub fn active_downloads_count(&self) -> usize {
         self.jobs
             .iter()
@@ -207,6 +232,50 @@ mod tests {
         // Prioritize id2 -> [id2, id3, id1]
         assert!(queue.prioritize_job(id2));
         assert_eq!(queue.all_jobs()[0].id, id2);
+    }
+
+    #[test]
+    fn test_next_eligible_job_scheduling() {
+        let mut queue = DownloadQueue::new();
+        let make_job = |url: &str, title: &str| {
+            DownloadJob::new(
+                url.to_string(),
+                title.to_string(),
+                PathBuf::from(format!("{}.mp4", title)),
+                None,
+                true,
+                false,
+                None,
+                false,
+                None,
+                false,
+                None,
+                None,
+                None,
+                false,
+            )
+        };
+
+        let mut j1 = make_job("https://example.com/1", "Job 1");
+        j1.status = DownloadStatus::Queued;
+        let id1 = queue.add_job(j1);
+
+        let mut j2 = make_job("https://example.com/2", "Job 2");
+        j2.status = DownloadStatus::Queued;
+        j2.bypass_schedule = true;
+        let id2 = queue.add_job(j2);
+
+        // When scheduler is enabled and outside window:
+        // Job 1 cannot start without bypass_schedule, but Job 2 can start because bypass_schedule is true
+        assert_eq!(queue.next_eligible_job(true, false), Some(id2));
+
+        // When inside schedule window:
+        // Job 1 is first in queue and can start
+        assert_eq!(queue.next_eligible_job(true, true), Some(id1));
+
+        // When scheduler is disabled:
+        // Job 1 is first in queue and can start
+        assert_eq!(queue.next_eligible_job(false, false), Some(id1));
     }
 }
 

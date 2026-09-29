@@ -10,6 +10,8 @@ pub enum DownloadStatus {
     Completed,
     Failed(String),
     Cancelled,
+    Scheduled,
+    Retrying(u64),
 }
 
 #[allow(dead_code)]
@@ -22,6 +24,8 @@ impl DownloadStatus {
             DownloadStatus::Completed => "Completed",
             DownloadStatus::Failed(_) => "Failed",
             DownloadStatus::Cancelled => "Cancelled",
+            DownloadStatus::Scheduled => "Scheduled",
+            DownloadStatus::Retrying(_) => "Retrying",
         }
     }
 }

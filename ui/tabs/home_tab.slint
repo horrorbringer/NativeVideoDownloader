@@ -1526,6 +1526,17 @@ export component HomeTab inherits ScrollView {
                         spacing: 8px;
                         alignment: end;
 
+                        if root.batch_urls_text != "": ActionButton {
+                            text: "Clear";
+                            icon: @image-url("../icons/trash.svg");
+                            has_icon: true;
+                            danger: true;
+                            height: 30px;
+                            clicked => {
+                                root.batch_urls_text = "";
+                            }
+                        }
+
                         ActionButton {
                             text: "Import File (.txt)";
                             icon: @image-url("../icons/folder.svg");
@@ -1552,6 +1563,16 @@ export component HomeTab inherits ScrollView {
                     text <=> root.batch_urls_text;
                     font_size: 13px;
                     height: 140px;
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "Supports multi-line URLs, copied messages, .txt, .m3u, and .csv files";
+                        color: Theme.text_muted;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
                 }
 
                 Text {
@@ -1596,6 +1617,7 @@ export component HomeTab inherits ScrollView {
                         icon: @image-url("../icons/download.svg");
                         has_icon: true;
                         primary: true;
+                        enabled: root.batch_urls_text != "";
                         height: 38px;
                         clicked => {
                             root.start_batch_download(

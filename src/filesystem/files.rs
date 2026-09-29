@@ -378,6 +378,7 @@ pub struct FilenameContext<'a> {
     pub series: Option<&'a str>,
     pub index: Option<usize>,
     pub date: Option<&'a str>,
+    pub group_subtitles: bool,
 }
 
 /// Converts Unix epoch days to standard YYYY-MM-DD string without external crates
@@ -494,10 +495,43 @@ pub fn apply_filename_template(template: &str, ctx: &FilenameContext) -> PathBuf
     }
 
     if final_path.as_os_str().is_empty() {
-        PathBuf::from(format!("downloaded_media.{}", ext_clean))
-    } else {
-        final_path
+        final_path = PathBuf::from(format!("downloaded_media.{}", ext_clean));
     }
+
+    if ctx.group_subtitles && ctx.series.is_none() {
+        let group_folder = if !title_clean.is_empty() {
+            title_clean
+        } else {
+            final_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("media")
+                .to_string()
+        };
+
+        let already_in_group_folder = final_path
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+            .map(|name| name == group_folder)
+            .unwrap_or(false);
+
+        if !already_in_group_folder {
+            if let Some(parent) = final_path.parent() {
+                if parent.as_os_str().is_empty() {
+                    final_path = PathBuf::from(&group_folder).join(&final_path);
+                } else if let Some(file_name) = final_path.file_name() {
+                    final_path = parent.join(&group_folder).join(file_name);
+                } else {
+                    final_path = PathBuf::from(&group_folder).join(&final_path);
+                }
+            } else {
+                final_path = PathBuf::from(&group_folder).join(&final_path);
+            }
+        }
+    }
+
+    final_path
 }
 
 /// Collision and resume resolution strategy when target file already exists or has an incomplete download
@@ -1583,6 +1617,7 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
             series: None,
             index: None,
             date: Some("2026-09-27"),
+            ..Default::default()
         };
         assert_eq!(
             apply_filename_template("{title}.{ext}", &ctx1),
@@ -1597,6 +1632,7 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
             series: None,
             index: None,
             date: Some("2026-09-27"),
+            ..Default::default()
         };
         assert_eq!(
             apply_filename_template("{title} [{resolution}].{ext}", &ctx2),
@@ -1611,6 +1647,7 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
             series: None,
             index: None,
             date: Some("2026-09-27"),
+            ..Default::default()
         };
         assert_eq!(
             apply_filename_template("{title} [{resolution}].{ext}", &ctx3),
@@ -1625,6 +1662,7 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
             series: Some("Edgerunners"),
             index: Some(1),
             date: Some("2026-09-27"),
+            ..Default::default()
         };
         let p4 = apply_filename_template("{series}/{index} - {title}.{ext}", &ctx4);
         assert_eq!(p4, PathBuf::from("Edgerunners").join("01 - City of Dreams.mp4"));
@@ -1632,6 +1670,48 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
         // 5. Date prefix
         let p5 = apply_filename_template("[{date}] {title}.{ext}", &ctx1);
         assert_eq!(p5, PathBuf::from("[2026-09-27] Nature Documentary.mp4"));
+
+        // 6. Single video with subtitles enabled (should create grouping folder)
+        let ctx_sub = FilenameContext {
+            title: "Tears of Steel",
+            ext: "mp4",
+            resolution: Some("1080p"),
+            series: None,
+            index: None,
+            date: None,
+            group_subtitles: true,
+        };
+        let p_sub = apply_filename_template("{title}.{ext}", &ctx_sub);
+        assert_eq!(p_sub, PathBuf::from("Tears of Steel").join("Tears of Steel.mp4"));
+
+        // 7. Single video with template already containing title folder
+        let p_sub_existing = apply_filename_template("{title}/{title}.{ext}", &ctx_sub);
+        assert_eq!(p_sub_existing, PathBuf::from("Tears of Steel").join("Tears of Steel.mp4"));
+
+        // 8. Series with subtitles enabled should not nest extra single-video folder
+        let ctx_series_sub = FilenameContext {
+            title: "Episode 1",
+            ext: "mp4",
+            resolution: None,
+            series: Some("Arcane"),
+            index: Some(1),
+            date: None,
+            group_subtitles: true,
+        };
+        let p_series_sub = apply_filename_template("{series}/{index} - {title}.{ext}", &ctx_series_sub);
+        assert_eq!(p_series_sub, PathBuf::from("Arcane").join("01 - Episode 1.mp4"));
+
+        // 9. Verify folder creation with resolve_template_destination_with_policy
+        let temp_dir = std::env::temp_dir().join(format!("test_sub_group_{}", uuid::Uuid::new_v4()));
+        let res_dest = resolve_template_destination_with_policy(
+            &temp_dir,
+            "{title}.{ext}",
+            &ctx_sub,
+            FileConflictPolicy::AutoResumeOrRename,
+        ).unwrap();
+        assert_eq!(res_dest.path, temp_dir.join("Tears of Steel").join("Tears of Steel.mp4"));
+        assert!(temp_dir.join("Tears of Steel").exists());
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     #[test]

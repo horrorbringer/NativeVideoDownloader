@@ -45,6 +45,9 @@ export component DownloadsTab inherits VerticalLayout {
 
     callback set_custom_speed_limit(string);
     callback open_network_diagnostics();
+    in-out property <bool> scheduler_active: false;
+    in-out property <string> scheduler_status_banner_text: "";
+    callback bypass_scheduler_now();
 
     spacing: 12px;
 
@@ -724,6 +727,56 @@ export component DownloadsTab inherits VerticalLayout {
         }
     }
 
+    // Live Off-Peak Scheduler Banner
+    if root.scheduler_active: Rectangle {
+        background: Theme.is_dark ? #1e1b4b : #f5f3ff;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Theme.is_dark ? #4338ca : #c7d2fe;
+        height: 42px;
+
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            alignment: space-between;
+
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+
+                VerticalLayout {
+                    alignment: center;
+                    Image {
+                        source: @image-url("../icons/moon.svg");
+                        width: 16px;
+                        height: 16px;
+                        colorize: Theme.brand_purple;
+                    }
+                }
+
+                Text {
+                    text: root.scheduler_status_banner_text;
+                    color: Theme.text_primary;
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                ActionButton {
+                    text: "Download All Now";
+                    icon: @image-url("../icons/play.svg");
+                    has_icon: true;
+                    primary: true;
+                    height: 28px;
+                    clicked => { root.bypass_scheduler_now(); }
+                }
+            }
+        }
+    }
+
     // Queue Toolbar
     HorizontalLayout {
         alignment: space-between;
@@ -962,25 +1015,33 @@ export component DownloadsTab inherits VerticalLayout {
                                             item.status == "Downloading" ? (Theme.is_dark ? #1e293b : #e0f2fe) :
                                             item.status == "Paused" ? (Theme.is_dark ? #451a03 : #fef3c7) :
                                             item.status == "Failed" ? (Theme.is_dark ? #450a0a : #fee2e2) :
+                                            item.status == "Retrying" ? (Theme.is_dark ? #451a03 : #ffedd5) :
+                                            item.status == "Scheduled" ? (Theme.is_dark ? #2e1065 : #ede9fe) :
                                             (Theme.is_dark ? #1e1b4b : #f3e8ff);
                                 border-width: 1px;
                                 border-color: item.status == "Completed" ? #10b981 :
                                               item.status == "Downloading" ? #3b82f6 :
                                               item.status == "Paused" ? #f59e0b :
-                                              item.status == "Failed" ? #ef4444 : #8b5cf6;
+                                              item.status == "Failed" ? #ef4444 :
+                                              item.status == "Retrying" ? #f97316 :
+                                              item.status == "Scheduled" ? #8b5cf6 : #8b5cf6;
 
                                 Image {
                                     source: item.status == "Completed" ? @image-url("../icons/check.svg") :
                                             item.status == "Downloading" ? @image-url("../icons/download.svg") :
                                             item.status == "Paused" ? @image-url("../icons/pause.svg") :
                                             item.status == "Failed" ? @image-url("../icons/x.svg") :
+                                            item.status == "Retrying" ? @image-url("../icons/refresh.svg") :
+                                            item.status == "Scheduled" ? @image-url("../icons/moon.svg") :
                                             @image-url("../icons/history.svg");
                                     width: 15px;
                                     height: 15px;
                                     colorize: item.status == "Completed" ? #10b981 :
                                               item.status == "Downloading" ? #38bdf8 :
                                               item.status == "Paused" ? #f59e0b :
-                                              item.status == "Failed" ? #ef4444 : #a855f7;
+                                              item.status == "Failed" ? #ef4444 :
+                                              item.status == "Retrying" ? #f97316 :
+                                              item.status == "Scheduled" ? #8b5cf6 : #a855f7;
                                     x: (parent.width - self.width) / 2;
                                     y: (parent.height - self.height) / 2;
                                 }
@@ -1007,12 +1068,16 @@ export component DownloadsTab inherits VerticalLayout {
                                         background: item.status == "Completed" ? #0e291b :
                                                     item.status == "Paused" ? #331e08 :
                                                     item.status == "Downloading" ? #0f2142 :
+                                                    item.status == "Retrying" ? #431407 :
+                                                    item.status == "Scheduled" ? #2e1065 :
                                                     item.status == "Queued" ? #25103a : #331317;
                                         border-radius: 4px;
                                         border-width: 1px;
                                         border-color: item.status == "Completed" ? #166534 :
                                                       item.status == "Paused" ? #b45309 :
                                                       item.status == "Downloading" ? #2563eb :
+                                                      item.status == "Retrying" ? #ea580c :
+                                                      item.status == "Scheduled" ? #7c3aed :
                                                       item.status == "Queued" ? #7e22ce : #991b1b;
                                         height: 18px;
 
@@ -1026,6 +1091,8 @@ export component DownloadsTab inherits VerticalLayout {
                                                 color: item.status == "Completed" ? #4ade80 :
                                                        item.status == "Paused" ? #fcd34d :
                                                        item.status == "Downloading" ? #60a5fa :
+                                                       item.status == "Retrying" ? #fb923c :
+                                                       item.status == "Scheduled" ? #c084fc :
                                                        item.status == "Queued" ? #c084fc : #f87171;
                                                 font-size: 10px;
                                                 font-weight: 700;
@@ -1088,8 +1155,8 @@ export component DownloadsTab inherits VerticalLayout {
                             }
 
                             if item.can_resume: ActionButton {
-                                text: "Resume";
-                                icon: @image-url("../icons/play.svg");
+                                text: item.status == "Scheduled" ? "Start Now" : (item.status == "Retrying" ? "Retry Now" : "Resume");
+                                icon: item.status == "Retrying" ? @image-url("../icons/refresh.svg") : @image-url("../icons/play.svg");
                                 has_icon: true;
                                 height: 28px;
                                 clicked => { root.resume_download(item.id); }
@@ -1171,9 +1238,10 @@ export component DownloadsTab inherits VerticalLayout {
                             }
 
                             if item.status != "Downloading": Text {
-                                text: item.status == "Completed" ? "Completed" : (item.status == "Paused" ? "Paused" : item.status);
-                                color: Theme.text_muted;
+                                text: item.eta_text != "" ? item.eta_text : (item.status == "Completed" ? "Completed" : (item.status == "Paused" ? "Paused" : item.status));
+                                color: item.status == "Retrying" ? #f97316 : (item.status == "Scheduled" ? #a855f7 : Theme.text_muted);
                                 font-size: 12px;
+                                font-weight: (item.status == "Retrying" || item.status == "Scheduled") ? 600 : 400;
                                 vertical-alignment: center;
                             }
                         }
