@@ -37,14 +37,16 @@ export component StyledInput inherits Rectangle {
         padding-left: 12px;
         padding-right: 10px;
         spacing: 8px;
-        alignment: center;
 
-        if root.has_icon: Image {
-            source: root.icon;
-            width: 15px;
-            height: 15px;
-            colorize: input.has-focus ? Theme.primary_accent : Theme.text_muted;
-            animate colorize { duration: 150ms; }
+        if root.has_icon: VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.icon;
+                width: 15px;
+                height: 15px;
+                colorize: input.has-focus ? Theme.primary_accent : Theme.text_muted;
+                animate colorize { duration: 150ms; }
+            }
         }
 
         Rectangle {
@@ -57,8 +59,8 @@ export component StyledInput inherits Rectangle {
                 font-size: root.font_size;
                 vertical-alignment: center;
                 overflow: elide;
-                x: 0;
-                y: (parent.height - self.height) / 2;
+                width: 100%;
+                height: 100%;
             }
 
             input := TextInput {
@@ -79,28 +81,31 @@ export component StyledInput inherits Rectangle {
             }
         }
 
-        if root.clearable && root.text != "": Rectangle {
-            width: 20px;
-            height: 20px;
-            border-radius: 10px;
-            background: clear_btn.has-hover ? (Theme.is_dark ? #28334e : #e2e8f0) : #00000000;
+        if root.clearable && root.text != "": VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                background: clear_btn.has-hover ? (Theme.is_dark ? #28334e : #e2e8f0) : #00000000;
 
-            clear_btn := TouchArea {
-                clicked => {
-                    root.text = "";
-                    root.edited("");
-                    root.cleared();
-                    input.focus();
+                clear_btn := TouchArea {
+                    clicked => {
+                        root.text = "";
+                        root.edited("");
+                        root.cleared();
+                        input.focus();
+                    }
                 }
-            }
 
-            Image {
-                source: @image-url("../icons/x.svg");
-                width: 10px;
-                height: 10px;
-                colorize: Theme.text_muted;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
+                Image {
+                    source: @image-url("../icons/x.svg");
+                    width: 10px;
+                    height: 10px;
+                    colorize: Theme.text_muted;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
             }
         }
     }
