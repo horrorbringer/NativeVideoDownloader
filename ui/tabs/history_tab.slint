@@ -1,11 +1,20 @@
 import { LineEdit, ScrollView } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
+import { IconChip } from "../components/icon_chip.slint";
 import { HistoryItemData } from "../models.slint";
 import { Theme } from "../theme.slint";
 
 export component HistoryTab inherits VerticalLayout {
     in-out property <[HistoryItemData]> history_items: [];
     in-out property <string> history_search_query: "";
+    in-out property <int> history_status_filter: 0; // 0 = All, 1 = Completed, 2 = Failed
+    in-out property <int> history_domain_filter: 0; // 0 = All, 1 = YouTube, 2 = KissKH, 3 = TikTok, 4 = Douyin, 5 = Facebook, 6 = Other
+    in-out property <int> history_selected_count: 0;
+    in-out property <int> history_total_count: 0;
+    in-out property <int> history_completed_count: 0;
+    in-out property <int> history_failed_count: 0;
+    in-out property <string> history_total_bytes_text: "0 B";
+    in-out property <string> history_success_rate_text: "100%";
 
     callback search_history(string);
     callback clear_all_history();
@@ -14,17 +23,209 @@ export component HistoryTab inherits VerticalLayout {
     callback open_history_folder(string);
     callback redownload_history(string);
     callback delete_history_item(string);
+    callback set_history_status_filter(int);
+    callback set_history_domain_filter(int);
+    callback toggle_history_item_selected(string);
+    callback select_all_history(bool);
+    callback delete_selected_history();
+    callback redownload_selected_history();
 
     spacing: 12px;
 
-    // Search and toolbar
+    // 1. Top Statistics Summary Banner
+    Rectangle {
+        background: Theme.card_bg;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.card_border;
+        height: 64px;
+
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            spacing: 16px;
+            alignment: space-between;
+
+            // Stat 1: Total Records
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                vertical-stretch: 1;
+
+                Rectangle {
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 19px;
+                    background: Theme.is_dark ? #2e1065 : #f3e8ff;
+                    border-width: 1px;
+                    border-color: Theme.is_dark ? #581c87 : #d8b4fe;
+
+                    Image {
+                        source: @image-url("../icons/history.svg");
+                        width: 17px;
+                        height: 17px;
+                        colorize: Theme.brand_purple;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+
+                    Text {
+                        text: root.history_total_count + " Downloads";
+                        color: Theme.text_primary;
+                        font-size: 13px;
+                        font-weight: 700;
+                    }
+                    Text {
+                        text: "All Recorded Jobs";
+                        color: Theme.text_muted;
+                        font-size: 11px;
+                    }
+                }
+            }
+
+            // Stat 2: Completed & Success Rate
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                vertical-stretch: 1;
+
+                Rectangle {
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 19px;
+                    background: Theme.is_dark ? #064e3b : #d1fae5;
+                    border-width: 1px;
+                    border-color: Theme.is_dark ? #047857 : #6ee7b7;
+
+                    Image {
+                        source: @image-url("../icons/check.svg");
+                        width: 17px;
+                        height: 17px;
+                        colorize: Theme.is_dark ? #34d399 : #059669;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+
+                    Text {
+                        text: root.history_completed_count + " Completed";
+                        color: Theme.is_dark ? #34d399 : #059669;
+                        font-size: 13px;
+                        font-weight: 700;
+                    }
+                    Text {
+                        text: "Success Rate: " + root.history_success_rate_text;
+                        color: Theme.text_muted;
+                        font-size: 11px;
+                    }
+                }
+            }
+
+            // Stat 3: Total Transferred Size
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                vertical-stretch: 1;
+
+                Rectangle {
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 19px;
+                    background: Theme.is_dark ? #0c4a6e : #e0f2fe;
+                    border-width: 1px;
+                    border-color: Theme.is_dark ? #0369a1 : #7dd3fc;
+
+                    Image {
+                        source: @image-url("../icons/bolt.svg");
+                        width: 17px;
+                        height: 17px;
+                        colorize: Theme.is_dark ? #38bdf8 : #0284c7;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+
+                    Text {
+                        text: root.history_total_bytes_text;
+                        color: Theme.is_dark ? #38bdf8 : #0284c7;
+                        font-size: 13px;
+                        font-weight: 700;
+                    }
+                    Text {
+                        text: "Bandwidth Delivered";
+                        color: Theme.text_muted;
+                        font-size: 11px;
+                    }
+                }
+            }
+
+            // Stat 4: Failed / Errors
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                vertical-stretch: 1;
+
+                Rectangle {
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 19px;
+                    background: root.history_failed_count > 0 ? (Theme.is_dark ? #450a0a : #fee2e2) : (Theme.is_dark ? #1e293b : #f1f5f9);
+                    border-width: 1px;
+                    border-color: root.history_failed_count > 0 ? (Theme.is_dark ? #991b1b : #fca5a5) : (Theme.is_dark ? #334155 : #e2e8f0);
+
+                    Image {
+                        source: root.history_failed_count > 0 ? @image-url("../icons/alert.svg") : @image-url("../icons/check.svg");
+                        width: 17px;
+                        height: 17px;
+                        colorize: root.history_failed_count > 0 ? (Theme.is_dark ? #f87171 : #dc2626) : Theme.text_muted;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+
+                    Text {
+                        text: root.history_failed_count + " Failed";
+                        color: root.history_failed_count > 0 ? (Theme.is_dark ? #f87171 : #dc2626) : Theme.text_secondary;
+                        font-size: 13px;
+                        font-weight: 700;
+                    }
+                    Text {
+                        text: root.history_failed_count > 0 ? "Requires Attention" : "Clean Queue";
+                        color: Theme.text_muted;
+                        font-size: 11px;
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Search & Toolbar Bar
     HorizontalLayout {
-        spacing: 12px;
+        spacing: 10px;
         alignment: space-between;
 
         search_box := LineEdit {
             horizontal-stretch: 1;
-            placeholder_text: "Search history by title or file path...";
+            placeholder_text: "Search history by title, filename, URL or path...";
             font_size: 13px;
             height: 36px;
             text <=> root.history_search_query;
@@ -43,7 +244,7 @@ export component HistoryTab inherits VerticalLayout {
                 padding-right: 12px;
                 alignment: center;
                 Text {
-                    text: root.history_items.length + " Records";
+                    text: root.history_items.length + " / " + root.history_total_count + " Showing";
                     color: Theme.text_secondary;
                     font-size: 12px;
                     font-weight: 600;
@@ -72,7 +273,211 @@ export component HistoryTab inherits VerticalLayout {
         }
     }
 
-    // If no history items
+    // 3. Status Filters & Quick Selection Row
+    HorizontalLayout {
+        alignment: space-between;
+        spacing: 12px;
+
+        // Status Chips
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            IconChip {
+                text: "All (" + root.history_total_count + ")";
+                selected: root.history_status_filter == 0;
+                clicked => {
+                    root.history_status_filter = 0;
+                    root.set_history_status_filter(0);
+                }
+            }
+            IconChip {
+                text: "Completed (" + root.history_completed_count + ")";
+                icon: @image-url("../icons/check.svg");
+                has_icon: true;
+                selected: root.history_status_filter == 1;
+                clicked => {
+                    root.history_status_filter = 1;
+                    root.set_history_status_filter(1);
+                }
+            }
+            IconChip {
+                text: "Failed (" + root.history_failed_count + ")";
+                icon: @image-url("../icons/x.svg");
+                has_icon: true;
+                selected: root.history_status_filter == 2;
+                clicked => {
+                    root.history_status_filter = 2;
+                    root.set_history_status_filter(2);
+                }
+            }
+        }
+
+        // Selection Action Buttons
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+
+            ActionButton {
+                text: root.history_selected_count > 0 && root.history_selected_count == root.history_items.length ? "Deselect All" : "Select All";
+                icon: @image-url("../icons/check.svg");
+                has_icon: true;
+                height: 32px;
+                enabled: root.history_items.length > 0;
+                clicked => {
+                    if (root.history_selected_count > 0 && root.history_selected_count == root.history_items.length) {
+                        root.select_all_history(false);
+                    } else {
+                        root.select_all_history(true);
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Domain & Platform Filters Row
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+
+        IconChip {
+            text: "All Sites";
+            selected: root.history_domain_filter == 0;
+            clicked => {
+                root.history_domain_filter = 0;
+                root.set_history_domain_filter(0);
+            }
+        }
+        IconChip {
+            text: "YouTube";
+            icon: @image-url("../icons/video.svg");
+            has_icon: true;
+            selected: root.history_domain_filter == 1;
+            clicked => {
+                root.history_domain_filter = 1;
+                root.set_history_domain_filter(1);
+            }
+        }
+        IconChip {
+            text: "KissKH";
+            icon: @image-url("../icons/tv.svg");
+            has_icon: true;
+            selected: root.history_domain_filter == 2;
+            clicked => {
+                root.history_domain_filter = 2;
+                root.set_history_domain_filter(2);
+            }
+        }
+        IconChip {
+            text: "TikTok";
+            icon: @image-url("../icons/music.svg");
+            has_icon: true;
+            selected: root.history_domain_filter == 3;
+            clicked => {
+                root.history_domain_filter = 3;
+                root.set_history_domain_filter(3);
+            }
+        }
+        IconChip {
+            text: "Douyin";
+            icon: @image-url("../icons/sparkles.svg");
+            has_icon: true;
+            selected: root.history_domain_filter == 4;
+            clicked => {
+                root.history_domain_filter = 4;
+                root.set_history_domain_filter(4);
+            }
+        }
+        IconChip {
+            text: "Facebook";
+            icon: @image-url("../icons/link.svg");
+            has_icon: true;
+            selected: root.history_domain_filter == 5;
+            clicked => {
+                root.history_domain_filter = 5;
+                root.set_history_domain_filter(5);
+            }
+        }
+        IconChip {
+            text: "Other";
+            icon: @image-url("../icons/package.svg");
+            has_icon: true;
+            selected: root.history_domain_filter == 6;
+            clicked => {
+                root.history_domain_filter = 6;
+                root.set_history_domain_filter(6);
+            }
+        }
+    }
+
+    // 5. Batch Action Floating Toolbar (Visible when 1 or more items are selected)
+    if root.history_selected_count > 0: Rectangle {
+        background: Theme.is_dark ? #1e1b4b : #eef2ff;
+        border-radius: 10px;
+        border-width: 1.5px;
+        border-color: Theme.brand_purple;
+        height: 48px;
+
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 14px;
+            alignment: space-between;
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+
+                VerticalLayout {
+                    alignment: center;
+                    Image {
+                        source: @image-url("../icons/check.svg");
+                        width: 16px;
+                        height: 16px;
+                        colorize: Theme.brand_purple;
+                    }
+                }
+
+                Text {
+                    text: root.history_selected_count + " item" + (root.history_selected_count > 1 ? "s" : "") + " selected for batch action";
+                    color: Theme.text_primary;
+                    font-size: 13px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+
+                ActionButton {
+                    text: "Redownload Selected (" + root.history_selected_count + ")";
+                    icon: @image-url("../icons/refresh.svg");
+                    has_icon: true;
+                    primary: true;
+                    height: 32px;
+                    clicked => { root.redownload_selected_history(); }
+                }
+
+                ActionButton {
+                    text: "Delete Selected (" + root.history_selected_count + ")";
+                    icon: @image-url("../icons/trash.svg");
+                    has_icon: true;
+                    danger: true;
+                    height: 32px;
+                    clicked => { root.delete_selected_history(); }
+                }
+
+                ActionButton {
+                    text: "Clear Selection";
+                    height: 32px;
+                    clicked => { root.select_all_history(false); }
+                }
+            }
+        }
+    }
+
+    // 6. Empty States
     if root.history_items.length == 0: Rectangle {
         background: Theme.card_bg;
         border-radius: 12px;
@@ -87,17 +492,17 @@ export component HistoryTab inherits VerticalLayout {
             HorizontalLayout {
                 alignment: center;
                 Rectangle {
-                    width: 48px;
-                    height: 48px;
-                    border-radius: 24px;
+                    width: 52px;
+                    height: 52px;
+                    border-radius: 26px;
                     background: Theme.sidebar_brand_bg;
                     border-width: 1px;
                     border-color: Theme.sidebar_brand_border;
 
                     Image {
                         source: root.history_search_query != "" ? @image-url("../icons/search.svg") : @image-url("../icons/history.svg");
-                        width: 22px;
-                        height: 22px;
+                        width: 24px;
+                        height: 24px;
                         colorize: Theme.brand_purple;
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
@@ -106,25 +511,42 @@ export component HistoryTab inherits VerticalLayout {
             }
 
             VerticalLayout {
-                spacing: 5px;
+                spacing: 6px;
                 Text {
-                    text: root.history_search_query != "" ? "No history records match your search" : "No download history yet";
+                    text: root.history_total_count == 0 ? "No download history yet" : "No records match your active filters or search";
                     color: Theme.text_primary;
                     font-size: 15px;
                     font-weight: 700;
                     horizontal-alignment: center;
                 }
                 Text {
-                    text: root.history_search_query != "" ? "Try a different keyword or clear the search box above." : "Finished and saved media downloads will be persisted here.";
+                    text: root.history_total_count == 0 ? "Completed media downloads and saved files will be automatically recorded here." : "Try clearing filters, searching for a different keyword, or resetting platform filters.";
                     color: Theme.text_secondary;
                     font-size: 13px;
                     horizontal-alignment: center;
                 }
             }
+
+            if root.history_total_count > 0: HorizontalLayout {
+                alignment: center;
+                ActionButton {
+                    text: "Reset All Filters";
+                    icon: @image-url("../icons/refresh.svg");
+                    has_icon: true;
+                    height: 34px;
+                    clicked => {
+                        root.history_status_filter = 0;
+                        root.history_domain_filter = 0;
+                        root.set_history_status_filter(0);
+                        root.set_history_domain_filter(0);
+                        root.search_history("");
+                    }
+                }
+            }
         }
     }
 
-    // If history items exist
+    // 7. History Items List
     if root.history_items.length > 0: ScrollView {
         vertical-stretch: 1;
 
@@ -133,195 +555,267 @@ export component HistoryTab inherits VerticalLayout {
             padding-bottom: 8px;
 
             for item in root.history_items: Rectangle {
-                background: touch.has-hover ? Theme.card_hover : Theme.card_bg;
+                background: item.selected ? (Theme.is_dark ? #1e1b4b : #f5f3ff) : (touch.has-hover ? Theme.card_hover : Theme.card_bg);
                 border-radius: 12px;
-                border-width: 1px;
-                border-color: touch.has-hover ? Theme.primary_border : Theme.card_border;
+                border-width: item.selected ? 1.5px : 1px;
+                border-color: item.selected ? Theme.brand_purple : (touch.has-hover ? Theme.primary_border : Theme.card_border);
                 animate background { duration: 150ms; }
                 animate border-color { duration: 150ms; }
 
                 touch := TouchArea { }
 
-                VerticalLayout {
+                HorizontalLayout {
                     padding: 14px;
-                    spacing: 10px;
+                    spacing: 12px;
+                    alignment: start;
 
-                    // Row 1: Title & Action Buttons
-                    HorizontalLayout {
-                        alignment: space-between;
-                        spacing: 12px;
+                    // Multi-select Checkbox
+                    VerticalLayout {
+                        alignment: center;
 
-                        VerticalLayout {
-                            horizontal-stretch: 1;
-                            spacing: 6px;
+                        Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 6px;
+                            border-width: 1.5px;
+                            border-color: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.text_secondary : Theme.inner_border);
+                            background: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.card_hover : Theme.inner_bg);
+                            animate background { duration: 120ms; }
+                            animate border-color { duration: 120ms; }
 
-                            Text {
-                                text: item.title;
-                                color: Theme.text_primary;
-                                font-size: 15px;
-                                font-weight: 700;
-                                overflow: elide;
+                            if item.selected: Image {
+                                source: @image-url("../icons/check.svg");
+                                width: 12px;
+                                height: 12px;
+                                colorize: #ffffff;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
                             }
 
-                            HorizontalLayout {
-                                spacing: 10px;
-                                alignment: start;
-
-                                // Status pill
-                                Rectangle {
-                                    height: 22px;
-                                    border-radius: 4px;
-                                    border-width: 1px;
-                                    background: item.status == "Completed" ? (Theme.is_dark ? #0e291b : #dcfce7) :
-                                                (item.status == "Failed" ? (Theme.is_dark ? #331317 : #fee2e2) : Theme.inner_bg);
-                                    border-color: item.status == "Completed" ? (Theme.is_dark ? #166534 : #86efac) :
-                                                  (item.status == "Failed" ? (Theme.is_dark ? #991b1b : #fca5a5) : Theme.inner_border);
-
-                                    HorizontalLayout {
-                                        padding-left: 8px;
-                                        padding-right: 8px;
-                                        spacing: 5px;
-                                        alignment: center;
-
-                                        VerticalLayout {
-                                            alignment: center;
-                                            Image {
-                                                source: item.status == "Completed" ? @image-url("../icons/check.svg") : @image-url("../icons/x.svg");
-                                                width: 11px;
-                                                height: 11px;
-                                                colorize: item.status == "Completed" ? (Theme.is_dark ? #4ade80 : #15803d) : (Theme.is_dark ? #f87171 : #b91c1c);
-                                            }
-                                        }
-
-                                        Text {
-                                            text: item.status == "Completed" ? "Completed" : item.status;
-                                            color: item.status == "Completed" ? (Theme.is_dark ? #4ade80 : #15803d) :
-                                                   (item.status == "Failed" ? (Theme.is_dark ? #f87171 : #b91c1c) : Theme.text_secondary);
-                                            font-size: 11px;
-                                            font-weight: 700;
-                                            vertical-alignment: center;
-                                        }
-                                    }
+                            cb_touch := TouchArea {
+                                clicked => {
+                                    root.toggle_history_item_selected(item.id);
                                 }
-
-                                // File size
-                                HorizontalLayout {
-                                    spacing: 4px;
-                                    alignment: start;
-
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Image {
-                                            source: @image-url("../icons/package.svg");
-                                            width: 13px;
-                                            height: 13px;
-                                            colorize: Theme.text_secondary;
-                                        }
-                                    }
-
-                                    Text {
-                                        text: item.size_text;
-                                        color: Theme.text_secondary;
-                                        font-size: 12px;
-                                        vertical-alignment: center;
-                                    }
-                                }
-
-                                // Date / Timestamp
-                                if item.date_text != "": HorizontalLayout {
-                                    spacing: 4px;
-                                    alignment: start;
-
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Image {
-                                            source: @image-url("../icons/history.svg");
-                                            width: 13px;
-                                            height: 13px;
-                                            colorize: Theme.text_muted;
-                                        }
-                                    }
-
-                                    Text {
-                                        text: item.date_text;
-                                        color: Theme.text_muted;
-                                        font-size: 12px;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                            }
-                        }
-
-                        // Action buttons
-                        HorizontalLayout {
-                            spacing: 8px;
-                            alignment: end;
-
-                            if item.status == "Completed": ActionButton {
-                                text: "Play";
-                                icon: @image-url("../icons/play.svg");
-                                has_icon: true;
-                                height: 32px;
-                                clicked => { root.play_history_file(item.output_path); }
-                            }
-
-                            ActionButton {
-                                text: "Finder";
-                                icon: @image-url("../icons/folder.svg");
-                                has_icon: true;
-                                height: 32px;
-                                clicked => { root.open_history_folder(item.output_path); }
-                            }
-
-                            ActionButton {
-                                text: "Redownload";
-                                icon: @image-url("../icons/refresh.svg");
-                                has_icon: true;
-                                height: 32px;
-                                clicked => { root.redownload_history(item.url); }
-                            }
-
-                            ActionButton {
-                                icon: @image-url("../icons/x.svg");
-                                has_icon: true;
-                                danger: true;
-                                height: 32px;
-                                clicked => { root.delete_history_item(item.id); }
                             }
                         }
                     }
 
-                    // Row 2: Recessed File Path Bezel
-                    Rectangle {
-                        background: Theme.inner_bg;
-                        border-radius: 6px;
-                        border-width: 1px;
-                        border-color: Theme.inner_border;
-                        height: 28px;
+                    // Item Content Column
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 10px;
 
+                        // Row 1: Title & Action Buttons
                         HorizontalLayout {
-                            padding-left: 10px;
-                            padding-right: 10px;
-                            alignment: start;
-                            spacing: 6px;
+                            alignment: space-between;
+                            spacing: 12px;
 
                             VerticalLayout {
-                                alignment: center;
-                                Image {
-                                    source: @image-url("../icons/folder.svg");
-                                    width: 12px;
-                                    height: 12px;
-                                    colorize: Theme.text_muted;
+                                horizontal-stretch: 1;
+                                spacing: 6px;
+
+                                Text {
+                                    text: item.title;
+                                    color: Theme.text_primary;
+                                    font-size: 15px;
+                                    font-weight: 700;
+                                    overflow: elide;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+
+                                    // Status pill
+                                    Rectangle {
+                                        height: 22px;
+                                        border-radius: 4px;
+                                        border-width: 1px;
+                                        background: item.status == "Completed" ? (Theme.is_dark ? #0e291b : #dcfce7) :
+                                                    (item.status == "Failed" ? (Theme.is_dark ? #331317 : #fee2e2) : Theme.inner_bg);
+                                        border-color: item.status == "Completed" ? (Theme.is_dark ? #166534 : #86efac) :
+                                                      (item.status == "Failed" ? (Theme.is_dark ? #991b1b : #fca5a5) : Theme.inner_border);
+
+                                        HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 8px;
+                                            spacing: 5px;
+                                            alignment: center;
+
+                                            VerticalLayout {
+                                                alignment: center;
+                                                Image {
+                                                    source: item.status == "Completed" ? @image-url("../icons/check.svg") : @image-url("../icons/x.svg");
+                                                    width: 11px;
+                                                    height: 11px;
+                                                    colorize: item.status == "Completed" ? (Theme.is_dark ? #4ade80 : #15803d) : (Theme.is_dark ? #f87171 : #b91c1c);
+                                                }
+                                            }
+
+                                            Text {
+                                                text: item.status == "Completed" ? "Completed" : item.status;
+                                                color: item.status == "Completed" ? (Theme.is_dark ? #4ade80 : #15803d) :
+                                                       (item.status == "Failed" ? (Theme.is_dark ? #f87171 : #b91c1c) : Theme.text_secondary);
+                                                font-size: 11px;
+                                                font-weight: 700;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Domain Chip
+                                    if item.domain != "": Rectangle {
+                                        height: 22px;
+                                        border-radius: 4px;
+                                        border-width: 1px;
+                                        background: Theme.is_dark ? #1e1b4b : #eef2ff;
+                                        border-color: Theme.is_dark ? #3730a3 : #c7d2fe;
+
+                                        HorizontalLayout {
+                                            padding-left: 7px;
+                                            padding-right: 7px;
+                                            spacing: 4px;
+                                            alignment: center;
+
+                                            VerticalLayout {
+                                                alignment: center;
+                                                Image {
+                                                    source: @image-url("../icons/link.svg");
+                                                    width: 10px;
+                                                    height: 10px;
+                                                    colorize: Theme.is_dark ? #a5b4fc : #4f46e5;
+                                                }
+                                            }
+
+                                            Text {
+                                                text: item.domain;
+                                                color: Theme.is_dark ? #a5b4fc : #4f46e5;
+                                                font-size: 11px;
+                                                font-weight: 600;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // File size
+                                    HorizontalLayout {
+                                        spacing: 4px;
+                                        alignment: start;
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Image {
+                                                source: @image-url("../icons/package.svg");
+                                                width: 13px;
+                                                height: 13px;
+                                                colorize: Theme.text_secondary;
+                                            }
+                                        }
+
+                                        Text {
+                                            text: item.size_text;
+                                            color: Theme.text_secondary;
+                                            font-size: 12px;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    // Date / Timestamp
+                                    if item.date_text != "": HorizontalLayout {
+                                        spacing: 4px;
+                                        alignment: start;
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Image {
+                                                source: @image-url("../icons/history.svg");
+                                                width: 13px;
+                                                height: 13px;
+                                                colorize: Theme.text_muted;
+                                            }
+                                        }
+
+                                        Text {
+                                            text: item.date_text;
+                                            color: Theme.text_muted;
+                                            font-size: 12px;
+                                            vertical-alignment: center;
+                                        }
+                                    }
                                 }
                             }
 
-                            Text {
-                                text: item.output_path;
-                                color: Theme.text_muted;
-                                font-size: 11px;
-                                overflow: elide;
-                                horizontal-stretch: 1;
-                                vertical-alignment: center;
+                            // Action buttons
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: end;
+
+                                if item.status == "Completed": ActionButton {
+                                    text: "Play";
+                                    icon: @image-url("../icons/play.svg");
+                                    has_icon: true;
+                                    height: 32px;
+                                    clicked => { root.play_history_file(item.output_path); }
+                                }
+
+                                ActionButton {
+                                    text: "Finder";
+                                    icon: @image-url("../icons/folder.svg");
+                                    has_icon: true;
+                                    height: 32px;
+                                    clicked => { root.open_history_folder(item.output_path); }
+                                }
+
+                                ActionButton {
+                                    text: "Redownload";
+                                    icon: @image-url("../icons/refresh.svg");
+                                    has_icon: true;
+                                    height: 32px;
+                                    clicked => { root.redownload_history(item.url); }
+                                }
+
+                                ActionButton {
+                                    icon: @image-url("../icons/trash.svg");
+                                    has_icon: true;
+                                    danger: true;
+                                    height: 32px;
+                                    clicked => { root.delete_history_item(item.id); }
+                                }
+                            }
+                        }
+
+                        // Row 2: Recessed File Path Bezel
+                        Rectangle {
+                            background: Theme.inner_bg;
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: Theme.inner_border;
+                            height: 28px;
+
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                alignment: start;
+                                spacing: 6px;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: @image-url("../icons/folder.svg");
+                                        width: 12px;
+                                        height: 12px;
+                                        colorize: Theme.text_muted;
+                                    }
+                                }
+
+                                Text {
+                                    text: item.output_path;
+                                    color: Theme.text_muted;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                    vertical-alignment: center;
+                                }
                             }
                         }
                     }

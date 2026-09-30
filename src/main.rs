@@ -28,15 +28,126 @@ use network::NetworkClient;
 
 slint::include_modules!();
 
-/// Helper: load history from database and push it into the Slint UI
+#[derive(Default, Clone)]
+struct HistoryState {
+    status_filter: i32,  // 0 = All, 1 = Completed, 2 = Failed
+    domain_filter: i32,  // 0 = All, 1 = YouTube, 2 = KissKH, 3 = TikTok, 4 = Douyin, 5 = Facebook, 6 = Other
+    search_query: String,
+    selected_ids: HashSet<Uuid>,
+}
+
+fn extract_domain_from_url(url: &str) -> String {
+    if let Ok(parsed) = reqwest::Url::parse(url) {
+        if let Some(host) = parsed.host_str() {
+            let clean = host.trim_start_matches("www.");
+            return clean.to_lowercase();
+        }
+    }
+    let s = url.trim().to_lowercase();
+    if s.contains("youtube.com") || s.contains("youtu.be") {
+        "youtube.com".to_string()
+    } else if s.contains("kisskh") {
+        "kisskh.do".to_string()
+    } else if s.contains("tiktok.com") {
+        "tiktok.com".to_string()
+    } else if s.contains("douyin.com") {
+        "douyin.com".to_string()
+    } else if s.contains("facebook.com") || s.contains("fb.watch") {
+        "facebook.com".to_string()
+    } else {
+        "web".to_string()
+    }
+}
+
+/// Helper: load history from database, apply active filters, compute stats, and push it into the Slint UI
 async fn refresh_history(
     db: &Database,
-    search: Option<&str>,
+    state: &Arc<tokio::sync::RwLock<HistoryState>>,
     weak: slint::Weak<AppWindow>,
 ) {
-    match db.get_history(search).await {
+    let (status_filter, domain_filter, search_query, selected_ids) = {
+        let guard = state.read().await;
+        (
+            guard.status_filter,
+            guard.domain_filter,
+            guard.search_query.clone(),
+            guard.selected_ids.clone(),
+        )
+    };
+
+    match db.get_history(None).await {
         Ok(records) => {
-            let items: Vec<HistoryItemData> = records
+            let total_count = records.len() as i32;
+            let total_completed = records.iter().filter(|r| r.status == "Completed").count() as i32;
+            let total_failed = records
+                .iter()
+                .filter(|r| r.status == "Failed" || r.status == "Cancelled")
+                .count() as i32;
+            let total_bytes: u64 = records
+                .iter()
+                .filter(|r| r.status == "Completed")
+                .map(|r| r.downloaded_size.max(r.total_size.unwrap_or(0)))
+                .sum();
+            let total_bytes_text = DownloadProgress::format_size(total_bytes);
+            let success_rate_text = if total_count > 0 {
+                format!("{}%", (total_completed * 100) / total_count)
+            } else {
+                "100%".to_string()
+            };
+
+            let filtered_records: Vec<&database::HistoryRecord> = records
+                .iter()
+                .filter(|r| {
+                    // Status filter
+                    let status_ok = match status_filter {
+                        1 => r.status == "Completed",
+                        2 => r.status == "Failed" || r.status == "Cancelled",
+                        _ => true,
+                    };
+                    if !status_ok {
+                        return false;
+                    }
+
+                    // Domain filter
+                    let domain = extract_domain_from_url(&r.url);
+                    let domain_ok = match domain_filter {
+                        1 => domain.contains("youtube") || domain.contains("youtu.be"),
+                        2 => domain.contains("kisskh"),
+                        3 => domain.contains("tiktok"),
+                        4 => domain.contains("douyin"),
+                        5 => domain.contains("facebook") || domain.contains("fb.watch"),
+                        6 => {
+                            !domain.contains("youtube")
+                                && !domain.contains("youtu.be")
+                                && !domain.contains("kisskh")
+                                && !domain.contains("tiktok")
+                                && !domain.contains("douyin")
+                                && !domain.contains("facebook")
+                                && !domain.contains("fb.watch")
+                        }
+                        _ => true,
+                    };
+                    if !domain_ok {
+                        return false;
+                    }
+
+                    // Search query
+                    if !search_query.is_empty() {
+                        let q = search_query.to_lowercase();
+                        let in_title = r.title.to_lowercase().contains(&q);
+                        let in_file = r.filename.to_lowercase().contains(&q);
+                        let in_path = r.output_path.to_lowercase().contains(&q);
+                        let in_url = r.url.to_lowercase().contains(&q);
+                        if !in_title && !in_file && !in_path && !in_url {
+                            return false;
+                        }
+                    }
+
+                    true
+                })
+                .collect();
+
+            let items: Vec<HistoryItemData> = filtered_records
                 .into_iter()
                 .map(|r| {
                     let size_text = r
@@ -44,24 +155,36 @@ async fn refresh_history(
                         .map(DownloadProgress::format_size)
                         .unwrap_or_else(|| DownloadProgress::format_size(r.downloaded_size));
 
-                    let raw_date = r.completed_at.unwrap_or(r.created_at);
+                    let raw_date = r.completed_at.clone().unwrap_or_else(|| r.created_at.clone());
                     let date_display = database::format_history_date(&raw_date);
+                    let domain = extract_domain_from_url(&r.url);
+                    let is_selected = selected_ids.contains(&r.id);
 
                     HistoryItemData {
                         id: r.id.to_string().into(),
-                        title: r.title.into(),
-                        status: r.status.into(),
+                        title: r.title.clone().into(),
+                        status: r.status.clone().into(),
                         size_text: size_text.into(),
                         date_text: date_display.into(),
-                        url: r.url.into(),
-                        output_path: r.output_path.into(),
+                        url: r.url.clone().into(),
+                        output_path: r.output_path.clone().into(),
+                        domain: domain.into(),
+                        selected: is_selected,
                     }
                 })
                 .collect();
 
+            let selected_count = selected_ids.len() as i32;
+
             let _ = weak.upgrade_in_event_loop(move |window| {
                 let model = Rc::new(VecModel::from(items));
                 window.set_history_items(ModelRc::from(model));
+                window.set_history_total_count(total_count);
+                window.set_history_completed_count(total_completed);
+                window.set_history_failed_count(total_failed);
+                window.set_history_total_bytes_text(total_bytes_text.into());
+                window.set_history_success_rate_text(success_rate_text.into());
+                window.set_history_selected_count(selected_count);
             });
         }
         Err(err) => {
@@ -772,6 +895,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Queue filter & search state
     let queue_filter_idx: Arc<tokio::sync::RwLock<i32>> = Arc::new(tokio::sync::RwLock::new(0));
     let queue_search_term: Arc<tokio::sync::RwLock<String>> = Arc::new(tokio::sync::RwLock::new(String::new()));
+    let history_state: Arc<tokio::sync::RwLock<HistoryState>> = Arc::new(tokio::sync::RwLock::new(HistoryState::default()));
 
     // Speed history (30 seconds rolling timeline @ 2 Hz / 60 samples), peak tracking, and session bytes
     let speed_history = Arc::new(tokio::sync::Mutex::new(VecDeque::from(vec![0.0f64; 60])));
@@ -790,6 +914,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let peak_speed_sync = peak_speed_bytes.clone();
     let session_bytes_sync = session_downloaded_bytes.clone();
     let db_for_sync = db.clone();
+    let hist_for_sync = history_state.clone();
     let last_completed_count = Arc::new(AtomicUsize::new(0));
     let was_downloading = Arc::new(AtomicBool::new(false));
 
@@ -806,6 +931,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let peak_lock = peak_speed_sync.clone();
             let session_lock = session_bytes_sync.clone();
             let db_sync = db_for_sync.clone();
+            let hist_sync = hist_for_sync.clone();
             let completed_tracker = last_completed_count.clone();
             let was_dl_tracker = was_downloading.clone();
 
@@ -832,9 +958,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if completed_count > 0 && completed_count != prev_completed {
                     let db_clone = db_sync.clone();
                     let weak_clone = weak.clone();
+                    let hist_clone = hist_sync.clone();
                     let mgr_autoclear = mgr.clone();
                     tokio::spawn(async move {
-                        refresh_history(&db_clone, None, weak_clone).await;
+                        refresh_history(&db_clone, &hist_clone, weak_clone).await;
                         // Auto-clear completed jobs from in-memory queue after a brief delay
                         // so they disappear from Queue and only live in History.
                         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
@@ -2559,24 +2686,243 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
     // Callback: Search history
     let db_search = db.clone();
     let weak_search = main_window.as_weak();
+    let state_search = history_state.clone();
     main_window.on_search_history(move |query| {
         let db = db_search.clone();
         let weak = weak_search.clone();
+        let state = state_search.clone();
         let q = query.to_string();
         tokio::spawn(async move {
-            let search = if q.is_empty() { None } else { Some(q.as_str()) };
-            refresh_history(&db, search, weak).await;
+            {
+                let mut guard = state.write().await;
+                guard.search_query = q;
+            }
+            refresh_history(&db, &state, weak).await;
         });
     });
 
     // Callback: Refresh history tab on navigation
     let db_hist_nav = db.clone();
     let weak_hist_nav = main_window.as_weak();
+    let state_hist_nav = history_state.clone();
     main_window.on_refresh_history_tab(move || {
         let db = db_hist_nav.clone();
         let weak = weak_hist_nav.clone();
+        let state = state_hist_nav.clone();
         tokio::spawn(async move {
-            refresh_history(&db, None, weak).await;
+            refresh_history(&db, &state, weak).await;
+        });
+    });
+
+    // Callback: Set history status filter (0: All, 1: Completed, 2: Failed)
+    let db_status_filter = db.clone();
+    let weak_status_filter = main_window.as_weak();
+    let state_status_filter = history_state.clone();
+    main_window.on_set_history_status_filter(move |status_idx| {
+        let db = db_status_filter.clone();
+        let weak = weak_status_filter.clone();
+        let state = state_status_filter.clone();
+        tokio::spawn(async move {
+            {
+                let mut guard = state.write().await;
+                guard.status_filter = status_idx;
+            }
+            refresh_history(&db, &state, weak).await;
+        });
+    });
+
+    // Callback: Set history domain filter
+    let db_domain_filter = db.clone();
+    let weak_domain_filter = main_window.as_weak();
+    let state_domain_filter = history_state.clone();
+    main_window.on_set_history_domain_filter(move |domain_idx| {
+        let db = db_domain_filter.clone();
+        let weak = weak_domain_filter.clone();
+        let state = state_domain_filter.clone();
+        tokio::spawn(async move {
+            {
+                let mut guard = state.write().await;
+                guard.domain_filter = domain_idx;
+            }
+            refresh_history(&db, &state, weak).await;
+        });
+    });
+
+    // Callback: Toggle history item selection
+    let db_toggle = db.clone();
+    let weak_toggle = main_window.as_weak();
+    let state_toggle = history_state.clone();
+    main_window.on_toggle_history_item_selected(move |id_str| {
+        let db = db_toggle.clone();
+        let weak = weak_toggle.clone();
+        let state = state_toggle.clone();
+        let id_val = id_str.to_string();
+        tokio::spawn(async move {
+            if let Ok(id) = Uuid::parse_str(&id_val) {
+                {
+                    let mut guard = state.write().await;
+                    if guard.selected_ids.contains(&id) {
+                        guard.selected_ids.remove(&id);
+                    } else {
+                        guard.selected_ids.insert(id);
+                    }
+                }
+                refresh_history(&db, &state, weak).await;
+            }
+        });
+    });
+
+    // Callback: Select all / Deselect all history items
+    let db_sel_all = db.clone();
+    let weak_sel_all = main_window.as_weak();
+    let state_sel_all = history_state.clone();
+    main_window.on_select_all_history(move |select_all| {
+        let db = db_sel_all.clone();
+        let weak = weak_sel_all.clone();
+        let state = state_sel_all.clone();
+        tokio::spawn(async move {
+            if select_all {
+                if let Ok(records) = db.get_history(None).await {
+                    let guard = state.read().await;
+                    let status_filter = guard.status_filter;
+                    let domain_filter = guard.domain_filter;
+                    let search_query = guard.search_query.clone();
+                    drop(guard);
+
+                    let matching_ids: Vec<Uuid> = records
+                        .iter()
+                        .filter(|r| {
+                            let status_ok = match status_filter {
+                                1 => r.status == "Completed",
+                                2 => r.status == "Failed" || r.status == "Cancelled",
+                                _ => true,
+                            };
+                            if !status_ok { return false; }
+                            let domain = extract_domain_from_url(&r.url);
+                            let domain_ok = match domain_filter {
+                                1 => domain.contains("youtube") || domain.contains("youtu.be"),
+                                2 => domain.contains("kisskh"),
+                                3 => domain.contains("tiktok"),
+                                4 => domain.contains("douyin"),
+                                5 => domain.contains("facebook") || domain.contains("fb.watch"),
+                                6 => !domain.contains("youtube") && !domain.contains("youtu.be")
+                                     && !domain.contains("kisskh") && !domain.contains("tiktok")
+                                     && !domain.contains("douyin") && !domain.contains("facebook")
+                                     && !domain.contains("fb.watch"),
+                                _ => true,
+                            };
+                            if !domain_ok { return false; }
+                            if !search_query.is_empty() {
+                                let q = search_query.to_lowercase();
+                                if !r.title.to_lowercase().contains(&q)
+                                    && !r.filename.to_lowercase().contains(&q)
+                                    && !r.output_path.to_lowercase().contains(&q)
+                                    && !r.url.to_lowercase().contains(&q) {
+                                    return false;
+                                }
+                            }
+                            true
+                        })
+                        .map(|r| r.id)
+                        .collect();
+
+                    let mut guard = state.write().await;
+                    for id in matching_ids {
+                        guard.selected_ids.insert(id);
+                    }
+                }
+            } else {
+                let mut guard = state.write().await;
+                guard.selected_ids.clear();
+            }
+            refresh_history(&db, &state, weak).await;
+        });
+    });
+
+    // Callback: Delete selected history items
+    let db_del_sel = db.clone();
+    let weak_del_sel = main_window.as_weak();
+    let state_del_sel = history_state.clone();
+    main_window.on_delete_selected_history(move || {
+        let db = db_del_sel.clone();
+        let weak = weak_del_sel.clone();
+        let state = state_del_sel.clone();
+        tokio::spawn(async move {
+            let ids_to_delete: Vec<Uuid> = {
+                let guard = state.read().await;
+                guard.selected_ids.iter().cloned().collect()
+            };
+            let count = ids_to_delete.len();
+            for id in ids_to_delete {
+                let _ = db.delete_record(id).await;
+            }
+            {
+                let mut guard = state.write().await;
+                guard.selected_ids.clear();
+            }
+            refresh_history(&db, &state, weak.clone()).await;
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                window.set_status_message(format!("Deleted {} history item(s)", count).into());
+            });
+        });
+    });
+
+    // Callback: Redownload selected history items
+    let db_redl_sel = db.clone();
+    let mgr_redl_sel = download_manager.clone();
+    let weak_redl_sel = main_window.as_weak();
+    let state_redl_sel = history_state.clone();
+    let current_dir_redl_sel = current_download_dir.clone();
+    main_window.on_redownload_selected_history(move || {
+        let db = db_redl_sel.clone();
+        let mgr = mgr_redl_sel.clone();
+        let weak = weak_redl_sel.clone();
+        let state = state_redl_sel.clone();
+        let dir_lock = current_dir_redl_sel.clone();
+        tokio::spawn(async move {
+            let selected_set: HashSet<Uuid> = {
+                let guard = state.read().await;
+                guard.selected_ids.clone()
+            };
+            if selected_set.is_empty() {
+                return;
+            }
+            let download_dir = dir_lock.read().await.clone();
+            let mut queued_count = 0;
+            if let Ok(records) = db.get_history(None).await {
+                for r in records {
+                    if selected_set.contains(&r.id) {
+                        let is_extractor = downloader::is_streaming_platform(&r.url);
+                        if let Ok(_) = mgr.add_download(
+                            r.url,
+                            r.title,
+                            &download_dir,
+                            None,
+                            is_extractor,
+                            false,
+                            None,
+                            true,
+                            None,
+                            true,
+                            None,
+                            None,
+                            None,
+                            false,
+                        ).await {
+                            queued_count += 1;
+                        }
+                    }
+                }
+            }
+            {
+                let mut guard = state.write().await;
+                guard.selected_ids.clear();
+            }
+            refresh_history(&db, &state, weak.clone()).await;
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                window.set_status_message(format!("Queued {} item(s) for redownload", queued_count).into());
+                window.set_active_tab(1);
+            });
         });
     });
 
@@ -2663,14 +3009,20 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
     // Callback: Delete single history record
     let db_del = db.clone();
     let weak_del = main_window.as_weak();
+    let state_del = history_state.clone();
     main_window.on_delete_history_item(move |id_str| {
         let db = db_del.clone();
         let weak = weak_del.clone();
+        let state = state_del.clone();
         let id_val = id_str.to_string();
         tokio::spawn(async move {
             if let Ok(id) = Uuid::parse_str(&id_val) {
                 let _ = db.delete_record(id).await;
-                refresh_history(&db, None, weak).await;
+                {
+                    let mut guard = state.write().await;
+                    guard.selected_ids.remove(&id);
+                }
+                refresh_history(&db, &state, weak).await;
             }
         });
     });
@@ -2678,12 +3030,18 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
     // Callback: Clear all history
     let db_clear_all = db.clone();
     let weak_clear_all = main_window.as_weak();
+    let state_clear_all = history_state.clone();
     main_window.on_clear_all_history(move || {
         let db = db_clear_all.clone();
         let weak = weak_clear_all.clone();
+        let state = state_clear_all.clone();
         tokio::spawn(async move {
             let _ = db.clear_all_history().await;
-            refresh_history(&db, None, weak).await;
+            {
+                let mut guard = state.write().await;
+                guard.selected_ids.clear();
+            }
+            refresh_history(&db, &state, weak).await;
         });
     });
 
@@ -3433,8 +3791,9 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
     // Load initial history on startup
     let db_init_hist = db.clone();
     let weak_init_hist = main_window.as_weak();
+    let hist_state_init = history_state.clone();
     tokio::spawn(async move {
-        refresh_history(&db_init_hist, None, weak_init_hist).await;
+        refresh_history(&db_init_hist, &hist_state_init, weak_init_hist).await;
     });
 
     // Background streaming dependencies verification & silent auto-update check on startup

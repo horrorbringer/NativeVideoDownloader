@@ -76,6 +76,14 @@ export component AppWindow inherits Window {
     // History properties
     in-out property <[HistoryItemData]> history_items: [];
     in-out property <string> history_search_query: "";
+    in-out property <int> history_status_filter: 0;
+    in-out property <int> history_domain_filter: 0;
+    in-out property <int> history_selected_count: 0;
+    in-out property <int> history_total_count: 0;
+    in-out property <int> history_completed_count: 0;
+    in-out property <int> history_failed_count: 0;
+    in-out property <string> history_total_bytes_text: "0 B";
+    in-out property <string> history_success_rate_text: "100%";
 
     // Real-time Logs properties
     in-out property <[LogEntryData]> log_entries: [];
@@ -238,6 +246,12 @@ export component AppWindow inherits Window {
     callback clear_all_history();
     callback export_history();
     callback refresh_history_tab();
+    callback set_history_status_filter(int);
+    callback set_history_domain_filter(int);
+    callback toggle_history_item_selected(string);
+    callback select_all_history(bool);
+    callback delete_selected_history();
+    callback redownload_selected_history();
 
     callback open_download_file(string);
     callback open_download_folder(string);
@@ -659,6 +673,14 @@ export component AppWindow inherits Window {
             if root.active_tab == 2: HistoryTab {
                 history_items: root.history_items;
                 history_search_query <=> root.history_search_query;
+                history_status_filter <=> root.history_status_filter;
+                history_domain_filter <=> root.history_domain_filter;
+                history_selected_count: root.history_selected_count;
+                history_total_count: root.history_total_count;
+                history_completed_count: root.history_completed_count;
+                history_failed_count: root.history_failed_count;
+                history_total_bytes_text: root.history_total_bytes_text;
+                history_success_rate_text: root.history_success_rate_text;
 
                 search_history(q) => { root.search_history(q); }
                 clear_all_history() => { root.clear_all_history(); }
@@ -667,6 +689,12 @@ export component AppWindow inherits Window {
                 open_history_folder(p) => { root.open_history_folder(p); }
                 redownload_history(u) => { root.redownload_history(u); }
                 delete_history_item(id) => { root.delete_history_item(id); }
+                set_history_status_filter(idx) => { root.set_history_status_filter(idx); }
+                set_history_domain_filter(idx) => { root.set_history_domain_filter(idx); }
+                toggle_history_item_selected(id) => { root.toggle_history_item_selected(id); }
+                select_all_history(sel) => { root.select_all_history(sel); }
+                delete_selected_history() => { root.delete_selected_history(); }
+                redownload_selected_history() => { root.redownload_selected_history(); }
             }
 
             if root.active_tab == 3: LogsTab {
