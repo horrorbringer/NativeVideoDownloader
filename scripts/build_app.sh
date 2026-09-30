@@ -45,8 +45,10 @@ if [ -f "$ICON_SRC" ]; then
     rm -rf "$ICONSET_DIR"
 fi
 
+VERSION=$(grep '^version = ' "$DIR/Cargo.toml" | head -n 1 | cut -d '"' -f 2)
+
 # Write Info.plist
-cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
+cat << EOF > "$CONTENTS_DIR/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -64,9 +66,9 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>${VERSION:-0.2.3}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${VERSION:-0.2.3}</string>
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
     <key>NSHighResolutionCapable</key>
