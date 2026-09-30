@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::error::{AppError, Result};
-use crate::models::{DownloadProgress, VideoMetadata};
+use crate::models::{DownloadProgress, PlaylistEntry, VideoMetadata};
 
 static CACHED_BIN_DIR: std::sync::LazyLock<PathBuf> = std::sync::LazyLock::new(|| {
     if let Ok(home) = std::env::var("HOME") {
@@ -288,7 +288,7 @@ pub fn is_candidate_media_url(text: &str) -> bool {
         "/video/", "/play/", "/watch", "/item/", "/episode/", "/episodes/",
         "/movie/", "/drama/", "/series/", "/stream", "m3u8", ".mp4", "/shorts/",
         "/reel/", "/status/", "anyreel", "dramabox", "shortmax", "reelshort",
-        "goodshort", "kalos", "shortdrama", "vod"
+        "goodshort", "kalos", "shortdrama", "vod", "kisskh"
     ];
     for kw in &video_keywords {
         if lower.contains(kw) {
@@ -708,6 +708,11 @@ pub async fn inspect_video_with_options(
         || url.contains("kuaikaw.cn")
     {
         return scrape_page_for_media_with_proxy(url, proxy).await;
+    }
+
+    // Fast path: KissKH Asian Drama scraper (drama metadata, full episode lists, HLS streams & multi-lang subtitles)
+    if url.contains("kisskh.") {
+        return extract_kisskh_drama(url, cookies_browser, proxy).await;
     }
 
     // Fast path: Native Douyin resolver via DouyinSaver (no cookies needed, bypasses Douyin 403 anti-bot block)
@@ -2668,6 +2673,488 @@ fn find_drama_episodes_in_json(
     }
 }
 
+const KISSKH_KEYGEN_JS: &str = include_str!("kisskh_keygen.js");
+
+/// Generates a valid authentication kkey for KissKH video stream or subtitles
+pub async fn generate_kisskh_kkey(ep_id: u64, is_sub: bool) -> Result<String> {
+    let guid = if is_sub {
+        "VgV52sWhwvBSf8BsM3BRY9weWiiCbtGp"
+    } else {
+        "62f176f3bb1b5b8e70e39932ad34a0c7"
+    };
+
+    let bin_dir = get_bin_dir();
+    let script_file = bin_dir.join("kisskh_keygen.js");
+    if !script_file.exists() {
+        let _ = tokio::fs::create_dir_all(&bin_dir).await;
+        let _ = tokio::fs::write(&script_file, KISSKH_KEYGEN_JS).await;
+    }
+
+    let script_path = script_file.to_string_lossy().to_string();
+
+    // 1. Try Apple's native JavaScriptCore helper (jsc) on macOS
+    #[cfg(target_os = "macos")]
+    {
+        let jsc_path = "/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc";
+        if Path::new(jsc_path).exists() {
+            let expr = format!(
+                "load('{}'); print(_0x54b991({}, null, '2.8.10', '{}', 4830201, 'kisskh', 'kisskh', 'kisskh', 'kisskh', 'kisskh', 'kisskh'));",
+                script_path, ep_id, guid
+            );
+            if let Ok(output) = Command::new(jsc_path)
+                .arg("-e")
+                .arg(&expr)
+                .output()
+                .await
+            {
+                if output.status.success() {
+                    let out_str = String::from_utf8_lossy(&output.stdout);
+                    if let Some(first_line) = out_str.lines().next() {
+                        let trimmed = first_line.trim();
+                        if !trimmed.is_empty() && trimmed.len() > 32 {
+                            return Ok(trimmed.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Try osascript (macOS JavaScript for Automation)
+        let osa_expr = format!(
+            "var f = $.NSString.stringWithContentsOfFileEncodingError('{}', $.NSUTF8StringEncoding, null); eval(ObjC.unwrap(f)); _0x54b991({}, null, '2.8.10', '{}', 4830201, 'kisskh', 'kisskh', 'kisskh', 'kisskh', 'kisskh', 'kisskh');",
+            script_path, ep_id, guid
+        );
+        if let Ok(output) = Command::new("osascript")
+            .arg("-l")
+            .arg("JavaScript")
+            .arg("-e")
+            .arg(&osa_expr)
+            .output()
+            .await
+        {
+            if output.status.success() {
+                let trimmed = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !trimmed.is_empty() && trimmed.len() > 32 {
+                    return Ok(trimmed);
+                }
+            }
+        }
+    }
+
+    // 3. Try node if installed
+    if let Ok(output) = Command::new("node")
+        .arg("-e")
+        .arg(format!(
+            "const fs = require('fs'); eval(fs.readFileSync('{}', 'utf8')); console.log(_0x54b991({}, null, '2.8.10', '{}', 4830201, 'kisskh', 'kisskh', 'kisskh', 'kisskh', 'kisskh', 'kisskh'));",
+            script_path, ep_id, guid
+        ))
+        .output()
+        .await
+    {
+        if output.status.success() {
+            let trimmed = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !trimmed.is_empty() && trimmed.len() > 32 {
+                return Ok(trimmed);
+            }
+        }
+    }
+
+    // 4. Try python3 fallback
+    if let Ok(output) = Command::new("python3")
+        .arg("-c")
+        .arg(format!(
+            "import subprocess; print(subprocess.check_output(['osascript', '-l', 'JavaScript', '-e', '''var f = $.NSString.stringWithContentsOfFileEncodingError(\"{}\", $.NSUTF8StringEncoding, null); eval(ObjC.unwrap(f)); _0x54b991({}, null, \"2.8.10\", \"{}\", 4830201, \"kisskh\", \"kisskh\", \"kisskh\", \"kisskh\", \"kisskh\", \"kisskh\");''']).decode('utf-8').strip())",
+            script_path, ep_id, guid
+        ))
+        .output()
+        .await
+    {
+        if output.status.success() {
+            let trimmed = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !trimmed.is_empty() && trimmed.len() > 32 {
+                return Ok(trimmed);
+            }
+        }
+    }
+
+    Err(AppError::Generic("Failed to generate KissKH security token".to_string()))
+}
+
+/// Resolves playable stream for an individual KissKH episode URL
+pub async fn resolve_kisskh_episode_stream(url: &str, proxy: Option<&str>) -> Result<String> {
+    if let Ok(parsed) = reqwest::Url::parse(url) {
+        let host = parsed.host_str().unwrap_or("kisskh.do");
+        let base_origin = format!("https://{}", host);
+        if let Some((_, ep_str)) = parsed.query_pairs().find(|(k, _)| k == "ep") {
+            if let Ok(ep_id) = ep_str.parse::<u64>() {
+                let video_kkey = generate_kisskh_kkey(ep_id, false).await?;
+                let stream_api_url = format!(
+                    "{}/api/DramaList/Episode/{}.png?err=false&ts=&time=&kkey={}",
+                    base_origin, ep_id, video_kkey
+                );
+
+                let mut builder = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .default_headers({
+                        let mut headers = reqwest::header::HeaderMap::new();
+                        headers.insert("Referer", base_origin.parse().unwrap());
+                        headers
+                    });
+
+                if let Some(p) = proxy {
+                    let trimmed = p.trim();
+                    if !trimmed.is_empty() {
+                        if let Ok(prx) = reqwest::Proxy::all(trimmed) {
+                            builder = builder.proxy(prx);
+                        }
+                    }
+                }
+
+                let client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
+                let resp = client.get(&stream_api_url).send().await?;
+                if resp.status().is_success() {
+                    let text = resp.text().await.unwrap_or_default();
+                    let stream_json: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+                    if let Some(stream_url) = stream_json["Video"].as_str() {
+                        if !stream_url.is_empty() && !stream_url.contains("tickcounter") {
+                            return Ok(stream_url.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Err(AppError::Generic(format!("Could not resolve KissKH episode stream for {}", url)))
+}
+
+/// Downloads subtitles from KissKH for the given media file if available
+pub async fn download_kisskh_subtitles_for_file(
+    source_url: &str,
+    media_path: &Path,
+    preferred_lang: Option<&str>,
+    proxy: Option<&str>,
+) -> Result<usize> {
+    let parsed = match reqwest::Url::parse(source_url) {
+        Ok(p) => p,
+        Err(_) => return Ok(0),
+    };
+
+    let host = parsed.host_str().unwrap_or("kisskh.do");
+    let base_origin = format!("https://{}", host);
+
+    let ep_id: Option<u64> = parsed.query_pairs().find(|(k, _)| k == "ep").and_then(|(_, v)| v.parse().ok());
+    let ep_id = match ep_id {
+        Some(id) => id,
+        None => return Ok(0),
+    };
+
+    let sub_kkey = match generate_kisskh_kkey(ep_id, true).await {
+        Ok(k) => k,
+        Err(e) => {
+            warn!("Failed to generate KissKH sub key: {}", e);
+            return Ok(0);
+        }
+    };
+
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .default_headers({
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("Referer", base_origin.parse().unwrap());
+            headers
+        });
+
+    if let Some(p) = proxy {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            if let Ok(prx) = reqwest::Proxy::all(trimmed) {
+                builder = builder.proxy(prx);
+            }
+        }
+    }
+
+    let client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
+    let sub_api_url = format!("{}/api/Sub/{}?kkey={}", base_origin, ep_id, sub_kkey);
+
+    let resp = match client.get(&sub_api_url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        _ => return Ok(0),
+    };
+
+    let text = match resp.text().await {
+        Ok(t) => t,
+        Err(_) => return Ok(0),
+    };
+
+    let subs_json: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(_) => return Ok(0),
+    };
+
+    let sub_items = match subs_json.as_array() {
+        Some(arr) if !arr.is_empty() => arr,
+        _ => return Ok(0),
+    };
+
+    let parent_dir = media_path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = media_path.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
+
+    let pref = preferred_lang.unwrap_or("all").to_lowercase();
+    let is_all = pref.contains("all");
+
+    let mut downloaded_count = 0;
+
+    for item in sub_items {
+        let src = match item["src"].as_str() {
+            Some(s) if !s.is_empty() => s,
+            _ => continue,
+        };
+        let land = item["land"].as_str().unwrap_or("en").to_lowercase();
+
+        let should_download = is_all
+            || pref.contains(&land)
+            || (pref.contains("en") && land.starts_with("en"))
+            || (pref.contains("km") && land.starts_with("km"));
+
+        if should_download {
+            let out_filename = format!("{}.{}.srt", stem, land);
+            let out_path = parent_dir.join(&out_filename);
+
+            if let Ok(sub_data_resp) = client.get(src).send().await {
+                if sub_data_resp.status().is_success() {
+                    if let Ok(bytes) = sub_data_resp.bytes().await {
+                        if !bytes.is_empty() {
+                            if let Ok(_) = tokio::fs::write(&out_path, bytes).await {
+                                info!("Successfully saved KissKH subtitle: {:?}", out_path);
+                                downloaded_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(downloaded_count)
+}
+
+/// Extracts drama metadata, episode playlists, video streams, and subtitles for KissKH Asian drama URLs
+pub async fn extract_kisskh_drama(
+    page_url: &str,
+    cookies_browser: Option<&str>,
+    proxy: Option<&str>,
+) -> Result<VideoMetadata> {
+    info!("Extracting KissKH Asian drama media: {} (cookies: {:?}, proxy: {:?})", page_url, cookies_browser, proxy);
+
+    let parsed_url = reqwest::Url::parse(page_url)
+        .map_err(|e| AppError::Generic(format!("Invalid KissKH URL: {}", e)))?;
+
+    let host = parsed_url.host_str().unwrap_or("kisskh.do");
+    let base_origin = format!("https://{}", host);
+
+    // Extract drama id from query parameter ?id=...
+    let mut drama_id: Option<u64> = None;
+    let mut ep_id: Option<u64> = None;
+
+    for (k, v) in parsed_url.query_pairs() {
+        if k == "id" {
+            drama_id = v.parse::<u64>().ok();
+        } else if k == "ep" {
+            ep_id = v.parse::<u64>().ok();
+        }
+    }
+
+    let drama_id = drama_id.ok_or_else(|| {
+        AppError::Generic(format!("Missing 'id' parameter in KissKH URL: {}", page_url))
+    })?;
+
+    // Build HTTP client with optional proxy
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .default_headers({
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("Referer", base_origin.parse().unwrap());
+            headers.insert("Origin", base_origin.parse().unwrap());
+            headers
+        });
+
+    if let Some(p) = proxy {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            if let Ok(prx) = reqwest::Proxy::all(trimmed) {
+                builder = builder.proxy(prx);
+            }
+        }
+    }
+
+    let client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
+
+    // 1. Fetch drama details from KissKH API
+    let drama_api_url = format!("{}/api/DramaList/Drama/{}?isq=false", base_origin, drama_id);
+    let resp = client.get(&drama_api_url).send().await?;
+    if !resp.status().is_success() {
+        return Err(AppError::Generic(format!(
+            "Failed to fetch KissKH drama details: HTTP {}",
+            resp.status()
+        )));
+    }
+
+    let drama_text = resp.text().await?;
+    let drama_json: serde_json::Value = serde_json::from_str(&drama_text)
+        .map_err(|e| AppError::Generic(format!("Failed to parse KissKH drama JSON: {}", e)))?;
+    let drama_title = drama_json["title"].as_str().unwrap_or("Asian Drama").to_string();
+    let thumbnail = drama_json["thumbnail"].as_str().map(|s| s.to_string());
+    let episodes_arr = drama_json["episodes"].as_array().cloned().unwrap_or_default();
+
+    // Parse and sort episodes
+    struct EpInfo {
+        id: u64,
+        number: f64,
+    }
+
+    let mut eps: Vec<EpInfo> = episodes_arr
+        .iter()
+        .filter_map(|e| {
+            let id = e["id"].as_u64()?;
+            let number = e["number"].as_f64().unwrap_or(1.0);
+            Some(EpInfo { id, number })
+        })
+        .collect();
+
+    // Sort ascending by episode number
+    eps.sort_by(|a, b| a.number.partial_cmp(&b.number).unwrap_or(std::cmp::Ordering::Equal));
+
+    if eps.is_empty() {
+        return Err(AppError::Generic("No episodes found for this KissKH drama".to_string()));
+    }
+
+    // Determine target episode
+    let target_ep_id = ep_id.unwrap_or(eps[0].id);
+    let target_ep_info = eps.iter().find(|e| e.id == target_ep_id).unwrap_or(&eps[0]);
+    let target_ep_num = target_ep_info.number;
+
+    // 2. Fetch video stream URL for target episode
+    let video_kkey = generate_kisskh_kkey(target_ep_id, false).await?;
+    let stream_api_url = format!(
+        "{}/api/DramaList/Episode/{}.png?err=false&ts=&time=&kkey={}",
+        base_origin, target_ep_id, video_kkey
+    );
+
+    let stream_resp = client.get(&stream_api_url).send().await?;
+    let stream_text = stream_resp.text().await.unwrap_or_default();
+    let stream_json: serde_json::Value = serde_json::from_str(&stream_text).unwrap_or(serde_json::Value::Null);
+    let resolved_stream_url = stream_json["Video"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+
+    if resolved_stream_url.is_empty() || resolved_stream_url.contains("tickcounter") {
+        return Err(AppError::Generic(format!(
+            "Episode {:.0} stream is not yet released or unavailable on KissKH",
+            target_ep_num
+        )));
+    }
+
+    // Cache the playable stream URL so subsequent download steps don't have to regenerate
+    if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
+        cache.insert(page_url.to_string(), resolved_stream_url.clone());
+    }
+
+    // 3. Fetch subtitle languages
+    let mut available_subs = Vec::new();
+    if let Ok(sub_kkey) = generate_kisskh_kkey(target_ep_id, true).await {
+        let sub_api_url = format!("{}/api/Sub/{}?kkey={}", base_origin, target_ep_id, sub_kkey);
+        if let Ok(sub_resp) = client.get(&sub_api_url).send().await {
+            if let Ok(sub_text) = sub_resp.text().await {
+                if let Ok(subs_json) = serde_json::from_str::<serde_json::Value>(&sub_text) {
+                    if let Some(sub_list) = subs_json.as_array() {
+                        for s in sub_list {
+                            if let Some(label) = s["label"].as_str() {
+                                available_subs.push(label.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let has_subtitles = !available_subs.is_empty();
+    let subtitles_summary = if has_subtitles {
+        available_subs.join(", ")
+    } else {
+        "No subtitles".to_string()
+    };
+
+    // 4. Build playlist entries
+    let playlist_count = eps.len();
+    let is_playlist = playlist_count > 1;
+
+    let path_segments: Vec<&str> = parsed_url.path().split('/').filter(|s| !s.is_empty()).collect();
+    let slug = if path_segments.len() >= 2 {
+        path_segments[1]
+    } else {
+        "Drama"
+    };
+
+    let playlist_entries: Vec<PlaylistEntry> = eps
+        .iter()
+        .map(|ep| {
+            let ep_num_formatted = if ep.number.fract() == 0.0 {
+                format!("{:.0}", ep.number)
+            } else {
+                format!("{:.1}", ep.number)
+            };
+            PlaylistEntry {
+                title: format!("{} - Episode {}", drama_title, ep_num_formatted),
+                url: format!("{}/Drama/{}/Episode-{}?id={}&ep={}", base_origin, slug, ep_num_formatted, drama_id, ep.id),
+                referer: Some(format!("{}/", base_origin)),
+            }
+        })
+        .collect();
+
+    let display_title = if is_playlist && ep_id.is_none() {
+        drama_title
+    } else {
+        let ep_num_formatted = if target_ep_num.fract() == 0.0 {
+            format!("{:.0}", target_ep_num)
+        } else {
+            format!("{:.1}", target_ep_num)
+        };
+        format!("{} - Episode {}", drama_title, ep_num_formatted)
+    };
+
+    Ok(VideoMetadata {
+        url: resolved_stream_url,
+        title: display_title,
+        content_length: None,
+        content_type: Some("application/vnd.apple.mpegurl".to_string()),
+        supports_ranges: true,
+        is_extractor: true,
+        duration_seconds: None,
+        resolution: Some("1080p (HLS)".to_string()),
+        ext: Some("mp4".to_string()),
+        is_playlist,
+        playlist_count,
+        playlist_entries,
+        has_subtitles,
+        subtitles_summary,
+        thumbnail_url: thumbnail,
+        fps: Some(30.0),
+        vcodec: Some("H.264".to_string()),
+        acodec: Some("AAC".to_string()),
+        size_best: None,
+        size_1080p: None,
+        size_720p: None,
+        size_480p: None,
+        size_audio: None,
+        referer: Some(format!("{}/", base_origin)),
+    })
+}
+
 /// Helper to search HTML for embedded video links (<video src=...>, <source src=...>, og:video, or .m3u8/.mp4 URLs)
 fn extract_stream_from_html(html: &str, base_url: &str) -> Option<String> {
     // 1. Check og:video or og:video:url
@@ -2870,6 +3357,17 @@ static SHARED_HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::Laz
 
 /// Resolves the underlying stream or platform URL (such as Dailymotion, YouTube, Vimeo, or .m3u8).
 pub async fn resolve_playable_stream_url(url: &str, proxy: Option<&str>) -> String {
+    // Fast path: KissKH episode streaming resolution
+    if url.contains("kisskh.") && url.contains("ep=") {
+        if let Ok(stream) = resolve_kisskh_episode_stream(url, proxy).await {
+            info!("Resolved KissKH playable stream: {} -> {}", url, stream);
+            if let Ok(mut cache) = PLAYABLE_URL_CACHE.write() {
+                cache.insert(url.to_string(), stream.clone());
+            }
+            return stream;
+        }
+    }
+
     if is_streaming_platform(url) || url.contains(".m3u8") || url.contains(".mp4") || url.contains(".webm") {
         return url.to_string();
     }
@@ -3267,6 +3765,13 @@ where
             } else {
                 info!("Extractor completed output resolved to: {:?}", p);
             }
+
+            // If KissKH media download and subtitles requested, fetch and organize subtitles
+            if download_subtitles && (url.contains("kisskh.") || target_url.contains("cdnvideo")) {
+                let _ = download_kisskh_subtitles_for_file(url, &p, subtitle_language, proxy).await;
+                let _ = crate::filesystem::files::organize_subtitles(&p).await;
+            }
+
             return Ok(p);
         }
     }
@@ -4191,7 +4696,33 @@ mod tests {
             assert!(!meta.title.is_empty());
             assert!(meta.supports_ranges);
             assert_eq!(meta.ext, Some("mp4".to_string()));
-            assert_eq!(meta.referer, Some("https://www.douyin.com/".to_string()));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_generate_kisskh_kkey() {
+        let ep_id = 224512;
+        let video_key = generate_kisskh_kkey(ep_id, false).await;
+        assert!(video_key.is_ok(), "Video keygen must succeed: {:?}", video_key);
+        let vk = video_key.unwrap();
+        assert_eq!(vk, "818439C51A7873737C0C2B3A365A79918911E03C78C4A81589008A4D2C6115C63ED93B889BECD47067AD429E061BEC6EE02B57DE0604CE3108E15B9AAE0B68F12E5B6AD7DA2373E966D49AC9E16786EA3CA00D7EC48F7297BCAAE9D2E186ABD16120131389E31D05F99AF401E262E5C1419ADB4F97D2872AD25A210B96BC7F5E");
+
+        let sub_key = generate_kisskh_kkey(ep_id, true).await;
+        assert!(sub_key.is_ok(), "Sub keygen must succeed: {:?}", sub_key);
+        let sk = sub_key.unwrap();
+        assert_eq!(sk, "F0FB00F5440B67D6CE1ED8526AA588AAFF01EEB5C5FE681DD520E028E665C4B1E954909499657148E8F43A3CC418CF11378808FD4A2027EDAE60186698F283FB52C6AB83E27ED5932A1DD6FB73D5AB019AB7B99F541C9932D528AEDDC5D4DDCC555A6AB85F673FCD88B6D2BD6B80338D5B6175B973A95EFBD8C01D35E054986A");
+    }
+
+    #[tokio::test]
+    async fn test_extract_kisskh_drama_live() {
+        let test_url = "https://kisskh.do/Drama/Spring-of-the-Blade--2026-/Episode-1?id=13742&ep=224512&page=0&pageSize=100";
+        if let Ok(meta) = extract_kisskh_drama(test_url, None, None).await {
+            assert!(meta.url.contains(".m3u8"), "Stream URL must be an m3u8 stream: {}", meta.url);
+            assert!(meta.title.contains("Spring of the Blade"), "Title must match drama: {}", meta.title);
+            assert!(meta.is_playlist);
+            assert!(meta.playlist_count >= 20);
+            assert!(meta.has_subtitles);
+            assert!(meta.subtitles_summary.contains("English") || meta.subtitles_summary.contains("Khmer"));
         }
     }
 }
