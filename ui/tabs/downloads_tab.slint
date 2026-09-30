@@ -2,6 +2,8 @@ import { LineEdit, ScrollView } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
 import { ProgressBar } from "../components/progress_bar.slint";
+import { SearchField } from "../components/search_field.slint";
+import { StyledInput } from "../components/styled_input.slint";
 import { DownloadItemData, SpeedSampleData } from "../models.slint";
 import { Theme } from "../theme.slint";
 
@@ -458,13 +460,15 @@ export component DownloadsTab inherits VerticalLayout {
                     vertical-alignment: center;
                 }
 
-                custom_edit := LineEdit {
-                    text: root.custom_speed_input;
+                custom_edit := StyledInput {
+                    text <=> root.custom_speed_input;
                     placeholder_text: "e.g. 1.5M, 500K, 30M";
                     width: 140px;
-                    height: 24px;
+                    height: 26px;
+                    custom_radius: 6px;
+                    font_size: 11px;
                     accepted => {
-                        root.set_custom_speed_limit(custom_edit.text);
+                        root.set_custom_speed_limit(self.text);
                     }
                 }
 
@@ -847,14 +851,17 @@ export component DownloadsTab inherits VerticalLayout {
     HorizontalLayout {
         spacing: 12px;
 
-        queue_search := LineEdit {
+        queue_search := SearchField {
             placeholder_text: "Search active or queued downloads by title or URL...";
-            font_size: 13px;
-            height: 36px;
             horizontal-stretch: 1;
-            edited => {
-                root.queue_search_query = self.text;
-                root.search_queue(self.text);
+            text <=> root.queue_search_query;
+            edited(q) => {
+                root.queue_search_query = q;
+                root.search_queue(q);
+            }
+            cleared => {
+                root.queue_search_query = "";
+                root.search_queue("");
             }
         }
 

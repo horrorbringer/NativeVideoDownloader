@@ -1,5 +1,6 @@
 import { Theme } from "../theme.slint";
 import { ActionButton } from "action_button.slint";
+import { StyledInput } from "styled_input.slint";
 import { LineEdit, ScrollView } from "std-widgets.slint";
 
 export component NetworkDiagnosticModal inherits Rectangle {
@@ -200,13 +201,15 @@ export component NetworkDiagnosticModal inherits Rectangle {
                     HorizontalLayout {
                         spacing: 8px;
 
-                        target_edit := LineEdit {
-                            text: root.target_url;
+                        target_edit := StyledInput {
+                            text <=> root.target_url;
                             placeholder_text: "Target CDN or media stream URL (e.g. https://...)";
                             horizontal-stretch: 1;
-                            height: 32px;
+                            height: 34px;
+                            has_icon: true;
+                            icon: @image-url("../icons/link.svg");
                             accepted => {
-                                root.run_diagnostics(target_edit.text);
+                                root.run_diagnostics(self.text);
                             }
                         }
 

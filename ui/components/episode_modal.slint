@@ -1,6 +1,7 @@
 import { Theme } from "../theme.slint";
 import { EpisodeItemData } from "../models.slint";
 import { ActionButton } from "action_button.slint";
+import { StyledInput } from "styled_input.slint";
 import { ScrollView, LineEdit } from "std-widgets.slint";
 
 export component EpisodeModal inherits Rectangle {
@@ -229,10 +230,11 @@ export component EpisodeModal inherits Rectangle {
 
                         VerticalLayout {
                             alignment: center;
-                            modal_range_box := LineEdit {
+                            modal_range_box := StyledInput {
                                 width: 100px;
                                 height: 28px;
                                 font_size: 11px;
+                                custom_radius: 6px;
                                 placeholder_text: "1-10, 15";
                                 text <=> root.range_input;
                                 accepted => { root.apply_range(self.text); }

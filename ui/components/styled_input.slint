@@ -1,0 +1,107 @@
+import { Theme } from "../theme.slint";
+
+export component StyledInput inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder_text: "";
+    in property <length> font_size: 13px;
+    in property <bool> enabled: true;
+    in property <bool> has_icon: false;
+    in property <image> icon: @image-url("../icons/link.svg");
+    in property <bool> clearable: false;
+    in property <length> custom_radius: 8px;
+    out property <bool> has_focus: input.has-focus;
+
+    callback edited(string);
+    callback accepted(string);
+    callback cleared();
+
+    forward-focus: input;
+
+    height: 38px;
+    border-radius: root.custom_radius;
+    background: input.has-focus ? Theme.input_bg_focus : (hover_area.has-hover ? (Theme.is_dark ? #181c30 : #f1f5f9) : Theme.input_bg);
+    border-width: 1.5px;
+    border-color: input.has-focus ? Theme.input_border_focus : (hover_area.has-hover ? Theme.input_border_hover : Theme.input_border);
+    drop-shadow-blur: Theme.is_dark ? 0px : 3px;
+    drop-shadow-color: Theme.is_dark ? #00000000 : #0000000d;
+    drop-shadow-offset-y: 1px;
+
+    animate border-color { duration: 150ms; }
+    animate background { duration: 150ms; }
+
+    hover_area := TouchArea {
+        clicked => { input.focus(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 10px;
+        spacing: 8px;
+        alignment: center;
+
+        if root.has_icon: Image {
+            source: root.icon;
+            width: 15px;
+            height: 15px;
+            colorize: input.has-focus ? Theme.primary_accent : Theme.text_muted;
+            animate colorize { duration: 150ms; }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+            clip: true;
+
+            if root.text == "" && !input.has-focus: Text {
+                text: root.placeholder_text;
+                color: Theme.input_placeholder;
+                font-size: root.font_size;
+                vertical-alignment: center;
+                overflow: elide;
+                x: 0;
+                y: (parent.height - self.height) / 2;
+            }
+
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                font-size: root.font_size;
+                color: Theme.text_primary;
+                single-line: true;
+                vertical-alignment: center;
+                enabled: root.enabled;
+
+                edited => {
+                    root.edited(self.text);
+                }
+                accepted => {
+                    root.accepted(self.text);
+                }
+            }
+        }
+
+        if root.clearable && root.text != "": Rectangle {
+            width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            background: clear_btn.has-hover ? (Theme.is_dark ? #28334e : #e2e8f0) : #00000000;
+
+            clear_btn := TouchArea {
+                clicked => {
+                    root.text = "";
+                    root.edited("");
+                    root.cleared();
+                    input.focus();
+                }
+            }
+
+            Image {
+                source: @image-url("../icons/x.svg");
+                width: 10px;
+                height: 10px;
+                colorize: Theme.text_muted;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+    }
+}

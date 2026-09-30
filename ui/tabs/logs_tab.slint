@@ -1,6 +1,7 @@
 import { LineEdit, ScrollView } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
+import { SearchField } from "../components/search_field.slint";
 import { LogEntryData } from "../models.slint";
 import { Theme } from "../theme.slint";
 
@@ -75,13 +76,16 @@ export component LogsTab inherits VerticalLayout {
             spacing: 8px;
             alignment: end;
 
-            log_search := LineEdit {
-                width: 170px;
+            SearchField {
+                width: 190px;
                 height: 32px;
                 placeholder_text: "Filter logs...";
                 text <=> root.log_search_query;
                 edited(query) => {
                     root.search_logs(query);
+                }
+                cleared => {
+                    root.search_logs("");
                 }
             }
 

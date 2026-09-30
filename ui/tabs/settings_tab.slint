@@ -1,6 +1,7 @@
 import { ScrollView, LineEdit } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
+import { StyledInput } from "../components/styled_input.slint";
 import { Theme } from "../theme.slint";
 
 export component SettingsTab inherits ScrollView {
@@ -487,11 +488,13 @@ export component SettingsTab inherits ScrollView {
                     HorizontalLayout {
                         spacing: 10px;
 
-                        template_input := LineEdit {
+                        template_input := StyledInput {
                             horizontal-stretch: 1;
                             text <=> root.filename_template;
                             font_size: 13px;
                             height: 38px;
+                            has_icon: true;
+                            icon: @image-url("../icons/sparkles.svg");
                             placeholder_text: "{title} [{resolution}].{ext}";
                             accepted => {
                                 root.set_filename_template(self.text);
@@ -1934,10 +1937,12 @@ export component SettingsTab inherits ScrollView {
                     HorizontalLayout {
                         spacing: 10px;
 
-                        proxy_input := LineEdit {
+                        proxy_input := StyledInput {
                             horizontal-stretch: 1;
                             text <=> root.proxy_url_input;
                             placeholder_text: "http://127.0.0.1:7890 or socks5://127.0.0.1:1080";
+                            has_icon: true;
+                            icon: @image-url("../icons/bolt.svg");
                             font_size: 13px;
                             height: 36px;
                             accepted => {

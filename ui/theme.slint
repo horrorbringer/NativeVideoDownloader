@@ -24,6 +24,14 @@ export global Theme {
     out property <color> inner_border: is_dark ? #1d2336 : #e2e8f0;
     out property <color> inner_alt: is_dark ? #0e101c : #f8fafc;
 
+    // Text & Search Inputs (High contrast in Light Mode)
+    out property <color> input_bg: is_dark ? #131626 : #f8fafc;
+    out property <color> input_bg_focus: is_dark ? #171b2e : #ffffff;
+    out property <color> input_border: is_dark ? #28334e : #cbd5e1;
+    out property <color> input_border_hover: is_dark ? #3b4872 : #94a3b8;
+    out property <color> input_border_focus: is_dark ? #6366f1 : #4f46e5;
+    out property <color> input_placeholder: is_dark ? #64748b : #94a3b8;
+
     // Typography
     out property <color> text_primary: is_dark ? #ffffff : #0f172a;
     out property <color> text_secondary: is_dark ? #94a3b8 : #334155;

@@ -1,6 +1,7 @@
 import { LineEdit, ScrollView } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
+import { SearchField } from "../components/search_field.slint";
 import { HistoryItemData } from "../models.slint";
 import { Theme } from "../theme.slint";
 
@@ -225,13 +226,12 @@ export component HistoryTab inherits VerticalLayout {
         spacing: 10px;
         alignment: space-between;
 
-        search_box := LineEdit {
+        search_box := SearchField {
             horizontal-stretch: 1;
             placeholder_text: "Search history by title, filename, URL or path...";
-            font_size: 13px;
-            height: 36px;
             text <=> root.history_search_query;
-            edited => { root.search_history(self.text); }
+            edited(q) => { root.search_history(q); }
+            cleared => { root.search_history(""); }
         }
 
         Rectangle {

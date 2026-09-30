@@ -138,6 +138,69 @@ pub fn resolve_is_dark(mode: ThemeMode) -> bool {
     }
 }
 
+/// Synchronizes the native operating system window appearance (macOS Cocoa title bar)
+/// to match the application's active theme.
+#[cfg(target_os = "macos")]
+pub fn sync_macos_app_appearance(mode: ThemeMode) {
+    use std::ffi::{c_char, c_void};
+
+    #[link(name = "objc", kind = "dylib")]
+    unsafe extern "C" {
+        fn objc_getClass(name: *const c_char) -> *mut c_void;
+        fn sel_registerName(name: *const c_char) -> *mut c_void;
+        fn objc_msgSend();
+    }
+
+    type MsgSendNoArgs = unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void;
+    type MsgSendOneArg = unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> *mut c_void;
+    type MsgSendStr = unsafe extern "C" fn(*mut c_void, *mut c_void, *const c_char) -> *mut c_void;
+
+    unsafe {
+        let msg_send_no_args: MsgSendNoArgs = std::mem::transmute(objc_msgSend as *const ());
+        let msg_send_one_arg: MsgSendOneArg = std::mem::transmute(objc_msgSend as *const ());
+        let msg_send_str: MsgSendStr = std::mem::transmute(objc_msgSend as *const ());
+
+        let ns_app_class = objc_getClass(b"NSApplication\0".as_ptr() as *const c_char);
+        if ns_app_class.is_null() {
+            return;
+        }
+        let shared_app_sel = sel_registerName(b"sharedApplication\0".as_ptr() as *const c_char);
+        let app = msg_send_no_args(ns_app_class, shared_app_sel);
+        if app.is_null() {
+            return;
+        }
+
+        let set_appearance_sel = sel_registerName(b"setAppearance:\0".as_ptr() as *const c_char);
+
+        let appearance_obj = match mode {
+            ThemeMode::Auto => std::ptr::null_mut(),
+            ThemeMode::Light => {
+                let ns_appearance_class = objc_getClass(b"NSAppearance\0".as_ptr() as *const c_char);
+                let app_named_sel = sel_registerName(b"appearanceNamed:\0".as_ptr() as *const c_char);
+                let ns_string_class = objc_getClass(b"NSString\0".as_ptr() as *const c_char);
+                let str_utf8_sel = sel_registerName(b"stringWithUTF8String:\0".as_ptr() as *const c_char);
+
+                let aqua_str = msg_send_str(ns_string_class, str_utf8_sel, b"NSAppearanceNameAqua\0".as_ptr() as *const c_char);
+                msg_send_one_arg(ns_appearance_class, app_named_sel, aqua_str)
+            }
+            ThemeMode::Dark => {
+                let ns_appearance_class = objc_getClass(b"NSAppearance\0".as_ptr() as *const c_char);
+                let app_named_sel = sel_registerName(b"appearanceNamed:\0".as_ptr() as *const c_char);
+                let ns_string_class = objc_getClass(b"NSString\0".as_ptr() as *const c_char);
+                let str_utf8_sel = sel_registerName(b"stringWithUTF8String:\0".as_ptr() as *const c_char);
+
+                let dark_aqua_str = msg_send_str(ns_string_class, str_utf8_sel, b"NSAppearanceNameDarkAqua\0".as_ptr() as *const c_char);
+                msg_send_one_arg(ns_appearance_class, app_named_sel, dark_aqua_str)
+            }
+        };
+
+        msg_send_one_arg(app, set_appearance_sel, appearance_obj);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn sync_macos_app_appearance(_mode: ThemeMode) {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

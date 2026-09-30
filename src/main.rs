@@ -851,6 +851,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let initial_is_dark = resolve_is_dark(saved_theme_mode);
     main_window.set_theme_mode(saved_theme_mode.to_i32());
     main_window.set_is_dark_mode(initial_is_dark);
+    theme::sync_macos_app_appearance(saved_theme_mode);
 
     // Restore saved notification preferences
     let saved_notifs_enabled = db
@@ -1989,6 +1990,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let is_dark = resolve_is_dark(mode);
             win.set_theme_mode(mode.to_i32());
             win.set_is_dark_mode(is_dark);
+            theme::sync_macos_app_appearance(mode);
 
             let status = match mode {
                 ThemeMode::Auto => format!(
@@ -2033,6 +2035,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let sys_dark = is_system_dark_mode();
                     if win.get_is_dark_mode() != sys_dark {
                         info!("System appearance change detected! Updating app theme to is_dark={}", sys_dark);
+                        theme::sync_macos_app_appearance(ThemeMode::Auto);
                         win.set_is_dark_mode(sys_dark);
                     }
                 }

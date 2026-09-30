@@ -1,6 +1,7 @@
 import { LineEdit, ProgressIndicator, ScrollView, TextEdit } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
+import { StyledInput } from "../components/styled_input.slint";
 import { EpisodeItemData, BatchItemData } from "../models.slint";
 import { Theme } from "../theme.slint";
 
@@ -293,10 +294,12 @@ export component HomeTab inherits ScrollView {
                 HorizontalLayout {
                     spacing: 8px;
 
-                    url_input := LineEdit {
+                    url_input := StyledInput {
                         horizontal-stretch: 1;
                         text <=> root.input_url_text;
                         placeholder_text: "Paste video or audio stream URL here...";
+                        has_icon: true;
+                        icon: @image-url("../icons/link.svg");
                         font_size: 13px;
                         height: 38px;
                         accepted => {
@@ -779,10 +782,11 @@ export component HomeTab inherits ScrollView {
                                 clicked => { root.select_all_episodes(false); }
                             }
 
-                            range_box := LineEdit {
+                            range_box := StyledInput {
                                 width: 85px;
                                 height: 26px;
                                 font_size: 11px;
+                                custom_radius: 6px;
                                 placeholder_text: "1-10, 15";
                                 text <=> root.episode_range_input;
                                 accepted => { root.apply_episode_range(self.text); }
