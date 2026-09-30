@@ -1,9 +1,10 @@
-import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData, BatchItemData } from "models.slint";
+import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData, BatchItemData, StreamFormatData } from "models.slint";
 import { ActionButton } from "components/action_button.slint";
 import { NavButton } from "components/nav_button.slint";
 import { EpisodeModal } from "components/episode_modal.slint";
 import { MediaConverterModal } from "components/media_converter_modal.slint";
 import { NetworkDiagnosticModal } from "components/network_diagnostic_modal.slint";
+import { StreamSelectorModal } from "components/stream_selector_modal.slint";
 import { HomeTab } from "tabs/home_tab.slint";
 import { DownloadsTab } from "tabs/downloads_tab.slint";
 import { HistoryTab } from "tabs/history_tab.slint";
@@ -12,7 +13,7 @@ import { SettingsTab } from "tabs/settings_tab.slint";
 import { AboutTab } from "tabs/about_tab.slint";
 import { Theme } from "theme.slint";
 
-export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData, BatchItemData, Theme }
+export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData, BatchItemData, StreamFormatData, Theme }
 
 export component AppWindow inherits Window {
     title: root.active_downloads_count > 0 ? ("Native Video Downloader (" + root.active_downloads_count + " downloading • " + root.current_total_speed_text + ")") : "Native Video Downloader";
@@ -197,6 +198,13 @@ export component AppWindow inherits Window {
     in-out property <bool> converter_has_error: false;
     in-out property <string> converter_last_output_path: "";
 
+    // Stream Selector Modal properties
+    in-out property <bool> show_stream_selector_modal: false;
+    in-out property <[StreamFormatData]> available_stream_formats: [];
+    in-out property <int> selected_stream_format_index: 0;
+    in-out property <int> selected_stream_container_mode: 0; // 0 = Default, 1 = Force MP4, 2 = Force MKV
+    in-out property <string> stream_selector_best_res_badge: "";
+
     // Live Clipboard Link Monitor properties
     in-out property <bool> clipboard_detected_url_visible: false;
     in-out property <string> clipboard_detected_url: "";
@@ -266,6 +274,12 @@ export component AppWindow inherits Window {
     callback resume_selected_downloads();
     callback cancel_selected_downloads();
     callback prioritize_selected_downloads();
+
+    callback open_stream_selector();
+    callback select_stream_format(int);
+    callback set_stream_container_mode(int);
+    callback apply_stream_preset(int);
+    callback start_custom_stream_download(string);
 
     callback search_history(string);
     callback open_history_folder(string);
@@ -674,6 +688,7 @@ export component AppWindow inherits Window {
                 remove_batch_item(idx) => { root.remove_batch_item(idx); }
                 dismiss_error() => { root.dismiss_error(); }
                 open_logs() => { root.active_tab = 3; }
+                open_stream_selector() => { root.open_stream_selector(); }
             }
 
             if root.active_tab == 1: DownloadsTab {
@@ -1209,4 +1224,24 @@ export component AppWindow inherits Window {
         close => { root.show_network_diagnostics_modal = false; }
         run_diagnostics(target) => { root.run_network_diagnostics(target); }
     }
+
+    // Video Quality & Codec Stream Selector Modal
+    StreamSelectorModal {
+        is_open: root.show_stream_selector_modal;
+        media_title: root.video_title;
+        media_duration: root.video_duration;
+        best_resolution_badge: root.stream_selector_best_res_badge;
+        stream_items: root.available_stream_formats;
+        selected_index <=> root.selected_stream_format_index;
+        container_mode <=> root.selected_stream_container_mode;
+
+        close => { root.show_stream_selector_modal = false; }
+        select_stream(idx) => { root.select_stream_format(idx); }
+        set_container_mode(mode) => { root.set_stream_container_mode(mode); }
+        apply_preset(p) => { root.apply_stream_preset(p); }
+        confirm_download(q_spec) => {
+            root.start_custom_stream_download(q_spec);
+        }
+    }
 }
+

@@ -1,0 +1,547 @@
+import { Theme } from "../theme.slint";
+import { ActionButton } from "action_button.slint";
+import { IconChip } from "icon_chip.slint";
+import { ScrollView } from "std-widgets.slint";
+import { StreamFormatData } from "../models.slint";
+
+export component StreamSelectorModal inherits Rectangle {
+    in property <bool> is_open: false;
+    in property <string> media_title: "";
+    in property <string> media_duration: "";
+    in property <string> best_resolution_badge: "";
+    in property <[StreamFormatData]> stream_items: [];
+    in-out property <int> selected_index: 0;
+    in-out property <int> container_mode: 0; // 0 = Default, 1 = Force MP4, 2 = Force MKV
+
+    callback close();
+    callback select_stream(int);
+    callback set_container_mode(int);
+    callback apply_preset(int); // 0 = Best, 1 = 1080p, 2 = 720p, 3 = 480p, 4 = Audio
+    callback confirm_download(string); // emits quality spec string
+
+    width: 100%;
+    height: 100%;
+    visible: root.is_open;
+    z: 100;
+
+    // Dark backdrop overlay
+    Rectangle {
+        background: Theme.is_dark ? #000000a6 : #00000066;
+        animate background { duration: 150ms; }
+
+        TouchArea {
+            clicked => {
+                root.close();
+            }
+        }
+    }
+
+    // Modal Card Dialog
+    dialog_card := Rectangle {
+        width: min(740px, parent.width - 48px);
+        height: min(620px, parent.height - 48px);
+        background: Theme.card_bg;
+        border-radius: 14px;
+        border-width: 1px;
+        border-color: Theme.card_border;
+        clip: true;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000077;
+        drop-shadow-offset-y: 8px;
+
+        // Prevent clicking inside card from closing modal
+        TouchArea {}
+
+        VerticalLayout {
+            padding: 0px;
+            spacing: 0px;
+
+            // Modal Header
+            Rectangle {
+                height: 64px;
+                background: Theme.inner_bg;
+
+                HorizontalLayout {
+                    padding_left: 20px;
+                    padding_right: 16px;
+                    spacing: 12px;
+                    alignment: center;
+
+                    // Glow icon badge
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 8px;
+                        background: Theme.is_dark ? #6366f12a : #6366f118;
+                        border-width: 1px;
+                        border-color: Theme.primary_accent;
+
+                        Image {
+                            source: @image-url("../icons/sparkles.svg");
+                            width: 18px;
+                            height: 18px;
+                            colorize: Theme.primary_accent;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+
+                    // Title & Subtitle
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: "Video Quality & Stream Selector";
+                                font-size: 15px;
+                                font-weight: 700;
+                                color: Theme.text_primary;
+                            }
+
+                            if root.best_resolution_badge != "": Rectangle {
+                                height: 20px;
+                                border-radius: 6px;
+                                background: Theme.is_dark ? #10b98126 : #10b98118;
+                                border-width: 1px;
+                                border-color: #10b981;
+
+                                HorizontalLayout {
+                                    padding-left: 6px;
+                                    padding-right: 6px;
+                                    alignment: center;
+
+                                    Text {
+                                        text: root.best_resolution_badge;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        color: #10b981;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: root.media_title != "" ? (root.media_title + (root.media_duration != "" ? " • " + root.media_duration : "")) : "Select preferred resolution, video codec, and container";
+                            font-size: 11px;
+                            color: Theme.text_secondary;
+                            overflow: elide;
+                        }
+                    }
+
+                    Rectangle { horizontal-stretch: 1; }
+
+                    // Close Button (X)
+                    close_btn := Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 8px;
+                        background: close_touch.has_hover ? Theme.btn_secondary_hover : #00000000;
+                        animate background { duration: 100ms; }
+
+                        Image {
+                            source: @image-url("../icons/x.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: close_touch.has_hover ? Theme.text_primary : Theme.text_muted;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        close_touch := TouchArea {
+                            clicked => { root.close(); }
+                        }
+                    }
+                }
+            }
+
+            // Divider
+            Rectangle { height: 1px; background: Theme.card_border; }
+
+            // Body Scroll Area
+            ScrollView {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    padding: 18px;
+                    spacing: 16px;
+
+                    // Section: Quick Presets
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Text {
+                            text: "QUICK QUALITY PRESETS";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: Theme.text_secondary;
+                            letter-spacing: 0.5px;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            IconChip {
+                                text: "⭐ Best Quality";
+                                icon: @image-url("../icons/sparkles.svg");
+                                has_icon: true;
+                                selected: root.selected_index == 0;
+                                clicked => { root.apply_preset(0); }
+                            }
+                            IconChip {
+                                text: "1080p FHD";
+                                icon: @image-url("../icons/video.svg");
+                                has_icon: true;
+                                clicked => { root.apply_preset(1); }
+                            }
+                            IconChip {
+                                text: "720p HD";
+                                icon: @image-url("../icons/video.svg");
+                                has_icon: true;
+                                clicked => { root.apply_preset(2); }
+                            }
+                            IconChip {
+                                text: "480p SD";
+                                icon: @image-url("../icons/video.svg");
+                                has_icon: true;
+                                clicked => { root.apply_preset(3); }
+                            }
+                            IconChip {
+                                text: "🎵 Audio Only";
+                                icon: @image-url("../icons/music.svg");
+                                has_icon: true;
+                                clicked => { root.apply_preset(4); }
+                            }
+                        }
+                    }
+
+                    // Section: Container & Remux Preference
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Text {
+                            text: "CONTAINER & REMUX PREFERENCE";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: Theme.text_secondary;
+                            letter-spacing: 0.5px;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            IconChip {
+                                text: "Keep Native Stream";
+                                icon: @image-url("../icons/package.svg");
+                                has_icon: true;
+                                selected: root.container_mode == 0;
+                                clicked => { root.set_container_mode(0); }
+                            }
+                            IconChip {
+                                text: "Force MP4 (Apple & TV)";
+                                icon: @image-url("../icons/video.svg");
+                                has_icon: true;
+                                selected: root.container_mode == 1;
+                                clicked => { root.set_container_mode(1); }
+                            }
+                            IconChip {
+                                text: "Force MKV (Multi-track)";
+                                icon: @image-url("../icons/layers.svg");
+                                has_icon: true;
+                                selected: root.container_mode == 2;
+                                clicked => { root.set_container_mode(2); }
+                            }
+                        }
+                    }
+
+                    // Section: Detected Stream Formats List
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            Text {
+                                text: "AVAILABLE STREAM STREAMS";
+                                font-size: 11px;
+                                font-weight: 700;
+                                color: Theme.text_secondary;
+                                letter-spacing: 0.5px;
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                            Text {
+                                text: root.stream_items.length + " streams detected";
+                                font-size: 11px;
+                                color: Theme.text_muted;
+                            }
+                        }
+
+                        // Stream Cards List
+                        VerticalLayout {
+                            spacing: 6px;
+
+                            for item[idx] in root.stream_items: stream_card := Rectangle {
+                                height: 56px;
+                                border-radius: 10px;
+                                background: idx == root.selected_index
+                                    ? (Theme.is_dark ? #6366f120 : #6366f112)
+                                    : (item_touch.has_hover ? Theme.inner_bg : Theme.card_bg);
+                                border-width: 1px;
+                                border-color: idx == root.selected_index
+                                    ? Theme.primary_accent
+                                    : (item_touch.has_hover ? Theme.card_border : Theme.inner_border);
+                                animate background { duration: 120ms; }
+                                animate border-color { duration: 120ms; }
+
+                                HorizontalLayout {
+                                    padding_left: 14px;
+                                    padding_right: 14px;
+                                    spacing: 12px;
+                                    alignment: center;
+
+                                    // Radio Selection Indicator
+                                    radio_outer := Rectangle {
+                                        width: 18px;
+                                        height: 18px;
+                                        border-radius: 9px;
+                                        border-width: 1.5px;
+                                        border-color: idx == root.selected_index ? Theme.primary_accent : Theme.text_muted;
+                                        background: idx == root.selected_index ? Theme.primary_accent : #00000000;
+                                        animate background { duration: 120ms; }
+
+                                        if idx == root.selected_index: Rectangle {
+                                            width: 6px;
+                                            height: 6px;
+                                            border-radius: 3px;
+                                            background: #ffffff;
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                        }
+                                    }
+
+                                    // Stream Info & Badges
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 3px;
+                                        horizontal-stretch: 1;
+
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            alignment: start;
+
+                                            Text {
+                                                text: item.quality_label;
+                                                font-size: 13px;
+                                                font-weight: 600;
+                                                color: idx == root.selected_index ? Theme.primary_accent : Theme.text_primary;
+                                            }
+
+                                            if item.is_recommended: Rectangle {
+                                                height: 16px;
+                                                border-radius: 4px;
+                                                background: Theme.is_dark ? #f59e0b26 : #f59e0b18;
+                                                border-width: 1px;
+                                                border-color: #f59e0b;
+
+                                                HorizontalLayout {
+                                                    padding-left: 5px;
+                                                    padding-right: 5px;
+                                                    alignment: center;
+
+                                                    Text {
+                                                        text: "Recommended";
+                                                        font-size: 9px;
+                                                        font-weight: 700;
+                                                        color: #f59e0b;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Tags: Video Codec, Audio Codec, Container, FPS
+                                        HorizontalLayout {
+                                            spacing: 5px;
+                                            alignment: start;
+
+                                            if item.video_codec != "": Rectangle {
+                                                height: 16px;
+                                                border-radius: 4px;
+                                                background: Theme.is_dark ? #3b82f620 : #3b82f612;
+
+                                                HorizontalLayout {
+                                                    padding-left: 4px;
+                                                    padding-right: 4px;
+                                                    alignment: center;
+
+                                                    Text {
+                                                        text: item.video_codec;
+                                                        font-size: 9px;
+                                                        font-weight: 600;
+                                                        color: #3b82f6;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+
+                                            if item.audio_codec != "": Rectangle {
+                                                height: 16px;
+                                                border-radius: 4px;
+                                                background: Theme.is_dark ? #ec489920 : #ec489912;
+
+                                                HorizontalLayout {
+                                                    padding-left: 4px;
+                                                    padding-right: 4px;
+                                                    alignment: center;
+
+                                                    Text {
+                                                        text: item.audio_codec;
+                                                        font-size: 9px;
+                                                        font-weight: 600;
+                                                        color: #ec4899;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+
+                                            if item.container != "": Rectangle {
+                                                height: 16px;
+                                                border-radius: 4px;
+                                                background: Theme.is_dark ? #8b5cf620 : #8b5cf612;
+
+                                                HorizontalLayout {
+                                                    padding-left: 4px;
+                                                    padding-right: 4px;
+                                                    alignment: center;
+
+                                                    Text {
+                                                        text: item.container;
+                                                        font-size: 9px;
+                                                        font-weight: 600;
+                                                        color: #8b5cf6;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+
+                                            if item.fps_text != "": Rectangle {
+                                                height: 16px;
+                                                border-radius: 4px;
+                                                background: Theme.is_dark ? #10b98120 : #10b98112;
+
+                                                HorizontalLayout {
+                                                    padding-left: 4px;
+                                                    padding-right: 4px;
+                                                    alignment: center;
+
+                                                    Text {
+                                                        text: item.fps_text;
+                                                        font-size: 9px;
+                                                        font-weight: 600;
+                                                        color: #10b981;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Right: Resolution & Size
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+
+                                        Text {
+                                            text: item.resolution;
+                                            font-size: 12px;
+                                            font-weight: 600;
+                                            color: Theme.text_primary;
+                                            horizontal-alignment: right;
+                                        }
+
+                                        Text {
+                                            text: item.size_text != "" ? item.size_text : "--";
+                                            font-size: 11px;
+                                            color: Theme.text_muted;
+                                            horizontal-alignment: right;
+                                        }
+                                    }
+                                }
+
+                                item_touch := TouchArea {
+                                    clicked => {
+                                        root.select_stream(idx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Divider
+            Rectangle { height: 1px; background: Theme.card_border; }
+
+            // Modal Footer
+            Rectangle {
+                height: 60px;
+                background: Theme.inner_bg;
+
+                HorizontalLayout {
+                    padding_left: 20px;
+                    padding_right: 20px;
+                    spacing: 12px;
+                    alignment: center;
+
+                    // Info text
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+
+                        Image {
+                            source: @image-url("../icons/info.svg");
+                            width: 14px;
+                            height: 14px;
+                            colorize: Theme.text_muted;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: "Audio & video streams merge automatically into a single high-quality media file.";
+                            font-size: 11px;
+                            color: Theme.text_muted;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle { horizontal-stretch: 1; }
+
+                    // Cancel
+                    ActionButton {
+                        text: "Cancel";
+                        height: 36px;
+                        clicked => { root.close(); }
+                    }
+
+                    // Download Selected Stream
+                    ActionButton {
+                        text: "Download Selected Stream";
+                        icon: @image-url("../icons/download.svg");
+                        has_icon: true;
+                        primary: true;
+                        height: 36px;
+                        clicked => {
+                            // Compute quality spec
+                            root.confirm_download(
+                                (root.selected_index < root.stream_items.length ? root.stream_items[root.selected_index].format_id : "best")
+                                + (root.container_mode == 1 ? "|remux:mp4" : (root.container_mode == 2 ? "|remux:mkv" : ""))
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

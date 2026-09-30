@@ -463,6 +463,35 @@ fn run_url_analysis(
                     None => "Extract Audio".to_string(),
                 };
 
+                let mut metadata = metadata;
+                metadata.ensure_available_formats();
+
+                let best_res_badge = if metadata.available_formats.iter().any(|f| f.format_id == "2160p" || f.quality_label.contains("4K")) {
+                    "4K UHD Available".to_string()
+                } else if metadata.available_formats.iter().any(|f| f.format_id == "1440p") {
+                    "2K QHD Available".to_string()
+                } else if metadata.available_formats.iter().any(|f| f.format_id == "1080p") {
+                    "1080p FHD Available".to_string()
+                } else {
+                    "".to_string()
+                };
+
+                let stream_model_data: Vec<StreamFormatData> = metadata.available_formats.iter().enumerate().map(|(idx, s)| {
+                    StreamFormatData {
+                        format_id: s.format_id.clone().into(),
+                        quality_label: s.quality_label.clone().into(),
+                        resolution: s.resolution.clone().into(),
+                        fps_text: s.fps_text.clone().into(),
+                        video_codec: s.video_codec.clone().into(),
+                        audio_codec: s.audio_codec.clone().into(),
+                        container: s.container.clone().into(),
+                        size_text: s.size_text.clone().into(),
+                        is_video: s.is_video,
+                        is_recommended: s.is_recommended,
+                        selected: idx == 0,
+                    }
+                }).collect();
+
                 *meta_for_async.lock().await = Some(metadata);
 
                 let _ = weak_for_async.upgrade_in_event_loop(move |window| {
@@ -476,6 +505,12 @@ fn run_url_analysis(
                     } else {
                         "".into()
                     });
+
+                    let streams_model = Rc::new(VecModel::from(stream_model_data));
+                    window.set_available_stream_formats(ModelRc::from(streams_model));
+                    window.set_selected_stream_format_index(0);
+                    window.set_selected_stream_container_mode(0);
+                    window.set_stream_selector_best_res_badge(best_res_badge.into());
 
                     if let Some(ref p) = thumb_path {
                         if let Ok(img) = slint::Image::load_from_path(p) {
@@ -528,6 +563,10 @@ fn run_url_analysis(
                     window.set_playlist_episodes(ModelRc::default());
                     window.set_selected_episodes_count(0);
                     window.set_episode_range_input("".into());
+                    window.set_available_stream_formats(ModelRc::default());
+                    window.set_selected_stream_format_index(0);
+                    window.set_selected_stream_container_mode(0);
+                    window.set_stream_selector_best_res_badge("".into());
                     window.set_has_thumbnail(false);
                     window.set_thumbnail_image(slint::Image::default());
                     window.set_video_size_text("".into());
@@ -1361,6 +1400,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             window.set_playlist_episodes(ModelRc::default());
             window.set_selected_episodes_count(0);
             window.set_episode_range_input("".into());
+            window.set_available_stream_formats(ModelRc::default());
+            window.set_selected_stream_format_index(0);
+            window.set_selected_stream_container_mode(0);
+            window.set_stream_selector_best_res_badge("".into());
+            window.set_show_stream_selector_modal(false);
             window.set_status_message("Analysis cleared. Ready to download media.".into());
         }
     });
@@ -2601,6 +2645,127 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                 }
                 Err(err) => {
                     error!("Failed to queue download: {}", err);
+                    let err_msg = format!("Failed to queue download: {}", err);
+                    let err_box = err_msg.clone();
+                    let _ = weak.upgrade_in_event_loop(move |window| {
+                        window.set_has_error(true);
+                        window.set_error_message(err_box.into());
+                        window.set_status_message(err_msg.into());
+                    });
+                }
+            }
+        });
+    });
+
+    // Callback: Open Stream Selector Modal
+    let weak_open_stream = main_window.as_weak();
+    main_window.on_open_stream_selector(move || {
+        if let Some(win) = weak_open_stream.upgrade() {
+            win.set_show_stream_selector_modal(true);
+        }
+    });
+
+    // Callback: Select Stream Format Index
+    let weak_sel_stream = main_window.as_weak();
+    main_window.on_select_stream_format(move |idx| {
+        if let Some(win) = weak_sel_stream.upgrade() {
+            win.set_selected_stream_format_index(idx);
+        }
+    });
+
+    // Callback: Set Stream Container Mode
+    let weak_cm_stream = main_window.as_weak();
+    main_window.on_set_stream_container_mode(move |mode| {
+        if let Some(win) = weak_cm_stream.upgrade() {
+            win.set_selected_stream_container_mode(mode);
+        }
+    });
+
+    // Callback: Apply Quick Stream Preset
+    let weak_preset_stream = main_window.as_weak();
+    main_window.on_apply_stream_preset(move |preset_idx| {
+        if let Some(win) = weak_preset_stream.upgrade() {
+            let model = win.get_available_stream_formats();
+            let count = model.row_count();
+            let mut target_idx = 0;
+            for i in 0..count {
+                if let Some(item) = model.row_data(i) {
+                    let match_found = match preset_idx {
+                        0 => item.is_recommended || i == 0,
+                        1 => item.format_id == "1080p",
+                        2 => item.format_id == "720p",
+                        3 => item.format_id == "480p",
+                        4 => !item.is_video || item.format_id == "audio",
+                        _ => false,
+                    };
+                    if match_found {
+                        target_idx = i as i32;
+                        break;
+                    }
+                }
+            }
+            win.set_selected_stream_format_index(target_idx);
+        }
+    });
+
+    // Callback: Start Custom Stream Download from Modal
+    let weak_custom_dl = main_window.as_weak();
+    let mgr_custom_dl = download_manager.clone();
+    let meta_custom_dl = current_metadata.clone();
+    let dir_custom_dl = current_download_dir.clone();
+    main_window.on_start_custom_stream_download(move |q_spec_slint| {
+        let weak = weak_custom_dl.clone();
+        let mgr = mgr_custom_dl.clone();
+        let meta_arc = meta_custom_dl.clone();
+        let dir_lock = dir_custom_dl.clone();
+        let q_spec = q_spec_slint.to_string();
+
+        if let Some(win) = weak.upgrade() {
+            win.set_show_stream_selector_modal(false);
+            win.set_status_message("Starting custom stream download...".into());
+            win.set_active_tab(1);
+        }
+
+        tokio::spawn(async move {
+            let metadata = match meta_arc.lock().await.clone() {
+                Some(m) => m,
+                None => {
+                    let _ = weak.upgrade_in_event_loop(|window| {
+                        window.set_status_message("No media analyzed yet.".into());
+                    });
+                    return;
+                }
+            };
+            let download_dir = dir_lock.read().await.clone();
+            let is_audio = q_spec.starts_with("audio");
+
+            match mgr.add_download_with_context(
+                metadata.url,
+                metadata.title,
+                &download_dir,
+                metadata.content_length,
+                metadata.is_extractor,
+                is_audio,
+                Some(q_spec),
+                metadata.has_subtitles,
+                None,
+                metadata.thumbnail_url.is_some(),
+                metadata.thumbnail_url,
+                None,
+                None,
+                true,
+                None,
+                None,
+                metadata.referer,
+            ).await {
+                Ok(id) => {
+                    info!("Custom stream download queued with id: {}", id);
+                    let _ = weak.upgrade_in_event_loop(move |window| {
+                        window.set_status_message("Custom stream download started".into());
+                    });
+                }
+                Err(err) => {
+                    error!("Failed to queue custom stream download: {}", err);
                     let err_msg = format!("Failed to queue download: {}", err);
                     let err_box = err_msg.clone();
                     let _ = weak.upgrade_in_event_loop(move |window| {

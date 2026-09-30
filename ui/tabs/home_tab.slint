@@ -93,6 +93,7 @@ export component HomeTab inherits ScrollView {
     callback remove_batch_item(int);
     callback dismiss_error();
     callback open_logs();
+    callback open_stream_selector();
 
     vertical-stretch: 1;
 
@@ -923,12 +924,49 @@ export component HomeTab inherits ScrollView {
                     }
                 }
 
-                // Format & Quality Selection Chips
-                Text {
-                    text: root.is_playlist ? "Select Quality for All Episodes:" : "Select Format & Quality:";
-                    color: Theme.text_primary;
-                    font-size: 12px;
-                    font-weight: 600;
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: root.is_playlist ? "Select Quality for All Episodes:" : "Select Format & Quality:";
+                        color: Theme.text_primary;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    if !root.is_playlist: Rectangle {
+                        height: 22px;
+                        border-radius: 6px;
+                        background: inspect_touch.has_hover ? Theme.btn_secondary_hover : (Theme.is_dark ? #6366f120 : #6366f114);
+                        border-width: 1px;
+                        border-color: Theme.primary_accent;
+                        animate background { duration: 100ms; }
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 4px;
+                            alignment: center;
+
+                            Image {
+                                source: @image-url("../icons/sparkles.svg");
+                                width: 12px;
+                                height: 12px;
+                                colorize: Theme.primary_accent;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: "Inspect Streams & Codecs";
+                                font-size: 11px;
+                                font-weight: 600;
+                                color: Theme.primary_accent;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        inspect_touch := TouchArea {
+                            clicked => { root.open_stream_selector(); }
+                        }
+                    }
                 }
 
                 HorizontalLayout {
@@ -1343,6 +1381,16 @@ export component HomeTab inherits ScrollView {
                         height: 38px;
                         clicked => {
                             root.clear_analysis();
+                        }
+                    }
+
+                    if !root.is_playlist: ActionButton {
+                        text: "Quality & Stream Inspector";
+                        icon: @image-url("../icons/sparkles.svg");
+                        has_icon: true;
+                        height: 38px;
+                        clicked => {
+                            root.open_stream_selector();
                         }
                     }
 

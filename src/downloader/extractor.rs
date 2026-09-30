@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::error::{AppError, Result};
-use crate::models::{DownloadProgress, PlaylistEntry, VideoMetadata};
+use crate::models::{DownloadProgress, PlaylistEntry, StreamFormatInfo, VideoMetadata};
 
 static CACHED_BIN_DIR: std::sync::LazyLock<PathBuf> = std::sync::LazyLock::new(|| {
     if let Ok(home) = std::env::var("HOME") {
@@ -689,6 +689,159 @@ pub fn parse_quality_and_codecs(
     }
 }
 
+/// Analyzes and extracts available stream formats (resolutions, codecs, containers, FPS, sizes) for the Quality & Stream Inspector modal
+pub fn extract_available_stream_formats(
+    json_val: &serde_json::Value,
+    duration_secs: Option<u64>,
+    q: &QualityAndCodecs,
+) -> Vec<StreamFormatInfo> {
+    let mut streams = Vec::new();
+
+    let clean_vcodec = |raw: &str| -> String {
+        let r = raw.trim();
+        if r.starts_with("avc1") || r.starts_with("h264") {
+            "H.264".to_string()
+        } else if r.starts_with("vp09") || r.starts_with("vp9") {
+            "VP9".to_string()
+        } else if r.starts_with("av01") || r.starts_with("av1") {
+            "AV1".to_string()
+        } else if r.starts_with("hev1") || r.starts_with("hvc1") || r.starts_with("h265") {
+            "H.265".to_string()
+        } else if r == "none" || r.is_empty() {
+            "".to_string()
+        } else {
+            r.split('.').next().unwrap_or(r).to_uppercase()
+        }
+    };
+
+    let clean_acodec = |raw: &str| -> String {
+        let r = raw.trim();
+        if r.starts_with("mp4a") || r.starts_with("aac") {
+            "AAC".to_string()
+        } else if r.starts_with("opus") {
+            "Opus".to_string()
+        } else if r.starts_with("flac") {
+            "FLAC".to_string()
+        } else if r.starts_with("mp3") {
+            "MP3".to_string()
+        } else if r == "none" || r.is_empty() {
+            "".to_string()
+        } else {
+            r.split('.').next().unwrap_or(r).to_uppercase()
+        }
+    };
+
+    if let Some(formats) = json_val.get("formats").and_then(|v| v.as_array()) {
+        let target_heights = [
+            (2160, "4K Ultra HD (2160p)", "2160p"),
+            (1440, "2K Quad HD (1440p)", "1440p"),
+            (1080, "1080p Full HD", "1080p"),
+            (720, "720p High Def", "720p"),
+            (480, "480p Standard", "480p"),
+            (360, "360p Medium", "360p"),
+        ];
+
+        for (target_h, label, quality_id) in target_heights {
+            let matching: Vec<_> = formats
+                .iter()
+                .filter(|f| {
+                    let h = f.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let vcodec = f.get("vcodec").and_then(|v| v.as_str()).unwrap_or("none");
+                    vcodec != "none" && h >= (target_h * 85) / 100 && h <= (target_h * 115) / 100
+                })
+                .collect();
+
+            if !matching.is_empty() {
+                let best = matching.iter().max_by_key(|f| {
+                    let tbr = f.get("tbr").and_then(|v| v.as_f64()).unwrap_or(0.0) as u64;
+                    let fps = f.get("fps").and_then(|v| v.as_f64()).unwrap_or(30.0) as u64;
+                    tbr + fps * 10
+                });
+
+                if let Some(f) = best {
+                    let actual_h = f.get("height").and_then(|v| v.as_u64()).unwrap_or(target_h);
+                    let actual_w = f.get("width").and_then(|v| v.as_u64()).unwrap_or(actual_h * 16 / 9);
+                    let fps = f.get("fps").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let fps_text = if fps >= 50.0 { format!("{:.0} FPS", fps) } else { "".to_string() };
+                    let raw_vc = f.get("vcodec").and_then(|v| v.as_str()).unwrap_or("");
+                    let raw_ac = f.get("acodec").and_then(|v| v.as_str()).unwrap_or("");
+                    let container = f.get("ext").and_then(|v| v.as_str()).unwrap_or("mp4").to_uppercase();
+
+                    let size_val = match target_h {
+                        2160 | 1440 => q.size_best,
+                        1080 => q.size_1080p,
+                        720 => q.size_720p,
+                        480 => q.size_480p,
+                        _ => None,
+                    };
+                    let size_text = size_val.map(|s| format!("~{}", crate::models::DownloadProgress::format_size(s))).unwrap_or_default();
+
+                    streams.push(StreamFormatInfo {
+                        format_id: quality_id.to_string(),
+                        quality_label: label.to_string(),
+                        resolution: format!("{}x{}", actual_w, actual_h),
+                        fps_text,
+                        video_codec: clean_vcodec(raw_vc),
+                        audio_codec: if raw_ac != "none" && !raw_ac.is_empty() { clean_acodec(raw_ac) } else { "AAC / Opus".to_string() },
+                        container,
+                        size_text,
+                        is_video: true,
+                        is_recommended: target_h == 1080 || (target_h == 720 && q.size_1080p.is_none()),
+                    });
+                }
+            }
+        }
+
+        // Add Audio-only stream
+        let best_audio_format = formats.iter().filter(|f| {
+            let ac = f.get("acodec").and_then(|v| v.as_str()).unwrap_or("none");
+            let vc = f.get("vcodec").and_then(|v| v.as_str()).unwrap_or("none");
+            ac != "none" && (vc == "none" || vc.is_empty())
+        }).max_by_key(|f| {
+            f.get("abr").and_then(|v| v.as_f64()).unwrap_or(0.0) as u64
+        });
+
+        if let Some(af) = best_audio_format {
+            let raw_ac = af.get("acodec").and_then(|v| v.as_str()).unwrap_or("");
+            let abr = af.get("abr").and_then(|v| v.as_f64()).unwrap_or(160.0);
+            let ext = af.get("ext").and_then(|v| v.as_str()).unwrap_or("m4a").to_uppercase();
+            let size_text = q.size_audio.map(|s| format!("~{}", crate::models::DownloadProgress::format_size(s))).unwrap_or_default();
+
+            streams.push(StreamFormatInfo {
+                format_id: "audio".to_string(),
+                quality_label: format!("Studio Audio Track ({:.0} kbps)", abr),
+                resolution: "Audio Only".to_string(),
+                fps_text: "".to_string(),
+                video_codec: "None".to_string(),
+                audio_codec: clean_acodec(raw_ac),
+                container: ext,
+                size_text,
+                is_video: false,
+                is_recommended: false,
+            });
+        }
+    }
+
+    if streams.is_empty() {
+        let mut fallback_meta = VideoMetadata {
+            fps: q.fps,
+            vcodec: q.vcodec.clone(),
+            acodec: q.acodec.clone(),
+            size_best: q.size_best,
+            size_1080p: q.size_1080p,
+            size_720p: q.size_720p,
+            size_480p: q.size_480p,
+            size_audio: q.size_audio,
+            duration_seconds: duration_secs,
+            ..Default::default()
+        };
+        fallback_meta.ensure_available_formats();
+        streams = fallback_meta.available_formats;
+    }
+
+    streams
+}
+
 /// Inspects a video or album/playlist streaming URL to fetch metadata with optional browser cookies and proxy
 pub async fn inspect_video_with_options(
     url: &str,
@@ -905,6 +1058,8 @@ pub async fn inspect_video_with_options(
 
     let q = parse_quality_and_codecs(&json_val, duration_secs, filesize);
 
+    let available_formats = extract_available_stream_formats(&json_val, duration_secs, &q);
+
     Ok(VideoMetadata {
         url: url.to_string(),
         title,
@@ -930,6 +1085,7 @@ pub async fn inspect_video_with_options(
         size_480p: q.size_480p,
         size_audio: q.size_audio,
         referer: Some(url.to_string()),
+        available_formats,
     })
 }
 
@@ -1070,6 +1226,7 @@ pub async fn resolve_douyin_via_douyinsaver(url: &str, proxy: Option<&str>) -> R
         size_480p,
         size_audio: None,
         referer: Some("https://www.douyin.com/".to_string()),
+        available_formats: Vec::new(),
     })
 }
 
@@ -3152,6 +3309,7 @@ pub async fn extract_kisskh_drama(
         size_480p: None,
         size_audio: None,
         referer: Some(format!("{}/", base_origin)),
+        available_formats: Vec::new(),
     })
 }
 
@@ -3664,20 +3822,45 @@ where
             cmd.arg("--write-thumbnail");
         }
         if let Some(q) = quality {
-            match q {
-                "1080p" => {
-                    cmd.arg("-S").arg("res:1080");
-                    cmd.arg("-f").arg("bestvideo[height<=1080]+bestaudio/best[height<=1080]/best[format_note*='1080']/600/best[height<=?1080]");
+            for part in q.split('|') {
+                let trimmed = part.trim();
+                match trimmed {
+                    "4k" | "2160p" => {
+                        cmd.arg("-S").arg("res:2160");
+                        cmd.arg("-f").arg("bestvideo[height<=2160]+bestaudio/best[height<=2160]/best");
+                    }
+                    "1440p" | "2k" => {
+                        cmd.arg("-S").arg("res:1440");
+                        cmd.arg("-f").arg("bestvideo[height<=1440]+bestaudio/best[height<=1440]/best");
+                    }
+                    "1080p" => {
+                        cmd.arg("-S").arg("res:1080");
+                        cmd.arg("-f").arg("bestvideo[height<=1080]+bestaudio/best[height<=1080]/best[format_note*='1080']/600/best[height<=?1080]");
+                    }
+                    "720p" => {
+                        cmd.arg("-S").arg("res:720");
+                        cmd.arg("-f").arg("bestvideo[height<=720]+bestaudio/best[height<=720]/best[format_note*='720']/500/best[height<=?720]");
+                    }
+                    "480p" => {
+                        cmd.arg("-S").arg("res:480");
+                        cmd.arg("-f").arg("bestvideo[height<=480]+bestaudio/best[height<=480]/best[format_note*='480']/300/best[height<=?480]");
+                    }
+                    "360p" => {
+                        cmd.arg("-S").arg("res:360");
+                        cmd.arg("-f").arg("bestvideo[height<=360]+bestaudio/best[height<=360]/best[height<=?360]");
+                    }
+                    "remux:mp4" => {
+                        cmd.arg("--remux-video").arg("mp4");
+                    }
+                    "remux:mkv" => {
+                        cmd.arg("--remux-video").arg("mkv");
+                    }
+                    _ => {
+                        if let Some(fmt_spec) = trimmed.strip_prefix("format:") {
+                            cmd.arg("-f").arg(format!("{}+bestaudio/{}", fmt_spec, fmt_spec));
+                        }
+                    }
                 }
-                "720p" => {
-                    cmd.arg("-S").arg("res:720");
-                    cmd.arg("-f").arg("bestvideo[height<=720]+bestaudio/best[height<=720]/best[format_note*='720']/500/best[height<=?720]");
-                }
-                "480p" => {
-                    cmd.arg("-S").arg("res:480");
-                    cmd.arg("-f").arg("bestvideo[height<=480]+bestaudio/best[height<=480]/best[format_note*='480']/300/best[height<=?480]");
-                }
-                _ => {}
             }
         }
     }
@@ -4724,6 +4907,69 @@ mod tests {
             assert!(meta.has_subtitles);
             assert!(meta.subtitles_summary.contains("English") || meta.subtitles_summary.contains("Khmer"));
         }
+    }
+
+    #[test]
+    fn test_extract_available_stream_formats() {
+        let sample_json: serde_json::Value = serde_json::json!({
+            "formats": [
+                {
+                    "format_id": "137",
+                    "ext": "mp4",
+                    "width": 1920,
+                    "height": 1080,
+                    "fps": 60.0,
+                    "vcodec": "avc1.640028",
+                    "acodec": "none",
+                    "tbr": 4500.0,
+                    "filesize": 150_000_000
+                },
+                {
+                    "format_id": "313",
+                    "ext": "webm",
+                    "width": 3840,
+                    "height": 2160,
+                    "fps": 60.0,
+                    "vcodec": "vp09.00",
+                    "acodec": "none",
+                    "tbr": 18000.0,
+                    "filesize": 400_000_000
+                },
+                {
+                    "format_id": "140",
+                    "ext": "m4a",
+                    "vcodec": "none",
+                    "acodec": "mp4a.40.2",
+                    "abr": 128.0,
+                    "filesize": 15_000_000
+                }
+            ]
+        });
+
+        let q = QualityAndCodecs {
+            fps: Some(60.0),
+            vcodec: Some("H.264".to_string()),
+            acodec: Some("AAC".to_string()),
+            size_best: Some(400_000_000),
+            size_1080p: Some(150_000_000),
+            size_720p: None,
+            size_480p: None,
+            size_audio: Some(15_000_000),
+        };
+
+        let streams = extract_available_stream_formats(&sample_json, Some(120), &q);
+        assert!(!streams.is_empty(), "Should extract available streams");
+        assert!(streams.iter().any(|s| s.format_id == "2160p"), "Should have 4K stream");
+        assert!(streams.iter().any(|s| s.format_id == "1080p"), "Should have 1080p stream");
+        assert!(streams.iter().any(|s| s.format_id == "audio"), "Should have audio stream");
+
+        // Verify fallback on VideoMetadata
+        let mut empty_meta = VideoMetadata::default();
+        empty_meta.size_1080p = Some(50_000_000);
+        empty_meta.ensure_available_formats();
+        assert!(!empty_meta.available_formats.is_empty());
+        assert_eq!(empty_meta.available_formats[0].format_id, "best");
+        assert!(empty_meta.available_formats.iter().any(|s| s.format_id == "1080p"));
     }
 }
 

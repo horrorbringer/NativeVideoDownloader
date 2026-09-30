@@ -181,6 +181,22 @@ pub struct VideoMetadata {
     pub size_audio: Option<u64>,
     #[serde(default)]
     pub referer: Option<String>,
+    #[serde(default)]
+    pub available_formats: Vec<StreamFormatInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct StreamFormatInfo {
+    pub format_id: String,
+    pub quality_label: String,
+    pub resolution: String,
+    pub fps_text: String,
+    pub video_codec: String,
+    pub audio_codec: String,
+    pub container: String,
+    pub size_text: String,
+    pub is_video: bool,
+    pub is_recommended: bool,
 }
 
 impl Default for VideoMetadata {
@@ -210,6 +226,105 @@ impl Default for VideoMetadata {
             size_480p: None,
             size_audio: None,
             referer: None,
+            available_formats: Vec::new(),
         }
     }
 }
+
+impl VideoMetadata {
+    pub fn ensure_available_formats(&mut self) {
+        if !self.available_formats.is_empty() {
+            return;
+        }
+
+        let best_size_text = self.size_best.or(self.content_length)
+            .map(|s| format!("~{}", crate::models::DownloadProgress::format_size(s)))
+            .unwrap_or_default();
+        let size_1080_text = self.size_1080p
+            .map(|s| format!("~{}", crate::models::DownloadProgress::format_size(s)))
+            .unwrap_or_default();
+        let size_720_text = self.size_720p
+            .map(|s| format!("~{}", crate::models::DownloadProgress::format_size(s)))
+            .unwrap_or_default();
+        let size_480_text = self.size_480p
+            .map(|s| format!("~{}", crate::models::DownloadProgress::format_size(s)))
+            .unwrap_or_default();
+        let size_audio_text = self.size_audio
+            .map(|s| format!("~{}", crate::models::DownloadProgress::format_size(s)))
+            .unwrap_or_default();
+
+        let vc = self.vcodec.clone().unwrap_or_else(|| "H.264".to_string());
+        let ac = self.acodec.clone().unwrap_or_else(|| "AAC".to_string());
+        let fps_text = self.fps.map(|f| format!("{:.0} FPS", f)).unwrap_or_default();
+
+        let mut streams = Vec::new();
+
+        streams.push(StreamFormatInfo {
+            format_id: "best".to_string(),
+            quality_label: "Best Available Stream".to_string(),
+            resolution: self.resolution.clone().unwrap_or_else(|| "Native".to_string()),
+            fps_text: fps_text.clone(),
+            video_codec: vc.clone(),
+            audio_codec: ac.clone(),
+            container: self.ext.clone().unwrap_or_else(|| "mp4".to_string()).to_uppercase(),
+            size_text: best_size_text,
+            is_video: true,
+            is_recommended: true,
+        });
+
+        streams.push(StreamFormatInfo {
+            format_id: "1080p".to_string(),
+            quality_label: "1080p Full HD".to_string(),
+            resolution: "1920x1080".to_string(),
+            fps_text: fps_text.clone(),
+            video_codec: vc.clone(),
+            audio_codec: ac.clone(),
+            container: "MP4".to_string(),
+            size_text: size_1080_text,
+            is_video: true,
+            is_recommended: false,
+        });
+
+        streams.push(StreamFormatInfo {
+            format_id: "720p".to_string(),
+            quality_label: "720p High Def".to_string(),
+            resolution: "1280x720".to_string(),
+            fps_text,
+            video_codec: vc,
+            audio_codec: ac,
+            container: "MP4".to_string(),
+            size_text: size_720_text,
+            is_video: true,
+            is_recommended: false,
+        });
+
+        streams.push(StreamFormatInfo {
+            format_id: "480p".to_string(),
+            quality_label: "480p Standard".to_string(),
+            resolution: "854x480".to_string(),
+            fps_text: "".to_string(),
+            video_codec: "H.264".to_string(),
+            audio_codec: "AAC".to_string(),
+            container: "MP4".to_string(),
+            size_text: size_480_text,
+            is_video: true,
+            is_recommended: false,
+        });
+
+        streams.push(StreamFormatInfo {
+            format_id: "audio".to_string(),
+            quality_label: "Audio Track Only".to_string(),
+            resolution: "Audio Only".to_string(),
+            fps_text: "".to_string(),
+            video_codec: "None".to_string(),
+            audio_codec: "MP3 / AAC".to_string(),
+            container: "MP3".to_string(),
+            size_text: size_audio_text,
+            is_video: false,
+            is_recommended: false,
+        });
+
+        self.available_formats = streams;
+    }
+}
+
