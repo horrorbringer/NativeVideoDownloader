@@ -35,6 +35,13 @@ export component DownloadsTab inherits VerticalLayout {
     callback prioritize_job(string);
     callback set_speed_limit(int);
     callback open_converter(string, string);
+    in-out property <int> selected_downloads_count: 0;
+    callback toggle_download_selected(string);
+    callback select_all_downloads(bool);
+    callback pause_selected();
+    callback resume_selected();
+    callback cancel_selected();
+    callback prioritize_selected();
 
     in-out property <int> speed_graph_mode: 0; // 0 = Bars, 1 = Area, 2 = Stats
     in-out property <string> avg_speed_text: "0 B/s";
@@ -850,6 +857,21 @@ export component DownloadsTab inherits VerticalLayout {
                 root.search_queue(self.text);
             }
         }
+
+        ActionButton {
+            text: root.selected_downloads_count > 0 && root.selected_downloads_count == root.download_items.length ? "Deselect All" : "Select All";
+            icon: @image-url("../icons/check.svg");
+            has_icon: true;
+            height: 36px;
+            enabled: root.download_items.length > 0;
+            clicked => {
+                if (root.selected_downloads_count > 0 && root.selected_downloads_count == root.download_items.length) {
+                    root.select_all_downloads(false);
+                } else {
+                    root.select_all_downloads(true);
+                }
+            }
+        }
     }
 
     HorizontalLayout {
@@ -912,6 +934,89 @@ export component DownloadsTab inherits VerticalLayout {
             clicked => {
                 root.queue_filter_index = 5;
                 root.set_queue_filter(5);
+            }
+        }
+    }
+
+    // Multi-Select Batch Actions Toolbar
+    if root.selected_downloads_count > 0: Rectangle {
+        background: Theme.is_dark ? #181d32 : #f5f3ff;
+        border-radius: 10px;
+        border-width: 1.5px;
+        border-color: Theme.brand_purple;
+        height: 48px;
+
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            alignment: space-between;
+
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+
+                VerticalLayout {
+                    alignment: center;
+                    Image {
+                        source: @image-url("../icons/check.svg");
+                        width: 14px;
+                        height: 14px;
+                        colorize: Theme.brand_purple;
+                    }
+                }
+
+                Text {
+                    text: root.selected_downloads_count + (root.selected_downloads_count == 1 ? " download selected" : " downloads selected");
+                    color: Theme.brand_purple;
+                    font-size: 13px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+
+                ActionButton {
+                    text: "Pause";
+                    icon: @image-url("../icons/pause.svg");
+                    has_icon: true;
+                    height: 30px;
+                    clicked => { root.pause_selected(); }
+                }
+
+                ActionButton {
+                    text: "Resume";
+                    icon: @image-url("../icons/play.svg");
+                    has_icon: true;
+                    primary: true;
+                    height: 30px;
+                    clicked => { root.resume_selected(); }
+                }
+
+                ActionButton {
+                    text: "Top Priority";
+                    icon: @image-url("../icons/bolt.svg");
+                    has_icon: true;
+                    height: 30px;
+                    clicked => { root.prioritize_selected(); }
+                }
+
+                ActionButton {
+                    text: "Cancel";
+                    icon: @image-url("../icons/x.svg");
+                    has_icon: true;
+                    danger: true;
+                    height: 30px;
+                    clicked => { root.cancel_selected(); }
+                }
+
+                ActionButton {
+                    text: "Deselect All";
+                    height: 30px;
+                    clicked => { root.select_all_downloads(false); }
+                }
             }
         }
     }
@@ -980,22 +1085,59 @@ export component DownloadsTab inherits VerticalLayout {
             for item in root.download_items: Rectangle {
                 min-height: 104px;
                 max-height: 126px;
-                background: touch.has-hover ? Theme.card_hover : Theme.card_bg;
+                background: item.selected ? (Theme.is_dark ? #1e1b4b : #f5f3ff) : (touch.has-hover ? Theme.card_hover : Theme.card_bg);
                 border-radius: 12px;
-                border-width: 1px;
-                border-color: touch.has-hover ? Theme.primary_border : Theme.card_border;
+                border-width: item.selected ? 1.5px : 1px;
+                border-color: item.selected ? Theme.brand_purple : (touch.has-hover ? Theme.primary_border : Theme.card_border);
                 animate background { duration: 150ms; }
                 animate border-color { duration: 150ms; }
 
                 touch := TouchArea { }
 
-                VerticalLayout {
-                    padding-left: 16px;
+                HorizontalLayout {
+                    padding-left: 12px;
                     padding-right: 16px;
                     padding-top: 12px;
                     padding-bottom: 12px;
-                    spacing: 8px;
-                    alignment: space-between;
+                    spacing: 12px;
+                    alignment: start;
+
+                    // Multi-select Checkbox
+                    VerticalLayout {
+                        alignment: center;
+
+                        Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 6px;
+                            border-width: 1.5px;
+                            border-color: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.brand_purple : (Theme.is_dark ? #475569 : #94a3b8));
+                            background: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.card_hover : Theme.inner_bg);
+                            animate background { duration: 120ms; }
+                            animate border-color { duration: 120ms; }
+
+                            if item.selected: Image {
+                                source: @image-url("../icons/check.svg");
+                                width: 12px;
+                                height: 12px;
+                                colorize: #ffffff;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+
+                            cb_touch := TouchArea {
+                                clicked => {
+                                    root.toggle_download_selected(item.id);
+                                }
+                            }
+                        }
+                    }
+
+                    // Card Content Column
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 8px;
+                        alignment: space-between;
 
                     // Row 1: Header (Status Icon + Title + Status Pill | Action Buttons)
                     HorizontalLayout {
@@ -1257,6 +1399,7 @@ export component DownloadsTab inherits VerticalLayout {
                         }
                     }
                 }
+            }
             }
         }
     }

@@ -43,6 +43,7 @@ export component AppWindow inherits Window {
     // Queue & Downloads properties
     in-out property <[DownloadItemData]> download_items: [];
     in-out property <int> active_downloads_count: 0;
+    in-out property <int> selected_downloads_count: 0;
     in-out property <int> total_queue_count: 0;
     in-out property <int> queue_filter_index: 0;
     in-out property <string> queue_search_query: "";
@@ -259,6 +260,12 @@ export component AppWindow inherits Window {
     callback clear_cache();
     callback set_queue_filter(int);
     callback search_queue(string);
+    callback toggle_download_selected(string);
+    callback select_all_downloads(bool);
+    callback pause_selected_downloads();
+    callback resume_selected_downloads();
+    callback cancel_selected_downloads();
+    callback prioritize_selected_downloads();
 
     callback search_history(string);
     callback open_history_folder(string);
@@ -710,6 +717,13 @@ export component AppWindow inherits Window {
                 resume_download(id) => { root.resume_download(id); }
                 cancel_download(id) => { root.cancel_download(id); }
                 open_converter(p, t) => { root.open_converter_for_file(p, t); }
+                selected_downloads_count: root.selected_downloads_count;
+                toggle_download_selected(id) => { root.toggle_download_selected(id); }
+                select_all_downloads(sel) => { root.select_all_downloads(sel); }
+                pause_selected => { root.pause_selected_downloads(); }
+                resume_selected => { root.resume_selected_downloads(); }
+                cancel_selected => { root.cancel_selected_downloads(); }
+                prioritize_selected => { root.prioritize_selected_downloads(); }
             }
 
             if root.active_tab == 2: HistoryTab {

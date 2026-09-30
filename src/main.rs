@@ -964,6 +964,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Queue filter & search state
     let queue_filter_idx: Arc<tokio::sync::RwLock<i32>> = Arc::new(tokio::sync::RwLock::new(0));
     let queue_search_term: Arc<tokio::sync::RwLock<String>> = Arc::new(tokio::sync::RwLock::new(String::new()));
+    let selected_download_ids: Arc<tokio::sync::RwLock<HashSet<String>>> = Arc::new(tokio::sync::RwLock::new(HashSet::new()));
     let history_state: Arc<tokio::sync::RwLock<HistoryState>> = Arc::new(tokio::sync::RwLock::new(HistoryState::default()));
 
     // Speed history (30 seconds rolling timeline @ 2 Hz / 60 samples), peak tracking, and session bytes
@@ -979,6 +980,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let last_speed_shift = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
     let filter_sync = queue_filter_idx.clone();
     let search_sync = queue_search_term.clone();
+    let sel_dl_sync = selected_download_ids.clone();
     let speed_hist_sync = speed_history.clone();
     let peak_speed_sync = peak_speed_bytes.clone();
     let session_bytes_sync = session_downloaded_bytes.clone();
@@ -996,6 +998,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let last_shift_lock = last_speed_shift.clone();
             let filter_lock = filter_sync.clone();
             let search_lock = search_sync.clone();
+            let sel_dl_lock = sel_dl_sync.clone();
             let speed_hist_lock = speed_hist_sync.clone();
             let peak_lock = peak_speed_sync.clone();
             let session_lock = session_bytes_sync.clone();
@@ -1165,6 +1168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let in_sched_window = mgr.is_in_schedule_window().await;
 
                 let total_filtered = filtered_jobs.len();
+                let sel_set = sel_dl_lock.read().await;
                 let items: Vec<DownloadItemData> = filtered_jobs
                     .into_iter()
                     .enumerate()
@@ -1200,6 +1204,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             other => (other.as_str().to_string(), "".to_string()),
                         };
 
+                        let is_selected = sel_set.contains(&j.id.to_string());
+
                         DownloadItemData {
                             id: j.id.to_string().into(),
                             title: j.title.into(),
@@ -1216,9 +1222,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             is_queued,
                             can_move_up: (is_queued || is_scheduled) && idx > 0,
                             can_move_down: (is_queued || is_scheduled) && idx + 1 < total_filtered,
+                            selected: is_selected,
                         }
                     })
                     .collect();
+                drop(sel_set);
+
+                let selected_count = items.iter().filter(|i| i.selected).count() as i32;
 
                 let reset_flag = rendering_flag.clone();
                 let rerender_check = rerender_flag.clone();
@@ -1231,6 +1241,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let model = Rc::new(VecModel::from(items));
                     window.set_download_items(ModelRc::from(model));
                     window.set_active_downloads_count(active_count);
+                    window.set_selected_downloads_count(selected_count);
                     window.set_total_queue_count(total_queue_count);
                     window.set_scheduler_active(banner_active);
                     window.set_scheduler_status_banner_text(banner_text.into());
@@ -2823,6 +2834,145 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
         let q = query.to_string();
         tokio::spawn(async move {
             *search_set.write().await = q;
+            mgr.notify_update().await;
+        });
+    });
+
+    // Callback: Toggle single download selected
+    let sel_toggle = selected_download_ids.clone();
+    let mgr_toggle = download_manager.clone();
+    main_window.on_toggle_download_selected(move |id_str| {
+        let sel = sel_toggle.clone();
+        let mgr = mgr_toggle.clone();
+        let id_val = id_str.to_string();
+        tokio::spawn(async move {
+            {
+                let mut guard = sel.write().await;
+                if guard.contains(&id_val) {
+                    guard.remove(&id_val);
+                } else {
+                    guard.insert(id_val);
+                }
+            }
+            mgr.notify_update().await;
+        });
+    });
+
+    // Callback: Select all / deselect all downloads (respects active filter & search)
+    let sel_all_dl = selected_download_ids.clone();
+    let mgr_all_dl = download_manager.clone();
+    let filter_for_sel = queue_filter_idx.clone();
+    let search_for_sel = queue_search_term.clone();
+    main_window.on_select_all_downloads(move |select_all| {
+        let sel = sel_all_dl.clone();
+        let mgr = mgr_all_dl.clone();
+        let filter_lock = filter_for_sel.clone();
+        let search_lock = search_for_sel.clone();
+        tokio::spawn(async move {
+            let mut guard = sel.write().await;
+            if select_all {
+                let jobs = mgr.get_jobs_snapshot().await;
+                let cur_filter = *filter_lock.read().await;
+                let cur_search = search_lock.read().await.trim().to_lowercase();
+                for j in jobs {
+                    let matches_status = match cur_filter {
+                        1 => j.status == DownloadStatus::Downloading,
+                        2 => j.status == DownloadStatus::Queued,
+                        3 => j.status == DownloadStatus::Paused,
+                        4 => j.status == DownloadStatus::Completed,
+                        5 => matches!(j.status, DownloadStatus::Failed(_)),
+                        _ => true,
+                    };
+                    if !matches_status {
+                        continue;
+                    }
+                    if !cur_search.is_empty() {
+                        let in_title = j.title.to_lowercase().contains(&cur_search);
+                        let in_url = j.url.to_lowercase().contains(&cur_search);
+                        if !in_title && !in_url {
+                            continue;
+                        }
+                    }
+                    guard.insert(j.id.to_string());
+                }
+            } else {
+                guard.clear();
+            }
+            drop(guard);
+            mgr.notify_update().await;
+        });
+    });
+
+    // Callback: Pause selected downloads
+    let sel_pause = selected_download_ids.clone();
+    let mgr_pause_sel = download_manager.clone();
+    main_window.on_pause_selected_downloads(move || {
+        let sel = sel_pause.clone();
+        let mgr = mgr_pause_sel.clone();
+        tokio::spawn(async move {
+            let ids: Vec<String> = sel.read().await.iter().cloned().collect();
+            for id_str in ids {
+                if let Ok(id) = Uuid::parse_str(&id_str) {
+                    mgr.pause_job(id).await;
+                }
+            }
+            mgr.notify_update().await;
+        });
+    });
+
+    // Callback: Resume selected downloads
+    let sel_resume = selected_download_ids.clone();
+    let mgr_resume_sel = download_manager.clone();
+    main_window.on_resume_selected_downloads(move || {
+        let sel = sel_resume.clone();
+        let mgr = mgr_resume_sel.clone();
+        tokio::spawn(async move {
+            let ids: Vec<String> = sel.read().await.iter().cloned().collect();
+            for id_str in ids {
+                if let Ok(id) = Uuid::parse_str(&id_str) {
+                    mgr.resume_job(id).await;
+                }
+            }
+            mgr.notify_update().await;
+        });
+    });
+
+    // Callback: Cancel selected downloads
+    let sel_cancel = selected_download_ids.clone();
+    let mgr_cancel_sel = download_manager.clone();
+    main_window.on_cancel_selected_downloads(move || {
+        let sel = sel_cancel.clone();
+        let mgr = mgr_cancel_sel.clone();
+        tokio::spawn(async move {
+            let ids: Vec<String> = sel.read().await.iter().cloned().collect();
+            for id_str in &ids {
+                if let Ok(id) = Uuid::parse_str(id_str) {
+                    mgr.cancel_job(id).await;
+                }
+            }
+            {
+                let mut guard = sel.write().await;
+                for id_str in ids {
+                    guard.remove(&id_str);
+                }
+            }
+            mgr.notify_update().await;
+        });
+    });
+
+    // Callback: Prioritize selected downloads
+    let sel_prio = selected_download_ids.clone();
+    let mgr_prio_sel = download_manager.clone();
+    main_window.on_prioritize_selected_downloads(move || {
+        let sel = sel_prio.clone();
+        let mgr = mgr_prio_sel.clone();
+        tokio::spawn(async move {
+            let ids: Vec<String> = sel.read().await.iter().cloned().collect();
+            for id_str in ids {
+                if let Ok(id) = Uuid::parse_str(&id_str) {
+                    mgr.prioritize_job(id).await;
+                }
+            }
             mgr.notify_update().await;
         });
     });
