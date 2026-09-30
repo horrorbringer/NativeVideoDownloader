@@ -57,15 +57,13 @@ export component AboutTab inherits ScrollView {
                         border-width: 1.5px;
                         border-color: Theme.is_dark ? #6366f1 : #818cf8;
 
-                        VerticalLayout {
-                            alignment: center;
-                            Image {
-                                source: @image-url("../icons/sparkles.svg");
-                                width: 34px;
-                                height: 34px;
-                                colorize: #ffffff;
-                                horizontal-alignment: center;
-                            }
+                        Image {
+                            source: @image-url("../icons/sparkles.svg");
+                            width: 34px;
+                            height: 34px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            colorize: #ffffff;
                         }
                     }
 

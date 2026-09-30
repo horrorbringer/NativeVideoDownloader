@@ -80,15 +80,13 @@ export component UpdateModal inherits Rectangle {
                         border-width: 1px;
                         border-color: #10b98155;
 
-                        VerticalLayout {
-                            alignment: center;
-                            Image {
-                                source: root.is_ready_to_restart ? @image-url("../icons/check.svg") : @image-url("../icons/sparkles.svg");
-                                width: 20px;
-                                height: 20px;
-                                colorize: root.is_ready_to_restart ? #10b981 : Theme.primary_accent;
-                                horizontal-alignment: center;
-                            }
+                        Image {
+                            source: root.is_ready_to_restart ? @image-url("../icons/check.svg") : @image-url("../icons/sparkles.svg");
+                            width: 20px;
+                            height: 20px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            colorize: root.is_ready_to_restart ? #10b981 : Theme.primary_accent;
                         }
                     }
 
@@ -151,15 +149,13 @@ export component UpdateModal inherits Rectangle {
                             clicked => { root.close(); }
                         }
 
-                        VerticalLayout {
-                            alignment: center;
-                            Image {
-                                source: @image-url("../icons/x.svg");
-                                width: 14px;
-                                height: 14px;
-                                colorize: Theme.text_muted;
-                                horizontal-alignment: center;
-                            }
+                        Image {
+                            source: @image-url("../icons/x.svg");
+                            width: 14px;
+                            height: 14px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            colorize: Theme.text_muted;
                         }
                     }
                 }
