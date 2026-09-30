@@ -49,6 +49,43 @@ pub fn send_test_notification() {
     );
 }
 
+#[cfg(not(target_os = "macos"))]
+fn get_app_icon_temp_path() -> Option<std::path::PathBuf> {
+    let temp_icon = std::env::temp_dir().join("native_video_downloader_logo.png");
+    if !temp_icon.exists() {
+        const ICON_BYTES: &[u8] = include_bytes!("../assets/app_icon.png");
+        let _ = std::fs::write(&temp_icon, ICON_BYTES);
+    }
+    if temp_icon.exists() {
+        Some(temp_icon)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_macos_bundle_registered() {
+    static REGISTERED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if REGISTERED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+
+    let candidates = [
+        std::path::PathBuf::from("dist/Native Video Downloader.app"),
+        std::path::PathBuf::from("/Applications/Native Video Downloader.app"),
+    ];
+
+    for candidate in candidates {
+        if candidate.exists() && candidate.join("Contents/Info.plist").exists() {
+            let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+            let _ = std::process::Command::new(lsregister)
+                .args(["-f", &candidate.to_string_lossy()])
+                .status();
+            break;
+        }
+    }
+}
+
 fn dispatch_system_notification(
     title: &str,
     subtitle: &str,
@@ -68,6 +105,8 @@ fn dispatch_system_notification(
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "macos")]
         {
+            ensure_macos_bundle_registered();
+
             let sound_clause = if sound_on {
                 let sound = if is_error { "Basso" } else { "Glass" };
                 format!(" sound name \"{}\"", sound)
@@ -86,8 +125,14 @@ fn dispatch_system_notification(
             let safe_subtitle = formatted_subtitle.replace('\\', "\\\\").replace('"', "\\\"");
             let safe_msg = message.replace('\\', "\\\\").replace('"', "\\\"");
 
+            // Route through registered bundle ID so macOS attaches the AppIcon logo
             let script = format!(
-                "display notification \"{}\" with title \"{}\" subtitle \"{}\"{}",
+                "try\n\
+                     tell application id \"com.native.videodownloader\" to display notification \"{}\" with title \"{}\" subtitle \"{}\"{}\n\
+                 on error\n\
+                     display notification \"{}\" with title \"{}\" subtitle \"{}\"{}\n\
+                 end try",
+                safe_msg, safe_title, safe_subtitle, sound_clause,
                 safe_msg, safe_title, safe_subtitle, sound_clause
             );
 
@@ -105,17 +150,28 @@ fn dispatch_system_notification(
                 "<audio silent=\"true\"/>"
             };
 
-            // Windows PowerShell Toast notification
+            let icon_xml = if let Some(icon_path) = get_app_icon_temp_path() {
+                format!(
+                    "<image placement=\"appLogoOverride\" hint-crop=\"circle\" src=\"{}\"/>",
+                    icon_path.to_string_lossy().replace('\\', "/")
+                )
+            } else {
+                String::new()
+            };
+
+            // Windows PowerShell Toast notification with application logo
             let script = format!(
                 "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; \
                  [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null; \
-                 $xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); \
-                 $text = $xml.GetElementsByTagName('text'); \
-                 $text[0].AppendChild($xml.CreateTextNode('{}')) | Out-Null; \
-                 $text[1].AppendChild($xml.CreateTextNode('{}')) | Out-Null; \
+                 $template = '<toast><visual><binding template=\"ToastGeneric\">{}<text>{}</text><text>{}</text></binding></visual>{}</toast>'; \
+                 $xml = [Windows.Data.Xml.Dom.XmlDocument]::new(); \
+                 $xml.LoadXml($template); \
                  $toast = [Windows.UI.Notifications.ToastNotification]::new($xml); \
                  [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Native Video Downloader').Show($toast);",
-                title.replace('\'', "''"), message.replace('\'', "''")
+                icon_xml,
+                title.replace('\'', "''"),
+                message.replace('\'', "''"),
+                audio_tag
             );
 
             let _ = std::process::Command::new("powershell")
@@ -126,12 +182,13 @@ fn dispatch_system_notification(
         #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
         {
             let urgency = if is_error { "critical" } else { "normal" };
-            let _ = std::process::Command::new("notify-send")
-                .arg("-u")
-                .arg(urgency)
-                .arg(&title)
-                .arg(&message)
-                .spawn();
+            let mut cmd = std::process::Command::new("notify-send");
+            cmd.arg("-u").arg(urgency);
+            if let Some(icon_path) = get_app_icon_temp_path() {
+                cmd.arg("-i").arg(icon_path);
+            }
+            cmd.arg(&title).arg(&message);
+            let _ = cmd.spawn();
         }
     });
 }

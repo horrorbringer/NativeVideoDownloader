@@ -198,8 +198,65 @@ pub fn sync_macos_app_appearance(mode: ThemeMode) {
     }
 }
 
+/// Sets the macOS application and Dock icon dynamically at runtime using the embedded logo.
+#[cfg(target_os = "macos")]
+pub fn set_macos_app_icon() {
+    use std::ffi::{c_char, c_void};
+
+    #[link(name = "objc", kind = "dylib")]
+    unsafe extern "C" {
+        fn objc_getClass(name: *const c_char) -> *mut c_void;
+        fn sel_registerName(name: *const c_char) -> *mut c_void;
+        fn objc_msgSend();
+    }
+
+    type MsgSendNoArgs = unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void;
+    type MsgSendOneArg = unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> *mut c_void;
+    type MsgSendData = unsafe extern "C" fn(*mut c_void, *mut c_void, *const u8, usize) -> *mut c_void;
+
+    unsafe {
+        let msg_send_no_args: MsgSendNoArgs = std::mem::transmute(objc_msgSend as *const ());
+        let msg_send_one_arg: MsgSendOneArg = std::mem::transmute(objc_msgSend as *const ());
+        let msg_send_data: MsgSendData = std::mem::transmute(objc_msgSend as *const ());
+
+        let ns_app_class = objc_getClass(b"NSApplication\0".as_ptr() as *const c_char);
+        if ns_app_class.is_null() {
+            return;
+        }
+        let shared_app_sel = sel_registerName(b"sharedApplication\0".as_ptr() as *const c_char);
+        let app = msg_send_no_args(ns_app_class, shared_app_sel);
+        if app.is_null() {
+            return;
+        }
+
+        const ICON_BYTES: &[u8] = include_bytes!("../assets/app_icon.png");
+
+        let ns_data_class = objc_getClass(b"NSData\0".as_ptr() as *const c_char);
+        let data_with_bytes_sel = sel_registerName(b"dataWithBytes:length:\0".as_ptr() as *const c_char);
+        let data_obj = msg_send_data(ns_data_class, data_with_bytes_sel, ICON_BYTES.as_ptr(), ICON_BYTES.len());
+        if data_obj.is_null() {
+            return;
+        }
+
+        let ns_image_class = objc_getClass(b"NSImage\0".as_ptr() as *const c_char);
+        let alloc_sel = sel_registerName(b"alloc\0".as_ptr() as *const c_char);
+        let init_with_data_sel = sel_registerName(b"initWithData:\0".as_ptr() as *const c_char);
+        let image_alloc = msg_send_no_args(ns_image_class, alloc_sel);
+        let image_obj = msg_send_one_arg(image_alloc, init_with_data_sel, data_obj);
+        if image_obj.is_null() {
+            return;
+        }
+
+        let set_app_icon_sel = sel_registerName(b"setApplicationIconImage:\0".as_ptr() as *const c_char);
+        msg_send_one_arg(app, set_app_icon_sel, image_obj);
+    }
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn sync_macos_app_appearance(_mode: ThemeMode) {}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_macos_app_icon() {}
 
 #[cfg(test)]
 mod tests {

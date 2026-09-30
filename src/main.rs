@@ -664,6 +664,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize Slint UI window with increased width
     let main_window = AppWindow::new()?;
+    theme::set_macos_app_icon();
     main_window.window().set_size(WindowSize::Logical(LogicalSize::new(1180.0, 760.0)));
     ui_log_layer.set_window(main_window.as_weak());
 
