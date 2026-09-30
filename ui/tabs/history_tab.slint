@@ -224,10 +224,10 @@ export component HistoryTab inherits VerticalLayout {
     // 2. Search & Toolbar Bar
     HorizontalLayout {
         spacing: 10px;
-        alignment: space-between;
 
         search_box := SearchField {
             horizontal-stretch: 1;
+            min-width: 260px;
             placeholder_text: "Search history by title, filename, URL or path...";
             text <=> root.history_search_query;
             edited(q) => { root.search_history(q); }

@@ -13,6 +13,7 @@ export component SearchField inherits Rectangle {
 
     forward-focus: input;
 
+    min-width: 140px;
     height: 36px;
     border-radius: 8px;
     background: input.has-focus ? Theme.input_bg_focus : (hover_area.has-hover ? (Theme.is_dark ? #181c30 : #f1f5f9) : Theme.input_bg);
