@@ -1,3 +1,4 @@
+import { Spinner } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
 
 export component ActionButton inherits Rectangle {
@@ -7,9 +8,11 @@ export component ActionButton inherits Rectangle {
     in property <bool> primary: false;
     in property <bool> danger: false;
     in property <bool> enabled: true;
+    in property <bool> loading: false;
     callback clicked();
 
     background: !root.enabled ? Theme.btn_disabled_bg :
+                root.loading ? (root.primary ? Theme.primary_accent.darker(15%) : root.danger ? Theme.btn_danger_bg.darker(15%) : Theme.btn_secondary_bg) :
                 root.primary ? (touch.pressed ? Theme.primary_pressed : touch.has-hover ? Theme.primary_hover : Theme.primary_accent) :
                 root.danger ? (touch.pressed ? Theme.btn_danger_pressed : touch.has-hover ? Theme.btn_danger_hover : Theme.btn_danger_bg) :
                 (touch.pressed ? Theme.btn_secondary_pressed : touch.has-hover ? Theme.btn_secondary_hover : Theme.btn_secondary_bg);
@@ -29,7 +32,16 @@ export component ActionButton inherits Rectangle {
         spacing: 7px;
         alignment: center;
 
-        if root.has_icon: VerticalLayout {
+        if root.loading: VerticalLayout {
+            alignment: center;
+            Spinner {
+                indeterminate: true;
+                width: 14px;
+                height: 14px;
+            }
+        }
+
+        if !root.loading && root.has_icon: VerticalLayout {
             alignment: center;
             Image {
                 source: root.icon;
@@ -55,7 +67,8 @@ export component ActionButton inherits Rectangle {
     }
 
     touch := TouchArea {
-        enabled: root.enabled;
+        enabled: root.enabled && !root.loading;
+        mouse-cursor: (!root.enabled || root.loading) ? default : pointer;
         clicked => { root.clicked(); }
     }
 }

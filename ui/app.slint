@@ -919,6 +919,8 @@ export component AppWindow inherits Window {
                     has_icon: true;
                     primary: true;
                     height: 28px;
+                    loading: root.is_analyzing;
+                    enabled: !root.is_analyzing;
                     clicked => {
                         root.analyze_clipboard_detected();
                     }

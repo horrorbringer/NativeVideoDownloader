@@ -216,6 +216,7 @@ export component NetworkDiagnosticModal inherits Rectangle {
                             has_icon: true;
                             primary: true;
                             height: 32px;
+                            loading: root.is_running;
                             enabled: !root.is_running;
                             clicked => {
                                 root.run_diagnostics(target_edit.text);

@@ -324,6 +324,7 @@ export component HomeTab inherits ScrollView {
                         icon: @image-url("../icons/search.svg");
                         has_icon: true;
                         primary: true;
+                        loading: root.is_analyzing;
                         enabled: !root.is_analyzing && root.input_url_text != "";
                         height: 38px;
                         clicked => {
