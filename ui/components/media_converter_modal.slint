@@ -1,0 +1,453 @@
+import { Theme } from "../theme.slint";
+import { ActionButton } from "action_button.slint";
+import { IconChip } from "icon_chip.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component MediaConverterModal inherits Rectangle {
+    in property <bool> is_open: false;
+    in property <string> source_file_path: "";
+    in property <string> source_file_title: "";
+    in-out property <int> selected_format_index: 0; // 0 = MP3, 1 = AAC, 2 = FLAC, 3 = OPUS, 4 = WAV, 5 = MP4 Remux, 6 = MP4 H.264
+    in-out property <int> selected_bitrate_index: 0; // 0 = 320k, 1 = 256k, 2 = 192k, 3 = 128k
+    in property <bool> is_converting: false;
+    in property <string> status_message: "";
+    in property <bool> is_success: false;
+    in property <bool> has_error: false;
+    in property <string> last_output_path: "";
+
+    callback close();
+    callback start_conversion(string, int, int);
+    callback open_output_folder(string);
+    callback play_output_file(string);
+
+    width: 100%;
+    height: 100%;
+    visible: root.is_open;
+    z: 100;
+
+    // Dark backdrop overlay
+    Rectangle {
+        background: Theme.is_dark ? #000000a6 : #00000066;
+        animate background { duration: 150ms; }
+
+        TouchArea {
+            // Clicking outside modal closes it if not actively converting
+            clicked => {
+                if !root.is_converting {
+                    root.close();
+                }
+            }
+        }
+    }
+
+    // Modal Card Dialog
+    dialog_card := Rectangle {
+        width: min(660px, parent.width - 48px);
+        height: min(600px, parent.height - 48px);
+        background: Theme.card_bg;
+        border-radius: 14px;
+        border-width: 1px;
+        border-color: Theme.card_border;
+        clip: true;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000077;
+        drop-shadow-offset-y: 8px;
+
+        // Prevent clicking inside card from closing modal
+        TouchArea {}
+
+        VerticalLayout {
+            padding: 0px;
+            spacing: 0px;
+
+            // Modal Header
+            Rectangle {
+                height: 64px;
+                background: Theme.is_dark ? #181c2d : #f8fafc;
+
+                HorizontalLayout {
+                    padding-left: 20px;
+                    padding-right: 20px;
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 36px;
+                                height: 36px;
+                                border-radius: 8px;
+                                background: Theme.is_dark ? #2e1065 : #eef2ff;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #4c1d95 : #c7d2fe;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: @image-url("../icons/music.svg");
+                                        width: 18px;
+                                        height: 18px;
+                                        colorize: Theme.brand_purple;
+                                        horizontal-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 2px;
+
+                            Text {
+                                text: "Audio Extractor & Media Converter";
+                                color: Theme.text_primary;
+                                font-size: 16px;
+                                font-weight: 700;
+                            }
+
+                            Text {
+                                text: "Convert completed video to high-fidelity audio or remux with native FFmpeg";
+                                color: Theme.text_secondary;
+                                font-size: 12px;
+                            }
+                        }
+                    }
+
+                    // Close Button
+                    VerticalLayout {
+                        alignment: center;
+                        ActionButton {
+                            icon: @image-url("../icons/x.svg");
+                            has_icon: true;
+                            height: 30px;
+                            enabled: !root.is_converting;
+                            clicked => { root.close(); }
+                        }
+                    }
+                }
+            }
+
+            // Divider
+            Rectangle {
+                height: 1px;
+                background: Theme.card_border;
+            }
+
+            // Modal Body
+            ScrollView {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 16px;
+
+                    // 1. Source Media Card
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 6px;
+
+                            Text {
+                                text: "SOURCE MEDIA FILE";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                                font-weight: 700;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: @image-url("../icons/video.svg");
+                                        width: 14px;
+                                        height: 14px;
+                                        colorize: Theme.brand_purple;
+                                    }
+                                }
+
+                                Text {
+                                    text: root.source_file_title != "" ? root.source_file_title : "Source Video";
+                                    color: Theme.text_primary;
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            Text {
+                                text: root.source_file_path;
+                                color: Theme.text_muted;
+                                font-size: 11px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    // 2. Target Output Format
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Text {
+                            text: "Select Output Format:";
+                            color: Theme.text_primary;
+                            font-size: 13px;
+                            font-weight: 700;
+                        }
+
+                        // Audio Formats Row 1
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            IconChip {
+                                text: "MP3 (Universal)";
+                                icon: @image-url("../icons/music.svg");
+                                has_icon: true;
+                                selected: root.selected_format_index == 0;
+                                clicked => { root.selected_format_index = 0; }
+                            }
+
+                            IconChip {
+                                text: "AAC (.m4a)";
+                                icon: @image-url("../icons/music.svg");
+                                has_icon: true;
+                                selected: root.selected_format_index == 1;
+                                clicked => { root.selected_format_index = 1; }
+                            }
+
+                            IconChip {
+                                text: "FLAC (Lossless)";
+                                icon: @image-url("../icons/sparkles.svg");
+                                has_icon: true;
+                                selected: root.selected_format_index == 2;
+                                clicked => { root.selected_format_index = 2; }
+                            }
+
+                            IconChip {
+                                text: "OPUS";
+                                icon: @image-url("../icons/bolt.svg");
+                                has_icon: true;
+                                selected: root.selected_format_index == 3;
+                                clicked => { root.selected_format_index = 3; }
+                            }
+                        }
+
+                        // Audio & Video Formats Row 2
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            IconChip {
+                                text: "WAV (Uncompressed)";
+                                has_icon: false;
+                                selected: root.selected_format_index == 4;
+                                clicked => { root.selected_format_index = 4; }
+                            }
+
+                            IconChip {
+                                text: "MP4 Remux (Fast Copy)";
+                                icon: @image-url("../icons/video.svg");
+                                has_icon: true;
+                                selected: root.selected_format_index == 5;
+                                clicked => { root.selected_format_index = 5; }
+                            }
+
+                            IconChip {
+                                text: "MP4 H.264 (Universal)";
+                                icon: @image-url("../icons/video.svg");
+                                has_icon: true;
+                                selected: root.selected_format_index == 6;
+                                clicked => { root.selected_format_index = 6; }
+                            }
+                        }
+                    }
+
+                    // 3. Audio Bitrate Options (Visible when lossy audio format is selected)
+                    if (root.selected_format_index == 0 || root.selected_format_index == 1 || root.selected_format_index == 3): VerticalLayout {
+                        spacing: 8px;
+
+                        Text {
+                            text: "Audio Bitrate:";
+                            color: Theme.text_primary;
+                            font-size: 13px;
+                            font-weight: 700;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            IconChip {
+                                text: "320 kbps (Studio HQ)";
+                                selected: root.selected_bitrate_index == 0;
+                                clicked => { root.selected_bitrate_index = 0; }
+                            }
+
+                            IconChip {
+                                text: "256 kbps (High Quality)";
+                                selected: root.selected_bitrate_index == 1;
+                                clicked => { root.selected_bitrate_index = 1; }
+                            }
+
+                            IconChip {
+                                text: "192 kbps (Standard)";
+                                selected: root.selected_bitrate_index == 2;
+                                clicked => { root.selected_bitrate_index = 2; }
+                            }
+
+                            IconChip {
+                                text: "128 kbps (Compact)";
+                                selected: root.selected_bitrate_index == 3;
+                                clicked => { root.selected_bitrate_index = 3; }
+                            }
+                        }
+                    }
+
+                    // 4. Status or Success Banner
+                    if (root.is_converting || root.is_success || root.has_error): Rectangle {
+                        background: root.has_error ? (Theme.is_dark ? #331317 : #fee2e2) :
+                                    root.is_success ? (Theme.is_dark ? #0e291b : #dcfce7) :
+                                    (Theme.is_dark ? #1e1b4b : #eff6ff);
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: root.has_error ? (Theme.is_dark ? #991b1b : #fca5a5) :
+                                      root.is_success ? (Theme.is_dark ? #166534 : #86efac) :
+                                      (Theme.is_dark ? #3730a3 : #bfdbfe);
+
+                        HorizontalLayout {
+                            padding: 12px;
+                            spacing: 8px;
+                            alignment: space-between;
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                horizontal-stretch: 1;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: root.has_error ? @image-url("../icons/alert.svg") :
+                                                root.is_success ? @image-url("../icons/check.svg") :
+                                                @image-url("../icons/refresh.svg");
+                                        width: 16px;
+                                        height: 16px;
+                                        colorize: root.has_error ? (Theme.is_dark ? #f87171 : #b91c1c) :
+                                                  root.is_success ? (Theme.is_dark ? #4ade80 : #15803d) :
+                                                  (Theme.is_dark ? #a5b4fc : #4f46e5);
+                                    }
+                                }
+
+                                Text {
+                                    text: root.status_message != "" ? root.status_message :
+                                          (root.is_converting ? "Converting media file using FFmpeg..." : "Ready");
+                                    color: root.has_error ? (Theme.is_dark ? #f87171 : #b91c1c) :
+                                           root.is_success ? (Theme.is_dark ? #4ade80 : #15803d) :
+                                           (Theme.is_dark ? #a5b4fc : #4f46e5);
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+
+                            if root.is_success && root.last_output_path != "": HorizontalLayout {
+                                spacing: 6px;
+
+                                ActionButton {
+                                    text: "Play";
+                                    icon: @image-url("../icons/play.svg");
+                                    has_icon: true;
+                                    primary: true;
+                                    height: 26px;
+                                    clicked => { root.play_output_file(root.last_output_path); }
+                                }
+
+                                ActionButton {
+                                    text: "Finder";
+                                    icon: @image-url("../icons/folder.svg");
+                                    has_icon: true;
+                                    height: 26px;
+                                    clicked => { root.open_output_folder(root.last_output_path); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Divider
+            Rectangle {
+                height: 1px;
+                background: Theme.card_border;
+            }
+
+            // Modal Footer
+            Rectangle {
+                height: 60px;
+                background: Theme.is_dark ? #181c2d : #f8fafc;
+
+                HorizontalLayout {
+                    padding-left: 20px;
+                    padding-right: 20px;
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 8px;
+
+                        if root.last_output_path != "": ActionButton {
+                            text: "Show Converted File";
+                            icon: @image-url("../icons/folder.svg");
+                            has_icon: true;
+                            height: 34px;
+                            clicked => { root.open_output_folder(root.last_output_path); }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: end;
+
+                        ActionButton {
+                            text: root.is_success ? "Done" : "Cancel";
+                            height: 34px;
+                            enabled: !root.is_converting;
+                            clicked => { root.close(); }
+                        }
+
+                        ActionButton {
+                            text: root.is_converting ? "Converting..." : "Start Conversion";
+                            icon: @image-url("../icons/sparkles.svg");
+                            has_icon: true;
+                            primary: true;
+                            loading: root.is_converting;
+                            enabled: !root.is_converting && root.source_file_path != "";
+                            height: 34px;
+                            clicked => {
+                                root.start_conversion(
+                                    root.source_file_path,
+                                    root.selected_format_index,
+                                    root.selected_bitrate_index
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

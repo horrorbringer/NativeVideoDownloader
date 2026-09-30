@@ -3110,6 +3110,102 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
         let _ = filesystem::reveal_in_file_manager(&path);
     });
 
+    // Callback: Open Audio Extractor & Media Converter Modal
+    let weak_open_conv = main_window.as_weak();
+    main_window.on_open_converter_for_file(move |path_str, title_str| {
+        let p = path_str.to_string();
+        let t = title_str.to_string();
+        let _ = weak_open_conv.upgrade_in_event_loop(move |win| {
+            win.set_converter_source_path(p.into());
+            win.set_converter_source_title(t.into());
+            win.set_converter_is_active(false);
+            win.set_converter_is_success(false);
+            win.set_converter_has_error(false);
+            win.set_converter_status_message("".into());
+            win.set_converter_last_output_path("".into());
+            win.set_show_converter_modal(true);
+        });
+    });
+
+    // Callback: Execute Media Conversion via FFmpeg
+    let weak_exec_conv = main_window.as_weak();
+    let db_conv = db.clone();
+    let hist_state_conv = history_state.clone();
+    main_window.on_start_media_conversion(move |source_path_str, format_idx, bitrate_idx| {
+        let source_path = PathBuf::from(source_path_str.to_string());
+        let weak = weak_exec_conv.clone();
+        let db_ref = db_conv.clone();
+        let hist_ref = hist_state_conv.clone();
+
+        tokio::spawn(async move {
+            let format = filesystem::OutputFormat::from_index(format_idx);
+
+            // Locate FFmpeg binary
+            let ffmpeg_bin = match downloader::find_ffmpeg_path() {
+                Some(p) => p,
+                None => {
+                    let _ = weak.upgrade_in_event_loop(|win| {
+                        win.set_converter_is_active(false);
+                        win.set_converter_has_error(true);
+                        win.set_converter_status_message(
+                            "FFmpeg not found. Please install FFmpeg or click 'Reinstall FFmpeg' in Settings.".into()
+                        );
+                    });
+                    return;
+                }
+            };
+
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_converter_is_active(true);
+                win.set_converter_is_success(false);
+                win.set_converter_has_error(false);
+                win.set_converter_status_message(
+                    format!("Converting to {} via native FFmpeg...", format.display_name()).into()
+                );
+            });
+
+            let output_path = filesystem::compute_converted_output_path(&source_path, format);
+
+            match filesystem::run_media_conversion(&ffmpeg_bin, &source_path, &output_path, format, bitrate_idx).await {
+                Ok(created_path) => {
+                    let file_size = tokio::fs::metadata(&created_path).await.map(|m| m.len()).unwrap_or(0);
+                    let title = created_path.file_name().and_then(|n| n.to_str()).unwrap_or("Converted Media").to_string();
+
+                    // Register in SQLite history
+                    let _ = db_ref.add_converted_media(&title, &created_path, file_size, Some(&source_path.to_string_lossy())).await;
+
+                    // Send desktop notification
+                    let notify_msg = format!("Media conversion finished: {}", title);
+                    notifications::send_notification("Media Conversion Complete", &notify_msg, true);
+
+                    let out_path_str = created_path.to_string_lossy().to_string();
+                    let out_path_box = out_path_str.clone();
+
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_converter_is_active(false);
+                        win.set_converter_is_success(true);
+                        win.set_converter_has_error(false);
+                        win.set_converter_last_output_path(out_path_box.into());
+                        win.set_converter_status_message(format!("Successfully converted: {}", title).into());
+                        win.set_status_message("Media converted successfully".into());
+                    });
+
+                    // Trigger history refresh
+                    refresh_history(&db_ref, &hist_ref, weak).await;
+                }
+                Err(err) => {
+                    let err_str = err.to_string();
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_converter_is_active(false);
+                        win.set_converter_is_success(false);
+                        win.set_converter_has_error(true);
+                        win.set_converter_status_message(format!("Conversion failed: {}", err_str).into());
+                    });
+                }
+            }
+        });
+    });
+
     // Callback: Redownload from history
     let mgr_redl = download_manager.clone();
     let weak_redl = main_window.as_weak();

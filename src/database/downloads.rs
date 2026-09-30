@@ -237,6 +237,40 @@ impl Database {
         Ok(())
     }
 
+    pub async fn add_converted_media(
+        &self,
+        title: &str,
+        output_path: &std::path::Path,
+        file_size: u64,
+        source_url: Option<&str>,
+    ) -> Result<()> {
+        let id_str = Uuid::new_v4().to_string();
+        let filename = output_path.file_name().and_then(|n| n.to_str()).unwrap_or(title);
+        let path_str = output_path.to_string_lossy().to_string();
+        let url_str = source_url.unwrap_or(&path_str);
+        let now_str = chrono_or_now();
+
+        sqlx::query(
+            r#"
+            INSERT INTO downloads (id, url, title, filename, output_path, status, total_size, downloaded_size, created_at, completed_at)
+            VALUES (?, ?, ?, ?, ?, 'Completed', ?, ?, ?, ?)
+            "#,
+        )
+        .bind(id_str)
+        .bind(url_str)
+        .bind(title)
+        .bind(filename)
+        .bind(path_str)
+        .bind(file_size as i64)
+        .bind(file_size as i64)
+        .bind(&now_str)
+        .bind(&now_str)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn get_history(&self, search: Option<&str>) -> Result<Vec<HistoryRecord>> {
         let query_str = match search {
             Some(s) if !s.trim().is_empty() => {

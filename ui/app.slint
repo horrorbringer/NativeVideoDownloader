@@ -2,6 +2,7 @@ import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, Speed
 import { ActionButton } from "components/action_button.slint";
 import { NavButton } from "components/nav_button.slint";
 import { EpisodeModal } from "components/episode_modal.slint";
+import { MediaConverterModal } from "components/media_converter_modal.slint";
 import { NetworkDiagnosticModal } from "components/network_diagnostic_modal.slint";
 import { HomeTab } from "tabs/home_tab.slint";
 import { DownloadsTab } from "tabs/downloads_tab.slint";
@@ -183,6 +184,18 @@ export component AppWindow inherits Window {
     in-out property <string> media_player_text: "Detecting...";
     in-out property <string> db_path_text: "~/.native_video_downloader/history.db";
 
+    // Media Converter Modal properties
+    in-out property <bool> show_converter_modal: false;
+    in-out property <string> converter_source_path: "";
+    in-out property <string> converter_source_title: "";
+    in-out property <int> converter_format_index: 0;
+    in-out property <int> converter_bitrate_index: 0;
+    in-out property <bool> converter_is_active: false;
+    in-out property <string> converter_status_message: "";
+    in-out property <bool> converter_is_success: false;
+    in-out property <bool> converter_has_error: false;
+    in-out property <string> converter_last_output_path: "";
+
     // Live Clipboard Link Monitor properties
     in-out property <bool> clipboard_detected_url_visible: false;
     in-out property <string> clipboard_detected_url: "";
@@ -262,6 +275,8 @@ export component AppWindow inherits Window {
     callback delete_selected_history();
     callback redownload_selected_history();
     callback copy_file_path(string);
+    callback open_converter_for_file(string, string);
+    callback start_media_conversion(string, int, int);
     callback copy_diagnostics();
     callback open_external_url(string);
 
@@ -722,6 +737,7 @@ export component AppWindow inherits Window {
                 delete_selected_history() => { root.delete_selected_history(); }
                 redownload_selected_history() => { root.redownload_selected_history(); }
                 copy_file_path(p) => { root.copy_file_path(p); }
+                open_converter(p, t) => { root.open_converter_for_file(p, t); }
             }
 
             if root.active_tab == 3: LogsTab {
@@ -900,6 +916,27 @@ export component AppWindow inherits Window {
         select_first_n(n) => { root.select_first_n_episodes(n); }
         apply_range(range) => { root.apply_episode_range(range); }
         preview_episode(idx) => { root.preview_episode_stream(idx); }
+    }
+
+    // Built-in Audio Extractor & Media Converter Modal
+    MediaConverterModal {
+        is_open: root.show_converter_modal;
+        source_file_path: root.converter_source_path;
+        source_file_title: root.converter_source_title;
+        selected_format_index <=> root.converter_format_index;
+        selected_bitrate_index <=> root.converter_bitrate_index;
+        is_converting: root.converter_is_active;
+        status_message: root.converter_status_message;
+        is_success: root.converter_is_success;
+        has_error: root.converter_has_error;
+        last_output_path: root.converter_last_output_path;
+
+        close => { root.show_converter_modal = false; }
+        start_conversion(path, fmt, br) => {
+            root.start_media_conversion(path, fmt, br);
+        }
+        open_output_folder(p) => { root.open_history_folder(p); }
+        play_output_file(p) => { root.play_history_file(p); }
     }
 
     // Floating Live Clipboard Stream Sniffer Toast

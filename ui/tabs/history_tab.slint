@@ -30,6 +30,7 @@ export component HistoryTab inherits VerticalLayout {
     callback delete_selected_history();
     callback redownload_selected_history();
     callback copy_file_path(string);
+    callback open_converter(string, string);
 
     spacing: 12px;
 
@@ -758,6 +759,14 @@ export component HistoryTab inherits VerticalLayout {
                                     primary: true;
                                     height: 32px;
                                     clicked => { root.play_history_file(item.output_path); }
+                                }
+
+                                if item.status == "Completed": ActionButton {
+                                    text: "Audio";
+                                    icon: @image-url("../icons/music.svg");
+                                    has_icon: true;
+                                    height: 32px;
+                                    clicked => { root.open_converter(item.output_path, item.title); }
                                 }
 
                                 ActionButton {
