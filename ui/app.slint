@@ -159,6 +159,15 @@ export component AppWindow inherits Window {
     in-out property <bool> proxy_is_connected: false;
     in-out property <bool> is_testing_proxy: false;
 
+    // Engine & Binary Information
+    in-out property <string> ytdlp_version_text: "Detecting...";
+    in-out property <string> ytdlp_path_text: "";
+    in-out property <string> ffmpeg_version_text: "Detecting...";
+    in-out property <string> ffmpeg_path_text: "";
+    in-out property <bool> is_updating_ytdlp: false;
+    in-out property <bool> is_updating_ffmpeg: false;
+    in-out property <string> binary_update_status: "";
+
     // Live Clipboard Link Monitor properties
     in-out property <bool> clipboard_detected_url_visible: false;
     in-out property <string> clipboard_detected_url: "";
@@ -248,6 +257,9 @@ export component AppWindow inherits Window {
     callback set_notifications_enabled(bool);
     callback set_notification_sound_enabled(bool);
     callback update_extractor();
+    callback reinstall_ffmpeg();
+    callback update_all_binaries();
+    callback refresh_binary_info();
     callback set_concurrent_fragments(int);
 
     callback clear_logs();
@@ -732,7 +744,17 @@ export component AppWindow inherits Window {
                 set_notifications_enabled(en) => { root.set_notifications_enabled(en); }
                 set_notification_sound_enabled(en) => { root.set_notification_sound_enabled(en); }
                 update_extractor() => { root.update_extractor(); }
+                reinstall_ffmpeg() => { root.reinstall_ffmpeg(); }
+                update_all_binaries() => { root.update_all_binaries(); }
+                refresh_binary_info() => { root.refresh_binary_info(); }
                 clear_cache() => { root.clear_cache(); }
+                ytdlp_version_text <=> root.ytdlp_version_text;
+                ytdlp_path_text <=> root.ytdlp_path_text;
+                ffmpeg_version_text <=> root.ffmpeg_version_text;
+                ffmpeg_path_text <=> root.ffmpeg_path_text;
+                is_updating_ytdlp <=> root.is_updating_ytdlp;
+                is_updating_ffmpeg <=> root.is_updating_ffmpeg;
+                binary_update_status <=> root.binary_update_status;
                 set_concurrent_fragments(n) => { root.set_concurrent_fragments(n); }
                 theme_mode: root.theme_mode;
                 set_theme_mode(m) => { root.set_theme_mode(m); }

@@ -88,12 +88,8 @@ pub fn find_ffmpeg_path() -> Option<PathBuf> {
     CACHED_FFMPEG_PATH.clone()
 }
 
-/// Ensures FFmpeg is available, downloading the official static standalone binary if missing
-pub async fn ensure_ffmpeg_installed() -> Result<PathBuf> {
-    if let Some(path) = find_ffmpeg_path() {
-        return Ok(path);
-    }
-
+/// Downloads the latest official standalone FFmpeg binary into `get_bin_dir()`
+pub async fn download_standalone_ffmpeg() -> Result<PathBuf> {
     let bin_dir = get_bin_dir();
     tokio::fs::create_dir_all(&bin_dir).await?;
 
@@ -143,6 +139,14 @@ pub async fn ensure_ffmpeg_installed() -> Result<PathBuf> {
     Ok(target_path)
 }
 
+/// Ensures FFmpeg is available, downloading the official static standalone binary if missing
+pub async fn ensure_ffmpeg_installed() -> Result<PathBuf> {
+    if let Some(path) = find_ffmpeg_path() {
+        return Ok(path);
+    }
+    download_standalone_ffmpeg().await
+}
+
 /// Ensures all essential streaming dependencies (yt-dlp and ffmpeg) are available
 pub async fn ensure_dependencies() -> Result<(PathBuf, PathBuf)> {
     let (ytdlp_res, ffmpeg_res) = tokio::join!(
@@ -156,6 +160,49 @@ pub async fn ensure_dependencies() -> Result<(PathBuf, PathBuf)> {
 
 static CACHED_YTDLP_BIN: tokio::sync::OnceCell<PathBuf> = tokio::sync::OnceCell::const_new();
 
+/// Downloads the latest official standalone yt-dlp binary into `get_bin_dir()`
+pub async fn download_standalone_ytdlp() -> Result<PathBuf> {
+    let bin_dir = get_bin_dir();
+    tokio::fs::create_dir_all(&bin_dir).await?;
+
+    let target_path = bin_dir.join(if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" });
+    let url = if cfg!(target_os = "macos") {
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+    } else if cfg!(target_os = "windows") {
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    } else {
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
+    };
+
+    info!("Downloading standalone yt-dlp binary from {} to {:?}", url, target_path);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let resp = client.get(url).send().await?;
+    if !resp.status().is_success() {
+        return Err(AppError::Generic(format!(
+            "Failed to download yt-dlp binary: HTTP {}",
+            resp.status()
+        )));
+    }
+
+    let bytes = resp.bytes().await?;
+    tokio::fs::write(&target_path, bytes).await?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = tokio::fs::metadata(&target_path).await?.permissions();
+        perms.set_mode(0o755);
+        tokio::fs::set_permissions(&target_path, perms).await?;
+    }
+
+    info!("yt-dlp standalone binary installed successfully at {:?}", target_path);
+    Ok(target_path)
+}
+
 /// Ensures `yt-dlp` is available, downloading the official standalone executable if missing
 pub async fn ensure_ytdlp_installed() -> Result<PathBuf> {
     if let Some(cached) = CACHED_YTDLP_BIN.get() {
@@ -165,45 +212,7 @@ pub async fn ensure_ytdlp_installed() -> Result<PathBuf> {
     let resolved = if let Some(path) = find_ytdlp_path().await {
         path
     } else {
-        let bin_dir = get_bin_dir();
-        tokio::fs::create_dir_all(&bin_dir).await?;
-
-        let target_path = bin_dir.join(if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" });
-        let url = if cfg!(target_os = "macos") {
-            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
-        } else if cfg!(target_os = "windows") {
-            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-        } else {
-            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
-        };
-
-        info!("Downloading standalone yt-dlp binary from {} to {:?}", url, target_path);
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
-
-        let resp = client.get(url).send().await?;
-        if !resp.status().is_success() {
-            return Err(AppError::Generic(format!(
-                "Failed to download yt-dlp binary: HTTP {}",
-                resp.status()
-            )));
-        }
-
-        let bytes = resp.bytes().await?;
-        tokio::fs::write(&target_path, bytes).await?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = tokio::fs::metadata(&target_path).await?.permissions();
-            perms.set_mode(0o755);
-            tokio::fs::set_permissions(&target_path, perms).await?;
-        }
-
-        info!("yt-dlp standalone binary installed successfully at {:?}", target_path);
-        target_path
+        download_standalone_ytdlp().await?
     };
 
     let _ = CACHED_YTDLP_BIN.set(resolved.clone());
@@ -4291,7 +4300,55 @@ pub fn clean_extractor_error(raw_err: &str) -> String {
     clean.to_string()
 }
 
-/// Updates the yt-dlp binary to the latest official release via `yt-dlp -U`
+/// Queries the installed version and path of yt-dlp
+pub async fn get_ytdlp_info() -> (String, String) {
+    if let Some(path) = find_ytdlp_path().await {
+        let path_str = path.to_string_lossy().to_string();
+        if let Ok(output) = Command::new(&path).arg("--version").output().await {
+            if output.status.success() {
+                let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return (format!("v{}", ver), path_str);
+            }
+        }
+        ("Installed".to_string(), path_str)
+    } else {
+        ("Not installed".to_string(), "Missing from system".to_string())
+    }
+}
+
+/// Queries the installed version and path of FFmpeg
+pub async fn get_ffmpeg_info() -> (String, String) {
+    if let Some(path) = find_ffmpeg_path() {
+        let path_str = path.to_string_lossy().to_string();
+        if let Ok(output) = Command::new(&path).arg("-version").output().await {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if let Some(first_line) = stdout.lines().next() {
+                    let ver = if let Some(stripped) = first_line.strip_prefix("ffmpeg version ") {
+                        stripped.split_whitespace().next().unwrap_or(stripped).to_string()
+                    } else {
+                        first_line.split_whitespace().nth(2).unwrap_or("Ready").to_string()
+                    };
+                    return (format!("v{}", ver), path_str);
+                }
+            }
+        }
+        ("Installed".to_string(), path_str)
+    } else {
+        ("Not installed".to_string(), "Missing from system".to_string())
+    }
+}
+
+/// Reinstalls or upgrades the FFmpeg static standalone binary
+pub async fn reinstall_ffmpeg() -> Result<String> {
+    let path = download_standalone_ffmpeg().await?;
+    let (ver, _) = get_ffmpeg_info().await;
+    let msg = format!("FFmpeg {} installed successfully at {:?}", ver, path);
+    info!("{}", msg);
+    Ok(msg)
+}
+
+/// Updates yt-dlp to latest official release via `yt-dlp -U` with standalone download fallback
 pub async fn update_ytdlp_engine() -> Result<String> {
     let ytdlp_bin = ensure_ytdlp_installed().await?;
     let _ = ensure_ffmpeg_installed().await;
@@ -4299,24 +4356,36 @@ pub async fn update_ytdlp_engine() -> Result<String> {
     let output = Command::new(&ytdlp_bin)
         .arg("-U")
         .output()
-        .await?;
+        .await;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    if output.status.success() {
-        let msg = stdout
-            .lines()
-            .find(|l| l.contains("up to date") || l.contains("Updated") || l.contains("Updating to"))
-            .unwrap_or("yt-dlp is up to date")
-            .trim()
-            .to_string();
-        info!("yt-dlp update result: {}", msg);
-        Ok(msg)
-    } else {
-        let err_msg = stderr.lines().next().unwrap_or("Failed to check for updates").trim().to_string();
-        Err(AppError::Generic(err_msg))
+    match output {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let msg = stdout
+                .lines()
+                .find(|l| l.contains("up to date") || l.contains("Updated") || l.contains("Updating to"))
+                .unwrap_or("yt-dlp is up to date")
+                .trim()
+                .to_string();
+            info!("yt-dlp update result: {}", msg);
+            Ok(msg)
+        }
+        _ => {
+            info!("yt-dlp -U produced error or package manager lock; downloading latest standalone binary...");
+            let path = download_standalone_ytdlp().await?;
+            let (ver, _) = get_ytdlp_info().await;
+            let msg = format!("yt-dlp updated to {} at {:?}", ver, path);
+            info!("{}", msg);
+            Ok(msg)
+        }
     }
+}
+
+/// Checks and updates both yt-dlp and FFmpeg
+pub async fn update_all_binaries() -> Result<String> {
+    let ytdlp_res = update_ytdlp_engine().await?;
+    let (ff_ver, _) = get_ffmpeg_info().await;
+    Ok(format!("{}; FFmpeg: {}", ytdlp_res, ff_ver))
 }
 
 /// Clears all cached application and media data:

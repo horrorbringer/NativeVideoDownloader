@@ -756,6 +756,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => {}
     }
 
+    // Asynchronously detect installed engine & core binaries on startup
+    let weak_bin_init = main_window.as_weak();
+    tokio::spawn(async move {
+        let (y_ver, y_path) = downloader::get_ytdlp_info().await;
+        let (f_ver, f_path) = downloader::get_ffmpeg_info().await;
+        let _ = weak_bin_init.upgrade_in_event_loop(move |win| {
+            win.set_ytdlp_version_text(y_ver.into());
+            win.set_ytdlp_path_text(y_path.into());
+            win.set_ffmpeg_version_text(f_ver.into());
+            win.set_ffmpeg_path_text(f_path.into());
+        });
+    });
+
     // Queue filter & search state
     let queue_filter_idx: Arc<tokio::sync::RwLock<i32>> = Arc::new(tokio::sync::RwLock::new(0));
     let queue_search_term: Arc<tokio::sync::RwLock<String>> = Arc::new(tokio::sync::RwLock::new(String::new()));
@@ -3092,23 +3105,136 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
         let weak = weak_update.clone();
         tokio::spawn(async move {
             let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_is_updating_ytdlp(true);
+                win.set_binary_update_status("Checking for yt-dlp extractor engine updates...".into());
                 win.set_status_message("Checking for yt-dlp extractor engine updates...".into());
             });
             match downloader::update_ytdlp_engine().await {
                 Ok(msg) => {
                     info!("Extractor engine update: {}", msg);
+                    let (y_ver, y_path) = downloader::get_ytdlp_info().await;
                     let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_ytdlp_version_text(y_ver.into());
+                        win.set_ytdlp_path_text(y_path.into());
+                        win.set_binary_update_status(format!("yt-dlp: {}", msg).into());
                         win.set_status_message(format!("Extractor engine: {}", msg).into());
+                        win.set_is_updating_ytdlp(false);
                     });
                 }
                 Err(err) => {
                     warn!("Failed to update extractor engine: {}", err);
                     let err_str = err.to_string();
+                    let (y_ver, y_path) = downloader::get_ytdlp_info().await;
                     let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_ytdlp_version_text(y_ver.into());
+                        win.set_ytdlp_path_text(y_path.into());
+                        win.set_binary_update_status(format!("Update failed: {}", err_str).into());
                         win.set_status_message(format!("Extractor update check: {}", err_str).into());
+                        win.set_is_updating_ytdlp(false);
                     });
                 }
             }
+        });
+    });
+
+    // Callback: Reinstall / Upgrade FFmpeg
+    let weak_ffmpeg = main_window.as_weak();
+    main_window.on_reinstall_ffmpeg(move || {
+        let weak = weak_ffmpeg.clone();
+        tokio::spawn(async move {
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_is_updating_ffmpeg(true);
+                win.set_binary_update_status("Downloading official static FFmpeg binary...".into());
+                win.set_status_message("Downloading official static FFmpeg binary...".into());
+            });
+            match downloader::reinstall_ffmpeg().await {
+                Ok(msg) => {
+                    info!("FFmpeg installation: {}", msg);
+                    let (f_ver, f_path) = downloader::get_ffmpeg_info().await;
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_ffmpeg_version_text(f_ver.into());
+                        win.set_ffmpeg_path_text(f_path.into());
+                        win.set_binary_update_status("FFmpeg installed and verified successfully".into());
+                        win.set_status_message(format!("FFmpeg: {}", msg).into());
+                        win.set_is_updating_ffmpeg(false);
+                    });
+                }
+                Err(err) => {
+                    warn!("Failed to install FFmpeg: {}", err);
+                    let err_str = err.to_string();
+                    let (f_ver, f_path) = downloader::get_ffmpeg_info().await;
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_ffmpeg_version_text(f_ver.into());
+                        win.set_ffmpeg_path_text(f_path.into());
+                        win.set_binary_update_status(format!("FFmpeg install failed: {}", err_str).into());
+                        win.set_status_message(format!("FFmpeg install failed: {}", err_str).into());
+                        win.set_is_updating_ffmpeg(false);
+                    });
+                }
+            }
+        });
+    });
+
+    // Callback: Update All Core Binaries
+    let weak_all = main_window.as_weak();
+    main_window.on_update_all_binaries(move || {
+        let weak = weak_all.clone();
+        tokio::spawn(async move {
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_is_updating_ytdlp(true);
+                win.set_is_updating_ffmpeg(true);
+                win.set_binary_update_status("Checking and updating all core binaries (yt-dlp + FFmpeg)...".into());
+                win.set_status_message("Checking and updating all core binaries...".into());
+            });
+            match downloader::update_all_binaries().await {
+                Ok(msg) => {
+                    info!("All binaries updated: {}", msg);
+                    let (y_ver, y_path) = downloader::get_ytdlp_info().await;
+                    let (f_ver, f_path) = downloader::get_ffmpeg_info().await;
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_ytdlp_version_text(y_ver.into());
+                        win.set_ytdlp_path_text(y_path.into());
+                        win.set_ffmpeg_version_text(f_ver.into());
+                        win.set_ffmpeg_path_text(f_path.into());
+                        win.set_binary_update_status("All core binaries updated and ready".into());
+                        win.set_status_message(format!("Core binaries: {}", msg).into());
+                        win.set_is_updating_ytdlp(false);
+                        win.set_is_updating_ffmpeg(false);
+                    });
+                }
+                Err(err) => {
+                    warn!("Failed to update all binaries: {}", err);
+                    let err_str = err.to_string();
+                    let (y_ver, y_path) = downloader::get_ytdlp_info().await;
+                    let (f_ver, f_path) = downloader::get_ffmpeg_info().await;
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_ytdlp_version_text(y_ver.into());
+                        win.set_ytdlp_path_text(y_path.into());
+                        win.set_ffmpeg_version_text(f_ver.into());
+                        win.set_ffmpeg_path_text(f_path.into());
+                        win.set_binary_update_status(format!("Update failed: {}", err_str).into());
+                        win.set_status_message(format!("Binary update error: {}", err_str).into());
+                        win.set_is_updating_ytdlp(false);
+                        win.set_is_updating_ffmpeg(false);
+                    });
+                }
+            }
+        });
+    });
+
+    // Callback: Refresh Binary Information
+    let weak_refresh = main_window.as_weak();
+    main_window.on_refresh_binary_info(move || {
+        let weak = weak_refresh.clone();
+        tokio::spawn(async move {
+            let (y_ver, y_path) = downloader::get_ytdlp_info().await;
+            let (f_ver, f_path) = downloader::get_ffmpeg_info().await;
+            let _ = weak.upgrade_in_event_loop(move |win| {
+                win.set_ytdlp_version_text(y_ver.into());
+                win.set_ytdlp_path_text(y_path.into());
+                win.set_ffmpeg_version_text(f_ver.into());
+                win.set_ffmpeg_path_text(f_path.into());
+            });
         });
     });
 

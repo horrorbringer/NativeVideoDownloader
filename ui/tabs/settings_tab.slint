@@ -91,7 +91,19 @@ export component SettingsTab inherits ScrollView {
     callback test_proxy(string);
     callback test_notification();
     callback update_extractor();
+    callback reinstall_ffmpeg();
+    callback update_all_binaries();
+    callback refresh_binary_info();
     callback clear_cache();
+
+    // Engine & Binary Information
+    in-out property <string> ytdlp_version_text: "Detecting...";
+    in-out property <string> ytdlp_path_text: "";
+    in-out property <string> ffmpeg_version_text: "Detecting...";
+    in-out property <string> ffmpeg_path_text: "";
+    in-out property <bool> is_updating_ytdlp: false;
+    in-out property <bool> is_updating_ffmpeg: false;
+    in-out property <string> binary_update_status: "";
 
     vertical-stretch: 1;
 
@@ -2300,94 +2312,223 @@ export component SettingsTab inherits ScrollView {
 
                 HorizontalLayout {
                     spacing: 8px;
-                    alignment: start;
+                    alignment: space-between;
 
-                    VerticalLayout {
-                        alignment: center;
-                        Image {
-                            source: @image-url("../icons/cpu.svg");
-                            width: 15px;
-                            height: 15px;
-                            colorize: #7082ff;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: @image-url("../icons/cpu.svg");
+                                width: 15px;
+                                height: 15px;
+                                colorize: #7082ff;
+                            }
+                        }
+
+                        Text {
+                            text: "Engine & Core Binaries";
+                            color: #7082ff;
+                            font-size: 13px;
+                            font-weight: 700;
+                            vertical-alignment: center;
                         }
                     }
 
-                    Text {
-                        text: "Engine & System Architecture";
-                        color: #7082ff;
-                        font-size: 13px;
-                        font-weight: 700;
-                        vertical-alignment: center;
+                    ActionButton {
+                        text: "Check & Update All";
+                        icon: @image-url("../icons/sparkles.svg");
+                        has_icon: true;
+                        primary: true;
+                        height: 28px;
+                        loading: root.is_updating_ytdlp || root.is_updating_ffmpeg;
+                        enabled: !root.is_updating_ytdlp && !root.is_updating_ffmpeg;
+                        clicked => { root.update_all_binaries(); }
+                    }
+                }
+
+                if root.binary_update_status != "": Rectangle {
+                    background: Theme.inner_bg;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: Theme.primary_border;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        padding-top: 6px;
+                        padding-bottom: 6px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: @image-url("../icons/info.svg");
+                                width: 13px;
+                                height: 13px;
+                                colorize: Theme.brand_purple;
+                            }
+                        }
+
+                        Text {
+                            text: root.binary_update_status;
+                            color: Theme.brand_purple;
+                            font-size: 11px;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // 1. yt-dlp section
+                Rectangle {
+                    background: Theme.inner_bg;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: Theme.inner_border;
+
+                    HorizontalLayout {
+                        padding: 10px;
+                        alignment: space-between;
+
+                        VerticalLayout {
+                            spacing: 3px;
+                            alignment: center;
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+
+                                Text {
+                                    text: "yt-dlp Extractor Engine";
+                                    color: Theme.text_primary;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                }
+
+                                Rectangle {
+                                    background: #4ade80.with-alpha(0.15);
+                                    border-radius: 4px;
+                                    border-width: 1px;
+                                    border-color: #4ade80.with-alpha(0.35);
+
+                                    HorizontalLayout {
+                                        padding-left: 6px;
+                                        padding-right: 6px;
+                                        padding-top: 1px;
+                                        padding-bottom: 1px;
+
+                                        Text {
+                                            text: root.ytdlp_version_text;
+                                            color: #4ade80;
+                                            font-size: 10px;
+                                            font-weight: 700;
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: root.ytdlp_path_text != "" ? root.ytdlp_path_text : "Universal standalone video & audio extractor";
+                                color: Theme.text_secondary;
+                                font-size: 10px;
+                            }
+                        }
+
+                        ActionButton {
+                            text: "Update yt-dlp";
+                            icon: @image-url("../icons/refresh.svg");
+                            has_icon: true;
+                            height: 28px;
+                            loading: root.is_updating_ytdlp;
+                            enabled: !root.is_updating_ytdlp;
+                            clicked => { root.update_extractor(); }
+                        }
+                    }
+                }
+
+                // 2. FFmpeg section
+                Rectangle {
+                    background: Theme.inner_bg;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: Theme.inner_border;
+
+                    HorizontalLayout {
+                        padding: 10px;
+                        alignment: space-between;
+
+                        VerticalLayout {
+                            spacing: 3px;
+                            alignment: center;
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+
+                                Text {
+                                    text: "FFmpeg Media Framework";
+                                    color: Theme.text_primary;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                }
+
+                                Rectangle {
+                                    background: #38bdf8.with-alpha(0.15);
+                                    border-radius: 4px;
+                                    border-width: 1px;
+                                    border-color: #38bdf8.with-alpha(0.35);
+
+                                    HorizontalLayout {
+                                        padding-left: 6px;
+                                        padding-right: 6px;
+                                        padding-top: 1px;
+                                        padding-bottom: 1px;
+
+                                        Text {
+                                            text: root.ffmpeg_version_text;
+                                            color: #38bdf8;
+                                            font-size: 10px;
+                                            font-weight: 700;
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: root.ffmpeg_path_text != "" ? root.ffmpeg_path_text : "Hardware-accelerated muxing, remuxing & audio encoding";
+                                color: Theme.text_secondary;
+                                font-size: 10px;
+                            }
+                        }
+
+                        ActionButton {
+                            text: "Reinstall FFmpeg";
+                            icon: @image-url("../icons/package.svg");
+                            has_icon: true;
+                            height: 28px;
+                            loading: root.is_updating_ffmpeg;
+                            enabled: !root.is_updating_ffmpeg;
+                            clicked => { root.reinstall_ffmpeg(); }
+                        }
                     }
                 }
 
                 HorizontalLayout {
                     alignment: space-between;
                     Text {
-                        text: "Core Media Framework";
+                        text: "Chunk Resumption & Storage";
                         color: #949db2;
                         font-size: 12px;
                     }
                     Text {
-                        text: "FFmpeg v9 + yt-dlp Native";
+                        text: "Atomic .part + SQLite 3 (WAL mode)";
                         color: #e2e8f0;
                         font-size: 12px;
                         font-weight: 600;
-                    }
-                }
-
-                HorizontalLayout {
-                    alignment: space-between;
-                    Text {
-                        text: "Chunk Resumption & Partial Safety";
-                        color: #949db2;
-                        font-size: 12px;
-                    }
-                    Text {
-                        text: "Atomic .part + HTTP Multi-Range";
-                        color: #4ade80;
-                        font-size: 12px;
-                        font-weight: 600;
-                    }
-                }
-
-                HorizontalLayout {
-                    alignment: space-between;
-                    Text {
-                        text: "Persistent Storage Engine";
-                        color: #949db2;
-                        font-size: 12px;
-                    }
-                    Text {
-                        text: "SQLite 3 (WAL mode)";
-                        color: #38bdf8;
-                        font-size: 12px;
-                        font-weight: 600;
-                    }
-                }
-
-                HorizontalLayout {
-                    alignment: space-between;
-                    VerticalLayout {
-                        spacing: 2px;
-                        alignment: center;
-                        Text {
-                            text: "Streaming Extractor (yt-dlp)";
-                            color: #949db2;
-                            font-size: 12px;
-                        }
-                        Text {
-                            text: "Keep site extractors and parsers up to date";
-                            color: #64748b;
-                            font-size: 10px;
-                        }
-                    }
-                    ActionButton {
-                        text: "Check for Updates";
-                        icon: @image-url("../icons/refresh.svg");
-                        has_icon: true;
-                        height: 28px;
-                        clicked => { root.update_extractor(); }
                     }
                 }
 
