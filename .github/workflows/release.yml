@@ -95,6 +95,8 @@ jobs:
 
           zip -r "NativeVideoDownloader-macOS-Universal.zip" "$APP_DIR"
           hdiutil create -volname "Native Video Downloader" -srcfolder "$APP_DIR" -ov -format UDZO "NativeVideoDownloader-macOS-Universal.dmg"
+          cp target/universal-apple-darwin/release/native_video_downloader ./native_video_downloader-macos-universal
+          chmod +x ./native_video_downloader-macos-universal
 
       - name: Upload macOS Assets to Release
         uses: softprops/action-gh-release@v2
@@ -102,6 +104,7 @@ jobs:
           files: |
             NativeVideoDownloader-macOS-Universal.dmg
             NativeVideoDownloader-macOS-Universal.zip
+            native_video_downloader-macos-universal
 
   # -------------------------------------------------------------
   # Windows Build (.exe & Portable .zip)
@@ -176,9 +179,12 @@ jobs:
           cp assets/* dist-linux/assets/ 2>/dev/null || true
           tar -czvf NativeVideoDownloader-Linux-x64.tar.gz -C dist-linux .
 
+          cp target/x86_64-unknown-linux-gnu/release/native_video_downloader ./native_video_downloader-linux-x64
+          chmod +x ./native_video_downloader-linux-x64
+
       - name: Upload Linux Assets to Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             NativeVideoDownloader-Linux-x64.tar.gz
-            target/x86_64-unknown-linux-gnu/release/native_video_downloader
+            native_video_downloader-linux-x64

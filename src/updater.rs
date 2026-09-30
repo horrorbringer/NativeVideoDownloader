@@ -129,7 +129,10 @@ pub async fn check_for_updates(current_version: &str) -> Result<Option<ReleaseIn
         let lower = a.name.to_lowercase();
         match os {
             "macos" => {
-                if a.name == "native_video_downloader" {
+                if a.name == "native_video_downloader-macos-universal"
+                    || a.name == "native_video_downloader-macos"
+                    || (a.name.starts_with("native_video_downloader") && a.name.contains("macos"))
+                {
                     direct_download_url = Some(a.browser_download_url.clone());
                     asset_name = Some(a.name.clone());
                     asset_size = Some(a.size);
@@ -139,7 +142,7 @@ pub async fn check_for_updates(current_version: &str) -> Result<Option<ReleaseIn
                 }
             }
             "windows" => {
-                if a.name == "native_video_downloader.exe" {
+                if a.name == "native_video_downloader.exe" || a.name == "native_video_downloader-windows.exe" {
                     direct_download_url = Some(a.browser_download_url.clone());
                     asset_name = Some(a.name.clone());
                     asset_size = Some(a.size);
@@ -149,7 +152,11 @@ pub async fn check_for_updates(current_version: &str) -> Result<Option<ReleaseIn
                 }
             }
             _ => {
-                if a.name == "native_video_downloader" {
+                if a.name == "native_video_downloader-linux-x64"
+                    || a.name == "native_video_downloader-linux"
+                    || (a.name.starts_with("native_video_downloader") && a.name.contains("linux"))
+                    || a.name == "native_video_downloader"
+                {
                     direct_download_url = Some(a.browser_download_url.clone());
                     asset_name = Some(a.name.clone());
                     asset_size = Some(a.size);
