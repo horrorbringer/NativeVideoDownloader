@@ -247,7 +247,7 @@ impl Database {
         let id_str = Uuid::new_v4().to_string();
         let filename = output_path.file_name().and_then(|n| n.to_str()).unwrap_or(title);
         let path_str = output_path.to_string_lossy().to_string();
-        let url_str = source_url.unwrap_or(&path_str);
+        let url_str = source_url.map(|s| s.to_string()).unwrap_or_else(|| path_str.clone());
         let now_str = chrono_or_now();
 
         sqlx::query(

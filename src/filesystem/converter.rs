@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
-use anyhow::{Result, anyhow};
 use tokio::process::Command;
-use tracing::{info, warn, error};
+use tracing::{info, error};
+use crate::error::{Result, AppError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
@@ -51,6 +51,7 @@ impl OutputFormat {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_audio_only(&self) -> bool {
         !matches!(self, Self::Mp4Remux | Self::Mp4Transcode)
     }
@@ -73,8 +74,7 @@ pub fn compute_converted_output_path(input_path: &Path, format: OutputFormat) ->
         format!("{}.{}", stem, ext)
     };
 
-    let target = parent.join(&new_file_name);
-    crate::filesystem::resolve_unique_filename(&target)
+    crate::filesystem::resolve_unique_path(parent, &new_file_name)
 }
 
 /// Executes FFmpeg conversion command asynchronously
@@ -86,7 +86,7 @@ pub async fn run_media_conversion(
     bitrate_index: i32,
 ) -> Result<PathBuf> {
     if !input_path.exists() {
-        return Err(anyhow!("Input media file not found: {}", input_path.display()));
+        return Err(AppError::Generic(format!("Input media file not found: {}", input_path.display())));
     }
 
     if let Some(parent) = output_path.parent() {
@@ -163,17 +163,17 @@ pub async fn run_media_conversion(
 
     let output = cmd.output().await.map_err(|e| {
         error!("Failed to spawn FFmpeg process: {}", e);
-        anyhow!("FFmpeg execution failed: {}", e)
+        AppError::Generic(format!("FFmpeg execution failed: {}", e))
     })?;
 
     if !output.status.success() {
         let err_text = String::from_utf8_lossy(&output.stderr);
         error!("FFmpeg conversion error: {}", err_text);
-        return Err(anyhow!("FFmpeg conversion failed: {}", err_text.trim()));
+        return Err(AppError::Generic(format!("FFmpeg conversion failed: {}", err_text.trim())));
     }
 
     if !output_path.exists() {
-        return Err(anyhow!("FFmpeg exited successfully but output file was not created"));
+        return Err(AppError::Generic("FFmpeg exited successfully but output file was not created".to_string()));
     }
 
     info!("Media conversion completed successfully: {}", output_path.display());

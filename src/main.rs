@@ -3155,12 +3155,13 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                 }
             };
 
-            let _ = weak.upgrade_in_event_loop(|win| {
+            let fmt_name = format.display_name().to_string();
+            let _ = weak.upgrade_in_event_loop(move |win| {
                 win.set_converter_is_active(true);
                 win.set_converter_is_success(false);
                 win.set_converter_has_error(false);
                 win.set_converter_status_message(
-                    format!("Converting to {} via native FFmpeg...", format.display_name()).into()
+                    format!("Converting to {} via native FFmpeg...", fmt_name).into()
                 );
             });
 
@@ -3176,7 +3177,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
 
                     // Send desktop notification
                     let notify_msg = format!("Media conversion finished: {}", title);
-                    notifications::send_notification("Media Conversion Complete", &notify_msg, true);
+                    notifications::send_notification("Native Video Downloader", "Media Conversion Complete", &notify_msg, false);
 
                     let out_path_str = created_path.to_string_lossy().to_string();
                     let out_path_box = out_path_str.clone();
