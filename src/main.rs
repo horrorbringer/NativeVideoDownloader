@@ -676,6 +676,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.set_host_os_info(format!("{} • {}", os_name, std::env::consts::ARCH).into());
     main_window.set_media_player_text(filesystem::detect_media_player_name().into());
     main_window.set_db_path_text(db_path.to_string_lossy().to_string().into());
+    main_window.set_app_version(format!("v{}", env!("CARGO_PKG_VERSION")).into());
 
     // Shared state between UI callbacks and background tasks
     let current_metadata: Arc<Mutex<Option<VideoMetadata>>> = Arc::new(Mutex::new(None));
