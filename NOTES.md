@@ -64,3 +64,17 @@ cargo build --release
 # Inspect live Slint files without full Rust compilation (optional)
 # slint-viewer ui/app.slint
 ```
+
+---
+
+## 4. Release History & Milestones
+
+### **v0.2.3** — Theme Synchronization, High-Contrast UI & Notification Branding
+- **macOS Cocoa Title Bar Sync:** Synchronized native title bar appearance in Light Mode (Aqua/DarkAqua/System).
+- **High-Contrast Input Controls:** Replaced unstyled fields with theme-aware `SearchField` and `StyledInput` across all tabs and modal dialogs.
+- **Fixed Input Layout:** Corrected left-alignment and vertical centering of leading icons and placeholder text.
+- **Notification & Dock Logo Icon:** Embedded 1024×1024 logo in binary, dynamic dock icon setting via `[NSApp setApplicationIconImage:]`, and routed desktop notifications through `com.native.videodownloader` (plus Windows `ToastGeneric` appLogoOverride and Linux `notify-send -i`).
+
+### **v0.2.2** — Auto-Updater, Stream Inspector & Quality Selector
+- GitHub Releases integration, in-app auto-updater modal with progress bar and instant relaunch.
+- Multi-stream selector modal, batch downloads toolbar, and dynamic version display.
