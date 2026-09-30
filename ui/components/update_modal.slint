@@ -205,11 +205,11 @@ export component UpdateModal inherits Rectangle {
                         // Arrow
                         VerticalLayout {
                             alignment: center;
-                            Text {
-                                text: "➜";
-                                color: Theme.primary_accent;
-                                font-size: 16px;
-                                font-weight: 800;
+                            Image {
+                                source: @image-url("../icons/arrow_right.svg");
+                                width: 16px;
+                                height: 16px;
+                                colorize: Theme.primary_accent;
                             }
                         }
 
@@ -311,12 +311,12 @@ export component UpdateModal inherits Rectangle {
 
                     ScrollView {
                         VerticalLayout {
-                            padding: 12px;
+                            padding: 14px;
 
                             Text {
                                 text: root.release_notes != "" ? root.release_notes : "No release notes provided for this tag.";
                                 color: Theme.text_secondary;
-                                font-size: 12px;
+                                font-size: 13px;
                                 wrap: word-wrap;
                             }
                         }

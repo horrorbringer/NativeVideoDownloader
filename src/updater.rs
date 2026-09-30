@@ -168,7 +168,8 @@ pub async fn check_for_updates(current_version: &str) -> Result<Option<ReleaseIn
     }
 
     let title = release.name.unwrap_or_else(|| release.tag_name.clone());
-    let release_notes = release.body.unwrap_or_else(|| "General bug fixes and performance improvements.".to_string());
+    let raw_notes = release.body.unwrap_or_else(|| "General bug fixes and performance improvements.".to_string());
+    let release_notes = clean_release_notes(&raw_notes);
     let published_at = release.published_at.unwrap_or_default();
 
     Ok(Some(ReleaseInfo {
@@ -332,6 +333,64 @@ pub fn restart_application() -> Result<()> {
     std::process::exit(0);
 }
 
+/// Cleans raw GitHub-flavored Markdown into clean, readable plaintext suitable for the Slint UI.
+pub fn clean_release_notes(raw: &str) -> String {
+    let mut cleaned_lines = Vec::new();
+    let mut prev_was_empty = false;
+
+    for line in raw.lines() {
+        let trimmed = line.trim();
+
+        // Collapse excessive empty lines
+        if trimmed.is_empty() {
+            if !prev_was_empty && !cleaned_lines.is_empty() {
+                cleaned_lines.push(String::new());
+                prev_was_empty = true;
+            }
+            continue;
+        }
+        prev_was_empty = false;
+
+        let mut s = line.to_string();
+
+        // 1. Convert markdown headers: ## or ###
+        if let Some(rest) = s.strip_prefix("### ") {
+            s = format!("{}:", rest.trim());
+        } else if let Some(rest) = s.strip_prefix("## ") {
+            s = format!("{}:", rest.trim());
+        } else if let Some(rest) = s.strip_prefix("# ") {
+            s = format!("{}:", rest.trim());
+        }
+
+        // 2. Normalize bullet points and indentation
+        let leading_spaces = s.chars().take_while(|c| *c == ' ').count();
+        let trimmed_s = s.trim_start();
+        if trimmed_s.starts_with("* ") || trimmed_s.starts_with("- ") {
+            let content = &trimmed_s[2..];
+            if leading_spaces >= 2 {
+                s = format!("    - {}", content);
+            } else {
+                s = format!("• {}", content);
+            }
+        }
+
+        // 3. Strip bold markers: **
+        s = s.replace("**", "");
+
+        // 4. Strip inline code backticks: `
+        s = s.replace('`', "");
+
+        // 5. Replace problematic Unicode characters that lack fonts on some OS versions
+        s = s.replace('✕', "x");
+        s = s.replace('➜', "->");
+        s = s.replace('✔', "✓");
+
+        cleaned_lines.push(s);
+    }
+
+    cleaned_lines.join("\n").trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,5 +411,18 @@ mod tests {
         assert!(!is_newer_version("v0.2.1", "0.2.1"));
         assert!(!is_newer_version("v0.2.0", "0.2.1"));
         assert!(!is_newer_version("0.1.9", "0.2.0"));
+    }
+
+    #[test]
+    fn test_clean_release_notes() {
+        let raw = "## Release v0.2.3: Theme Polishing\n\n### 🎨 UI & UX Improvements\n* **Synchronized Title Bar:**\n  Resolved `Aqua` appearance.\n* **Quick-clear (✕) buttons:**\n  * Nested item";
+        let cleaned = clean_release_notes(raw);
+        assert!(!cleaned.contains("##"));
+        assert!(!cleaned.contains("**"));
+        assert!(!cleaned.contains('`'));
+        assert!(!cleaned.contains('✕'));
+        assert!(cleaned.contains("UI & UX Improvements:"));
+        assert!(cleaned.contains("• Synchronized Title Bar:"));
+        assert!(cleaned.contains("(x)"));
     }
 }
