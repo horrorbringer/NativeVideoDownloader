@@ -656,7 +656,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui_log_layer = UiLogLayer::new();
     logger::init_subscribers(ui_log_layer.clone());
 
-    info!("Starting Native Video Downloader v0.1.0 (Rust + Slint)");
+    info!("Starting Native Video Downloader v{} (Rust + Slint)", env!("CARGO_PKG_VERSION"));
 
     // Initialize SQLite database
     let db_path = Database::default_db_path();
@@ -3716,7 +3716,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
             let player = win.get_media_player_text();
             let report = format!(
                 "### Native Video Downloader Pro Diagnostics Report\n\
-                - **Version**: v0.1.0 (Build 2026.09)\n\
+                - **Version**: v{} (Build 2026.09)\n\
                 - **Host Platform**: {}\n\
                 - **FFmpeg Engine**: {} ({})\n\
                 - **yt-dlp Core**: {} ({})\n\
@@ -3724,7 +3724,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                 - **Database Path**: {}\n\
                 - **GUI Engine**: Slint Hardware-Accelerated Native GUI\n\
                 - **Async Runtime**: Tokio Multi-threaded Engine\n",
-                host_os, f_ver, f_path, y_ver, y_path, player, db_path_diag.display()
+                env!("CARGO_PKG_VERSION"), host_os, f_ver, f_path, y_ver, y_path, player, db_path_diag.display()
             );
             filesystem::write_clipboard_text(&report);
             win.set_status_message("Copied system diagnostics report to clipboard".into());
