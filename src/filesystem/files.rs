@@ -861,7 +861,7 @@ pub fn reveal_in_file_manager(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Plays or opens the media file with the system default media player
+/// Plays or opens the media file with the system default or enhanced media player with subtitle support
 pub fn play_media_file(path: &Path) -> Result<()> {
     let resolved = find_actual_path(path);
     let target = if resolved.exists() {
@@ -872,14 +872,68 @@ pub fn play_media_file(path: &Path) -> Result<()> {
 
     #[cfg(target_os = "macos")]
     {
+        // 1. If mpv CLI is installed, launch with full companion subtitle auto-detection
+        if let Ok(_) = std::process::Command::new("mpv")
+            .arg("--sub-auto=all")
+            .arg(&target)
+            .spawn()
+        {
+            return Ok(());
+        }
+
+        // 2. If IINA player is installed on macOS (supports native companion subtitles)
+        if std::path::Path::new("/Applications/IINA.app").exists() {
+            if let Ok(_) = std::process::Command::new("open")
+                .args(["-a", "IINA"])
+                .arg(&target)
+                .spawn()
+            {
+                return Ok(());
+            }
+        }
+
+        // 3. If VLC is installed on macOS
+        if std::path::Path::new("/Applications/VLC.app").exists() {
+            if let Ok(_) = std::process::Command::new("open")
+                .args(["-a", "VLC"])
+                .arg(&target)
+                .spawn()
+            {
+                return Ok(());
+            }
+        }
+
+        // 4. Default: launch system handler (QuickTime or default app)
         let _ = std::process::Command::new("open").arg(&target).spawn();
     }
+
     #[cfg(target_os = "windows")]
     {
+        if let Ok(_) = std::process::Command::new("mpv")
+            .arg("--sub-auto=all")
+            .arg(&target)
+            .spawn()
+        {
+            return Ok(());
+        }
         let _ = std::process::Command::new("cmd").args(["/C", "start", "", &target.to_string_lossy()]).spawn();
     }
+
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
+        if let Ok(_) = std::process::Command::new("mpv")
+            .arg("--sub-auto=all")
+            .arg(&target)
+            .spawn()
+        {
+            return Ok(());
+        }
+        if let Ok(_) = std::process::Command::new("vlc")
+            .arg(&target)
+            .spawn()
+        {
+            return Ok(());
+        }
         let _ = std::process::Command::new("xdg-open").arg(&target).spawn();
     }
 

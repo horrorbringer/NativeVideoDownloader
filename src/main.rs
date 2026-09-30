@@ -39,8 +39,11 @@ struct HistoryState {
 fn extract_domain_from_url(url: &str) -> String {
     if let Ok(parsed) = reqwest::Url::parse(url) {
         if let Some(host) = parsed.host_str() {
-            let clean = host.trim_start_matches("www.");
-            return clean.to_lowercase();
+            let clean = host.trim_start_matches("www.").to_lowercase();
+            if clean == "youtu.be" || clean.ends_with(".youtube.com") || clean == "youtube.com" {
+                return "youtube.com".to_string();
+            }
+            return clean;
         }
     }
     let s = url.trim().to_lowercase();
@@ -56,6 +59,62 @@ fn extract_domain_from_url(url: &str) -> String {
         "facebook.com".to_string()
     } else {
         "web".to_string()
+    }
+}
+
+fn resolve_batch_item_title_and_referer(url: &str) -> (String, Option<String>) {
+    if url.contains("kisskh.do") || url.contains("kisskh.") {
+        let parts: Vec<&str> = url.split('/').collect();
+        let drama_name = parts
+            .iter()
+            .position(|&p| p == "Drama")
+            .and_then(|idx| parts.get(idx + 1))
+            .map(|s| s.replace("--", " ").replace('-', " "))
+            .unwrap_or_else(|| "KissKH Drama".to_string());
+
+        let ep_part = parts
+            .iter()
+            .find(|p| p.starts_with("Episode-"))
+            .map(|s| s.split('?').next().unwrap_or(s).replace('-', " "))
+            .unwrap_or_default();
+
+        let title = if !ep_part.is_empty() {
+            format!("{} - {}", drama_name.trim(), ep_part.trim())
+        } else {
+            drama_name.trim().to_string()
+        };
+
+        (title, Some("https://kisskh.do/".to_string()))
+    } else if url.contains("douyin.com") || url.contains("iesdouyin.com") {
+        let id = url.split('/').last().unwrap_or("video").split('?').next().unwrap_or("video");
+        (format!("Douyin Video {}", id), Some("https://www.douyin.com/".to_string()))
+    } else if url.contains("tiktok.com") {
+        let id = url.split("/video/").nth(1).unwrap_or(url.split('/').last().unwrap_or("video")).split('?').next().unwrap_or("video");
+        (format!("TikTok Video {}", id), Some("https://www.tiktok.com/".to_string()))
+    } else if url.contains("youtube.com") || url.contains("youtu.be") {
+        let id = if url.contains("youtu.be/") {
+            url.split("youtu.be/").nth(1).unwrap_or("video").split('?').next().unwrap_or("video")
+        } else if url.contains("v=") {
+            url.split("v=").nth(1).unwrap_or("video").split('&').next().unwrap_or("video")
+        } else {
+            "video"
+        };
+        (format!("YouTube Video {}", id), None)
+    } else if url.contains("bilibili.com") {
+        let bvid = url.split("/video/").nth(1).unwrap_or("video").split('?').next().unwrap_or("video");
+        (format!("Bilibili {}", bvid), Some("https://www.bilibili.com/".to_string()))
+    } else if url.contains("facebook.com") || url.contains("fb.watch") {
+        let id = url.split('/').last().unwrap_or("video").split('?').next().unwrap_or("video");
+        (format!("Facebook Video {}", id), Some("https://www.facebook.com/".to_string()))
+    } else {
+        let default_title = url
+            .split('/')
+            .last()
+            .and_then(|s| s.split('?').next())
+            .filter(|s| !s.is_empty() && *s != "watch" && *s != "video")
+            .unwrap_or("batch_media")
+            .to_string();
+        (default_title, None)
     }
 }
 
@@ -2476,35 +2535,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
 
             for url in normalized_links {
                 let is_extractor = downloader::is_streaming_platform(&url);
-                let title = if url.contains("douyin.com") || url.contains("iesdouyin.com") {
-                    let id = url.split('/').last().unwrap_or("video").split('?').next().unwrap_or("video");
-                    format!("Douyin Video {}", id)
-                } else if url.contains("youtube.com") || url.contains("youtu.be") {
-                    let id = if url.contains("youtu.be/") {
-                        url.split("youtu.be/").nth(1).unwrap_or("video").split('?').next().unwrap_or("video")
-                    } else if url.contains("v=") {
-                        url.split("v=").nth(1).unwrap_or("video").split('&').next().unwrap_or("video")
-                    } else {
-                        "video"
-                    };
-                    format!("YouTube Video {}", id)
-                } else if url.contains("bilibili.com") {
-                    let bvid = url.split("/video/").nth(1).unwrap_or("video").split('?').next().unwrap_or("video");
-                    format!("Bilibili {}", bvid)
-                } else {
-                    url.split('/')
-                        .last()
-                        .and_then(|s| s.split('?').next())
-                        .filter(|s| !s.is_empty() && *s != "watch" && *s != "video")
-                        .unwrap_or("batch_media")
-                        .to_string()
-                };
-
-                let referer = if url.contains("douyin.com") || url.contains("iesdouyin.com") {
-                    Some("https://www.douyin.com/".to_string())
-                } else {
-                    None
-                };
+                let (title, referer) = resolve_batch_item_title_and_referer(&url);
 
                 if let Ok(_) = mgr
                     .add_download_with_context(
@@ -3841,3 +3872,35 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
     info!("Native Video Downloader terminated normally");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_domain_from_url() {
+        assert_eq!(extract_domain_from_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "youtube.com");
+        assert_eq!(extract_domain_from_url("https://youtu.be/dQw4w9WgXcQ"), "youtube.com");
+        assert_eq!(extract_domain_from_url("https://kisskh.do/Drama/Spring-of-the-Blade--2026-"), "kisskh.do");
+        assert_eq!(extract_domain_from_url("https://www.tiktok.com/@user/video/1234567"), "tiktok.com");
+        assert_eq!(extract_domain_from_url("https://www.douyin.com/video/71234567890"), "douyin.com");
+        assert_eq!(extract_domain_from_url("https://www.facebook.com/watch/?v=123"), "facebook.com");
+    }
+
+    #[test]
+    fn test_resolve_batch_item_title_and_referer() {
+        let (title, referer) = resolve_batch_item_title_and_referer("https://kisskh.do/Drama/Spring-of-the-Blade--2026-/Episode-1?id=13742&ep=224512");
+        assert!(title.contains("Spring of the Blade"));
+        assert!(title.contains("Episode 1"));
+        assert_eq!(referer, Some("https://kisskh.do/".to_string()));
+
+        let (title_dy, ref_dy) = resolve_batch_item_title_and_referer("https://www.douyin.com/video/71234567890");
+        assert_eq!(title_dy, "Douyin Video 71234567890");
+        assert_eq!(ref_dy, Some("https://www.douyin.com/".to_string()));
+
+        let (title_tt, ref_tt) = resolve_batch_item_title_and_referer("https://www.tiktok.com/@user/video/987654321");
+        assert_eq!(title_tt, "TikTok Video 987654321");
+        assert_eq!(ref_tt, Some("https://www.tiktok.com/".to_string()));
+    }
+}
+
