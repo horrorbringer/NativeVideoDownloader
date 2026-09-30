@@ -95,6 +95,7 @@ export component SettingsTab inherits ScrollView {
     callback update_all_binaries();
     callback refresh_binary_info();
     callback clear_cache();
+    callback open_about();
 
     // Engine & Binary Information
     in-out property <string> ytdlp_version_text: "Detecting...";
@@ -2554,6 +2555,31 @@ export component SettingsTab inherits ScrollView {
                         has_icon: true;
                         height: 28px;
                         clicked => { root.clear_cache(); }
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    VerticalLayout {
+                        spacing: 2px;
+                        alignment: center;
+                        Text {
+                            text: "About This Application";
+                            color: #949db2;
+                            font-size: 12px;
+                        }
+                        Text {
+                            text: "View system diagnostics, core architecture, supported extractors and credits";
+                            color: #64748b;
+                            font-size: 10px;
+                        }
+                    }
+                    ActionButton {
+                        text: "About This Tool";
+                        icon: @image-url("../icons/info.svg");
+                        has_icon: true;
+                        height: 28px;
+                        clicked => { root.open_about(); }
                     }
                 }
             }

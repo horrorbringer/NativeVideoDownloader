@@ -627,6 +627,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_window.window().set_size(WindowSize::Logical(LogicalSize::new(1180.0, 760.0)));
     ui_log_layer.set_window(main_window.as_weak());
 
+    let os_name = match std::env::consts::OS {
+        "macos" => "macOS (Apple Silicon / Darwin)",
+        "windows" => "Windows (x86_64)",
+        "linux" => "Linux (Unix)",
+        other => other,
+    };
+    main_window.set_host_os_info(format!("{} • {}", os_name, std::env::consts::ARCH).into());
+    main_window.set_media_player_text(filesystem::detect_media_player_name().into());
+    main_window.set_db_path_text(db_path.to_string_lossy().to_string().into());
+
     // Shared state between UI callbacks and background tasks
     let current_metadata: Arc<Mutex<Option<VideoMetadata>>> = Arc::new(Mutex::new(None));
     let network_client = Arc::new(NetworkClient::new());
@@ -3074,6 +3084,20 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
         let _ = filesystem::play_media_file(&path);
     });
 
+    // Callback: Copy file path for history item
+    let weak_copy_path = main_window.as_weak();
+    main_window.on_copy_file_path(move |path_str| {
+        let text = path_str.to_string();
+        if !text.is_empty() {
+            let success = filesystem::write_clipboard_text(&text);
+            if success {
+                let _ = weak_copy_path.upgrade_in_event_loop(|win| {
+                    win.set_status_message("Copied file path to clipboard".into());
+                });
+            }
+        }
+    });
+
     // Callback: Open/play file for a completed download
     main_window.on_open_download_file(move |path_str| {
         let path = PathBuf::from(path_str.to_string());
@@ -3264,6 +3288,39 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
                 });
             }
         }
+    });
+
+    // Callback: Copy System Diagnostics Report
+    let weak_diag = main_window.as_weak();
+    let db_path_diag = db_path.clone();
+    main_window.on_copy_diagnostics(move || {
+        if let Some(win) = weak_diag.upgrade() {
+            let host_os = win.get_host_os_info();
+            let y_ver = win.get_ytdlp_version_text();
+            let y_path = win.get_ytdlp_path_text();
+            let f_ver = win.get_ffmpeg_version_text();
+            let f_path = win.get_ffmpeg_path_text();
+            let player = win.get_media_player_text();
+            let report = format!(
+                "### Native Video Downloader Pro Diagnostics Report\n\
+                - **Version**: v0.1.0 (Build 2026.09)\n\
+                - **Host Platform**: {}\n\
+                - **FFmpeg Engine**: {} ({})\n\
+                - **yt-dlp Core**: {} ({})\n\
+                - **Companion Player**: {}\n\
+                - **Database Path**: {}\n\
+                - **GUI Engine**: Slint Hardware-Accelerated Native GUI\n\
+                - **Async Runtime**: Tokio Multi-threaded Engine\n",
+                host_os, f_ver, f_path, y_ver, y_path, player, db_path_diag.display()
+            );
+            filesystem::write_clipboard_text(&report);
+            win.set_status_message("Copied system diagnostics report to clipboard".into());
+        }
+    });
+
+    // Callback: Open external URL
+    main_window.on_open_external_url(move |url_str| {
+        let _ = filesystem::open_system_url(&url_str);
     });
 
     // Callback: Filter Logs by Level

@@ -8,6 +8,7 @@ import { DownloadsTab } from "tabs/downloads_tab.slint";
 import { HistoryTab } from "tabs/history_tab.slint";
 import { LogsTab } from "tabs/logs_tab.slint";
 import { SettingsTab } from "tabs/settings_tab.slint";
+import { AboutTab } from "tabs/about_tab.slint";
 import { Theme } from "theme.slint";
 
 export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData, BatchItemData, Theme }
@@ -178,6 +179,9 @@ export component AppWindow inherits Window {
     in-out property <bool> is_updating_ytdlp: false;
     in-out property <bool> is_updating_ffmpeg: false;
     in-out property <string> binary_update_status: "";
+    in-out property <string> host_os_info: "macOS (Apple Silicon / aarch64)";
+    in-out property <string> media_player_text: "Detecting...";
+    in-out property <string> db_path_text: "~/.native_video_downloader/history.db";
 
     // Live Clipboard Link Monitor properties
     in-out property <bool> clipboard_detected_url_visible: false;
@@ -257,6 +261,9 @@ export component AppWindow inherits Window {
     callback select_all_history(bool);
     callback delete_selected_history();
     callback redownload_selected_history();
+    callback copy_file_path(string);
+    callback copy_diagnostics();
+    callback open_external_url(string);
 
     callback open_download_file(string);
     callback open_download_folder(string);
@@ -428,6 +435,13 @@ export component AppWindow inherits Window {
                     clicked => { root.active_tab = 4; }
                 }
 
+                NavButton {
+                    text: "About";
+                    icon: @image-url("icons/info.svg");
+                    active: root.active_tab == 5;
+                    clicked => { root.active_tab = 5; }
+                }
+
                 // Spacer
                 Rectangle { }
 
@@ -496,7 +510,8 @@ export component AppWindow inherits Window {
                         text: root.active_tab == 0 ? "Download Media" :
                               root.active_tab == 1 ? "Active Downloads" :
                               root.active_tab == 2 ? "Download History" :
-                              root.active_tab == 3 ? "Engine & Activity Logs" : "Application Settings";
+                              root.active_tab == 3 ? "Engine & Activity Logs" :
+                              root.active_tab == 4 ? "Application Settings" : "About This Tool";
                         color: Theme.text_primary;
                         font-size: 20px;
                         font-weight: 700;
@@ -505,7 +520,8 @@ export component AppWindow inherits Window {
                         text: root.active_tab == 0 ? "Enter any video or playlist URL to inspect and download" :
                               root.active_tab == 1 ? "Monitor ongoing queues, speeds and progress" :
                               root.active_tab == 2 ? "Past completed and archived downloads" :
-                              root.active_tab == 3 ? "Real-time engine operations, streaming events, and diagnostics" : "Configure directories, concurrency, and defaults";
+                              root.active_tab == 3 ? "Real-time engine operations, streaming events, and diagnostics" :
+                              root.active_tab == 4 ? "Configure directories, concurrency, and defaults" : "System architecture, core engine diagnostics & supported extractors";
                         color: Theme.text_secondary;
                         font-size: 12px;
                     }
@@ -705,6 +721,7 @@ export component AppWindow inherits Window {
                 select_all_history(sel) => { root.select_all_history(sel); }
                 delete_selected_history() => { root.delete_selected_history(); }
                 redownload_selected_history() => { root.redownload_selected_history(); }
+                copy_file_path(p) => { root.copy_file_path(p); }
             }
 
             if root.active_tab == 3: LogsTab {
@@ -814,6 +831,26 @@ export component AppWindow inherits Window {
                 set_auto_retry_enabled(en) => { root.set_auto_retry_enabled(en); }
                 set_auto_retry_interval(idx) => { root.set_auto_retry_interval(idx); }
                 set_auto_retry_max(idx) => { root.set_auto_retry_max(idx); }
+                open_about => { root.active_tab = 5; }
+            }
+
+            if root.active_tab == 5: AboutTab {
+                app_name: "Native Video Downloader Pro";
+                app_version: "v0.1.0 (2026.09 Edition)";
+                host_os_info: root.host_os_info;
+                ytdlp_version_text: root.ytdlp_version_text;
+                ytdlp_path_text: root.ytdlp_path_text;
+                ffmpeg_version_text: root.ffmpeg_version_text;
+                ffmpeg_path_text: root.ffmpeg_path_text;
+                media_player_text: root.media_player_text;
+                db_path_text: root.db_path_text;
+                download_directory: root.download_dir_path;
+
+                copy_diagnostics => { root.copy_diagnostics(); }
+                open_logs => { root.active_tab = 3; }
+                open_download_folder => { root.open_current_download_dir(); }
+                open_external_url(url) => { root.open_external_url(url); }
+                check_updates => { root.update_all_binaries(); }
             }
 
             // Status bar at bottom

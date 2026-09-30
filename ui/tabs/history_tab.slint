@@ -29,6 +29,7 @@ export component HistoryTab inherits VerticalLayout {
     callback select_all_history(bool);
     callback delete_selected_history();
     callback redownload_selected_history();
+    callback copy_file_path(string);
 
     spacing: 12px;
 
@@ -578,7 +579,7 @@ export component HistoryTab inherits VerticalLayout {
                             height: 22px;
                             border-radius: 6px;
                             border-width: 1.5px;
-                            border-color: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.text_secondary : Theme.inner_border);
+                            border-color: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.brand_purple : (Theme.is_dark ? #475569 : #94a3b8));
                             background: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.card_hover : Theme.inner_bg);
                             animate background { duration: 120ms; }
                             animate border-color { duration: 120ms; }
@@ -754,6 +755,7 @@ export component HistoryTab inherits VerticalLayout {
                                     text: "Play";
                                     icon: @image-url("../icons/play.svg");
                                     has_icon: true;
+                                    primary: true;
                                     height: 32px;
                                     clicked => { root.play_history_file(item.output_path); }
                                 }
@@ -794,27 +796,59 @@ export component HistoryTab inherits VerticalLayout {
 
                             HorizontalLayout {
                                 padding-left: 10px;
-                                padding-right: 10px;
-                                alignment: start;
+                                padding-right: 6px;
+                                alignment: space-between;
                                 spacing: 6px;
 
-                                VerticalLayout {
-                                    alignment: center;
-                                    Image {
-                                        source: @image-url("../icons/folder.svg");
-                                        width: 12px;
-                                        height: 12px;
-                                        colorize: Theme.text_muted;
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    horizontal-stretch: 1;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/folder.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            colorize: Theme.text_muted;
+                                        }
+                                    }
+
+                                    Text {
+                                        text: item.output_path;
+                                        color: Theme.text_muted;
+                                        font-size: 11px;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                        vertical-alignment: center;
                                     }
                                 }
 
-                                Text {
-                                    text: item.output_path;
-                                    color: Theme.text_muted;
-                                    font-size: 11px;
-                                    overflow: elide;
-                                    horizontal-stretch: 1;
-                                    vertical-alignment: center;
+                                // Quick Copy Path Action
+                                Rectangle {
+                                    width: 20px;
+                                    height: 20px;
+                                    border-radius: 4px;
+                                    background: copy_touch.has-hover ? (Theme.is_dark ? #242c46 : #e2e8f0) : #00000000;
+                                    animate background { duration: 100ms; }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/clipboard.svg");
+                                            width: 11px;
+                                            height: 11px;
+                                            colorize: copy_touch.has-hover ? Theme.brand_purple : Theme.text_muted;
+                                            animate colorize { duration: 100ms; }
+                                            horizontal-alignment: center;
+                                        }
+                                    }
+
+                                    copy_touch := TouchArea {
+                                        clicked => {
+                                            root.copy_file_path(item.output_path);
+                                        }
+                                    }
                                 }
                             }
                         }

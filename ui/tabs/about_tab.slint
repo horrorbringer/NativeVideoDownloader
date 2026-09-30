@@ -1,0 +1,777 @@
+import { ScrollView } from "std-widgets.slint";
+import { ActionButton } from "../components/action_button.slint";
+import { Theme } from "../theme.slint";
+
+export component AboutTab inherits ScrollView {
+    in-out property <string> app_name: "Native Video Downloader Pro";
+    in-out property <string> app_version: "v0.1.0 (2026.09 Edition)";
+    in-out property <string> host_os_info: "macOS (Apple Silicon / aarch64)";
+    in-out property <string> ytdlp_version_text: "Detecting...";
+    in-out property <string> ytdlp_path_text: "";
+    in-out property <string> ffmpeg_version_text: "Detecting...";
+    in-out property <string> ffmpeg_path_text: "";
+    in-out property <string> media_player_text: "mpv (Subtitle auto-sync enabled)";
+    in-out property <string> db_path_text: "~/.native_video_downloader/history.db";
+    in-out property <string> download_directory: "~/Downloads";
+
+    callback copy_diagnostics();
+    callback open_logs();
+    callback open_download_folder();
+    callback open_external_url(string);
+    callback check_updates();
+
+    vertical-stretch: 1;
+
+    VerticalLayout {
+        padding-right: 8px;
+        padding-bottom: 24px;
+        spacing: 16px;
+
+        // 1. Hero Branding & Architecture Card
+        Rectangle {
+            background: Theme.is_dark ? #161c2d : #ffffff;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.is_dark ? #232f4e : #e2e8f0;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 16px;
+
+                HorizontalLayout {
+                    spacing: 18px;
+                    alignment: start;
+
+                    // Radiant App Logo Squircle
+                    Rectangle {
+                        width: 64px;
+                        height: 64px;
+                        border-radius: 16px;
+                        background: Theme.is_dark ? #2e1065 : #4f46e5;
+                        border-width: 1.5px;
+                        border-color: Theme.is_dark ? #6366f1 : #818cf8;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: @image-url("../icons/sparkles.svg");
+                                width: 32px;
+                                height: 32px;
+                                colorize: #ffffff;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Title & Description
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+
+                            Text {
+                                text: root.app_name;
+                                color: Theme.text_primary;
+                                font-size: 20px;
+                                font-weight: 800;
+                                vertical-alignment: center;
+                            }
+
+                            // Release pill
+                            Rectangle {
+                                height: 22px;
+                                border-radius: 11px;
+                                background: Theme.is_dark ? #1e1b4b : #eef2ff;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #3730a3 : #c7d2fe;
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    alignment: center;
+                                    Text {
+                                        text: root.app_version;
+                                        color: Theme.is_dark ? #a5b4fc : #4f46e5;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: "High-performance, ultra-low-memory native media stream extractor and batch video accelerator.";
+                            color: Theme.text_secondary;
+                            font-size: 13px;
+                        }
+
+                        // Architecture Tech Stack Badges
+                        HorizontalLayout {
+                            spacing: 8px;
+                            padding-top: 6px;
+                            alignment: start;
+
+                            // Rust badge
+                            Rectangle {
+                                height: 22px;
+                                border-radius: 4px;
+                                background: Theme.is_dark ? #052e16 : #dcfce7;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #166534 : #86efac;
+                                HorizontalLayout {
+                                    padding-left: 7px;
+                                    padding-right: 7px;
+                                    spacing: 4px;
+                                    alignment: center;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/cpu.svg");
+                                            width: 11px;
+                                            height: 11px;
+                                            colorize: Theme.is_dark ? #4ade80 : #15803d;
+                                        }
+                                    }
+                                    Text {
+                                        text: "Rust 2021 Core";
+                                        color: Theme.is_dark ? #4ade80 : #15803d;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            // Slint badge
+                            Rectangle {
+                                height: 22px;
+                                border-radius: 4px;
+                                background: Theme.is_dark ? #172554 : #dbeafe;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #1e40af : #93c5fd;
+                                HorizontalLayout {
+                                    padding-left: 7px;
+                                    padding-right: 7px;
+                                    spacing: 4px;
+                                    alignment: center;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/monitor.svg");
+                                            width: 11px;
+                                            height: 11px;
+                                            colorize: Theme.is_dark ? #60a5fa : #1d4ed8;
+                                        }
+                                    }
+                                    Text {
+                                        text: "Slint Native GUI (No Electron)";
+                                        color: Theme.is_dark ? #60a5fa : #1d4ed8;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            // Tokio badge
+                            Rectangle {
+                                height: 22px;
+                                border-radius: 4px;
+                                background: Theme.is_dark ? #2e1065 : #f3e8ff;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #581c87 : #d8b4fe;
+                                HorizontalLayout {
+                                    padding-left: 7px;
+                                    padding-right: 7px;
+                                    spacing: 4px;
+                                    alignment: center;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/bolt.svg");
+                                            width: 11px;
+                                            height: 11px;
+                                            colorize: Theme.is_dark ? #c084fc : #7e22ce;
+                                        }
+                                    }
+                                    Text {
+                                        text: "Tokio Async Engine";
+                                        color: Theme.is_dark ? #c084fc : #7e22ce;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            // SQLite badge
+                            Rectangle {
+                                height: 22px;
+                                border-radius: 4px;
+                                background: Theme.is_dark ? #451a03 : #fef3c7;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #92400e : #fcd34d;
+                                HorizontalLayout {
+                                    padding-left: 7px;
+                                    padding-right: 7px;
+                                    spacing: 4px;
+                                    alignment: center;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/package.svg");
+                                            width: 11px;
+                                            height: 11px;
+                                            colorize: Theme.is_dark ? #fbbf24 : #b45309;
+                                        }
+                                    }
+                                    Text {
+                                        text: "SQLite WAL Database";
+                                        color: Theme.is_dark ? #fbbf24 : #b45309;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. System Diagnostics & Engine Status Grid
+        Rectangle {
+            background: Theme.card_bg;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.card_border;
+
+            VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: @image-url("../icons/cpu.svg");
+                                width: 16px;
+                                height: 16px;
+                                colorize: Theme.brand_purple;
+                            }
+                        }
+
+                        Text {
+                            text: "System & Core Engine Diagnostics";
+                            color: Theme.text_primary;
+                            font-size: 15px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    ActionButton {
+                        text: "Copy Diagnostics";
+                        icon: @image-url("../icons/clipboard.svg");
+                        has_icon: true;
+                        height: 28px;
+                        clicked => { root.copy_diagnostics(); }
+                    }
+                }
+
+                // Diagnostics Grid Row 1
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    // Host Platform
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+
+                            Text {
+                                text: "HOST PLATFORM";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.host_os_info;
+                                color: Theme.text_primary;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "Zero VM/JIT • Bare-metal binary";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                            }
+                        }
+                    }
+
+                    // FFmpeg Muxer
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+
+                            Text {
+                                text: "FFMPEG MEDIA MUXER";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.ffmpeg_version_text;
+                                color: Theme.text_primary;
+                                font-size: 13px;
+                                font-weight: 700;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: root.ffmpeg_path_text != "" ? root.ffmpeg_path_text : "Transcoding, DASH & Audio Muxing";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    // yt-dlp Core
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+
+                            Text {
+                                text: "YT-DLP RESOLVER CORE";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.ytdlp_version_text;
+                                color: Theme.text_primary;
+                                font-size: 13px;
+                                font-weight: 700;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: root.ytdlp_path_text != "" ? root.ytdlp_path_text : "Extractor & Decryption Engine";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+
+                // Diagnostics Grid Row 2
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    // Companion Media Player
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+
+                            Text {
+                                text: "COMPANION MEDIA PLAYER";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.media_player_text;
+                                color: Theme.text_primary;
+                                font-size: 13px;
+                                font-weight: 700;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: "Auto-loads companion .srt subtitle files";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                            }
+                        }
+                    }
+
+                    // SQLite Database
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+
+                            Text {
+                                text: "PERSISTENT DATABASE";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "SQLite 3 (WAL mode)";
+                                color: Theme.text_primary;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.db_path_text;
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    // Memory Footprint
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+
+                            Text {
+                                text: "MEMORY FOOTPRINT";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "~35 MB Idle RAM";
+                                color: Theme.is_dark ? #34d399 : #059669;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "10x lighter than web-based downloaders";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Supported Platforms & Native Parsers
+        Rectangle {
+            background: Theme.card_bg;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.card_border;
+
+            VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    VerticalLayout {
+                        alignment: center;
+                        Image {
+                            source: @image-url("../icons/layers.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: Theme.brand_purple;
+                        }
+                    }
+
+                    Text {
+                        text: "Supported Streaming Platforms & Stream Resolvers";
+                        color: Theme.text_primary;
+                        font-size: 15px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Platforms Grid Row 1
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    // YouTube
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+                            Text {
+                                text: "YouTube";
+                                color: Theme.is_dark ? #f87171 : #dc2626;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "4K / 1080p 60fps DASH video+audio muxing, Shorts, full playlists, channel archiving & subtitles.";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    // KissKH
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+                            Text {
+                                text: "KissKH Drama";
+                                color: Theme.brand_purple;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "Full Asian drama series batch extractor, dynamic HLS keygen decryptor, embedded companion multi-language .srt subtitles.";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    // TikTok
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+                            Text {
+                                text: "TikTok";
+                                color: Theme.is_dark ? #38bdf8 : #0284c7;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "Crystal-clear HD MP4 without watermark, direct original audio track extraction, and user profile scraping.";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+
+                // Platforms Grid Row 2
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    // Douyin
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+                            Text {
+                                text: "Douyin (抖音)";
+                                color: Theme.is_dark ? #ec4899 : #db2777;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "Direct CDN extraction via specialized resolvers, bypasses mobile player restrictions and watermarks.";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    // Short Dramas
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+                            Text {
+                                text: "Short Drama Series";
+                                color: Theme.is_dark ? #fb923c : #ea580c;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "ShortMax, AnyReel, DramaBox, GoodShort series parser with episode ranges (e.g. 1-50) & auto-queue.";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    // Universal HLS & Direct MP4
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+                            Text {
+                                text: "Universal HLS / m3u8 / MP4";
+                                color: Theme.is_dark ? #34d399 : #059669;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "Parallel segment streaming (.m3u8), AES-128 decrypted segments, HTTP Range resumption & direct video links.";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Quick Actions & Maintenance Toolbar
+        Rectangle {
+            background: Theme.card_bg;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.card_border;
+
+            VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+
+                Text {
+                    text: "Quick Shortcuts & Maintenance";
+                    color: Theme.text_primary;
+                    font-size: 15px;
+                    font-weight: 700;
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+
+                    ActionButton {
+                        text: "Open Downloads Folder";
+                        icon: @image-url("../icons/folder.svg");
+                        has_icon: true;
+                        height: 34px;
+                        clicked => { root.open_download_folder(); }
+                    }
+
+                    ActionButton {
+                        text: "View Live Logs";
+                        icon: @image-url("../icons/logs.svg");
+                        has_icon: true;
+                        height: 34px;
+                        clicked => { root.open_logs(); }
+                    }
+
+                    ActionButton {
+                        text: "Check Engine Updates";
+                        icon: @image-url("../icons/refresh.svg");
+                        has_icon: true;
+                        height: 34px;
+                        clicked => { root.check_updates(); }
+                    }
+
+                    ActionButton {
+                        text: "GitHub Repository";
+                        icon: @image-url("../icons/link.svg");
+                        has_icon: true;
+                        height: 34px;
+                        clicked => { root.open_external_url("https://github.com/horrorbringer/NativeVideoDownloader"); }
+                    }
+                }
+            }
+        }
+
+        // 5. Credits & License Footer
+        HorizontalLayout {
+            alignment: space-between;
+            padding-left: 4px;
+            padding-right: 4px;
+
+            Text {
+                text: "Crafted with passion using Rust & Slint • 100% Free & Open Source";
+                color: Theme.text_muted;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+
+            Text {
+                text: "MIT License • Native Pro Video Engine";
+                color: Theme.text_muted;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

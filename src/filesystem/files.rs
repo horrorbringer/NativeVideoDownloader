@@ -940,6 +940,61 @@ pub fn play_media_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Detects the preferred/active companion media player on the system
+pub fn detect_media_player_name() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        if std::process::Command::new("mpv").arg("--version").output().is_ok() {
+            return "mpv (Auto-subtitle sync)";
+        }
+        if std::path::Path::new("/Applications/IINA.app").exists() {
+            return "IINA (Auto-subtitle sync)";
+        }
+        if std::path::Path::new("/Applications/VLC.app").exists() {
+            return "VLC Player";
+        }
+        "QuickTime / Default Player"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if std::process::Command::new("mpv").arg("--version").output().is_ok() {
+            return "mpv (Auto-subtitle sync)";
+        }
+        "Windows Media / Default"
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        if std::process::Command::new("mpv").arg("--version").output().is_ok() {
+            return "mpv (Auto-subtitle sync)";
+        }
+        if std::process::Command::new("vlc").arg("--version").output().is_ok() {
+            return "VLC Player";
+        }
+        "System Default Player"
+    }
+}
+
+/// Opens an external URL in the user's default web browser
+pub fn open_system_url(url: &str) -> Result<()> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(trimmed).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd").args(["/c", "start", "", trimmed]).spawn();
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(trimmed).spawn();
+    }
+    Ok(())
+}
+
 /// Plays or previews a streaming media URL (e.g. mp4, m3u8, or web link) with the system default player or browser
 #[allow(dead_code)]
 pub fn play_stream_url(stream_url: &str, referer: Option<&str>) -> Result<()> {
@@ -1828,6 +1883,17 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
 
         // Cleanup
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_detect_media_player_name() {
+        let player = detect_media_player_name();
+        assert!(!player.is_empty());
+    }
+
+    #[test]
+    fn test_open_system_url_empty() {
+        assert!(open_system_url("   ").is_ok());
     }
 }
 
