@@ -3,8 +3,8 @@ import { ActionButton } from "../components/action_button.slint";
 import { Theme } from "../theme.slint";
 
 export component AboutTab inherits ScrollView {
-    in-out property <string> app_name: "Native Video Downloader Pro";
-    in-out property <string> app_version: "v0.1.0 (2026.09 Edition)";
+    in-out property <string> app_name: "Native Video Downloader";
+    in-out property <string> app_version: "v0.2.1 (2026.09 Edition)";
     in-out property <string> host_os_info: "macOS (Apple Silicon / aarch64)";
     in-out property <string> ytdlp_version_text: "Detecting...";
     in-out property <string> ytdlp_path_text: "";
@@ -13,12 +13,15 @@ export component AboutTab inherits ScrollView {
     in-out property <string> media_player_text: "mpv (Subtitle auto-sync enabled)";
     in-out property <string> db_path_text: "~/.native_video_downloader/history.db";
     in-out property <string> download_directory: "~/Downloads";
+    in-out property <string> app_update_status: "";
+    in-out property <bool> is_checking_app_update: false;
 
     callback copy_diagnostics();
     callback open_logs();
     callback open_download_folder();
     callback open_external_url(string);
     callback check_updates();
+    callback check_app_updates();
 
     vertical-stretch: 1;
 
@@ -97,6 +100,44 @@ export component AboutTab inherits ScrollView {
                                         color: Theme.is_dark ? #a5b4fc : #4f46e5;
                                         font-size: 11px;
                                         font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            // In-App Update Trigger Pill
+                            Rectangle {
+                                height: 22px;
+                                border-radius: 11px;
+                                background: check_app_btn.has-hover ? (Theme.is_dark ? #312e81 : #e0e7ff) : (Theme.is_dark ? #1e1b4b : #f1f5f9);
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #4f46e5 : #cbd5e1;
+
+                                check_app_btn := TouchArea {
+                                    clicked => { root.check_app_updates(); }
+                                }
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 4px;
+                                    alignment: center;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../icons/sparkles.svg");
+                                            width: 11px;
+                                            height: 11px;
+                                            colorize: Theme.is_dark ? #a5b4fc : #4f46e5;
+                                        }
+                                    }
+
+                                    Text {
+                                        text: root.is_checking_app_update ? "Checking..." : (root.app_update_status != "" ? root.app_update_status : "Check Updates");
+                                        color: Theme.is_dark ? #c7d2fe : #4338ca;
+                                        font-size: 11px;
+                                        font-weight: 600;
                                         vertical-alignment: center;
                                     }
                                 }
@@ -740,6 +781,14 @@ export component AboutTab inherits ScrollView {
                         has_icon: true;
                         height: 34px;
                         clicked => { root.check_updates(); }
+                    }
+
+                    ActionButton {
+                        text: "Check App Updates";
+                        icon: @image-url("../icons/sparkles.svg");
+                        has_icon: true;
+                        height: 34px;
+                        clicked => { root.check_app_updates(); }
                     }
 
                     ActionButton {

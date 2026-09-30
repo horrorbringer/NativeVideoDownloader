@@ -1,0 +1,413 @@
+import { Theme } from "../theme.slint";
+import { ActionButton } from "action_button.slint";
+import { ProgressBar } from "progress_bar.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component UpdateModal inherits Rectangle {
+    in property <bool> is_open: false;
+    in property <string> current_version: "v0.2.1";
+    in property <string> latest_version: "";
+    in property <string> release_title: "";
+    in property <string> release_notes: "";
+    in property <string> release_date: "";
+    in property <string> asset_name: "";
+    in property <bool> is_downloading: false;
+    in property <float> download_progress: 0.0;
+    in property <string> download_status_text: "";
+    in property <bool> is_ready_to_restart: false;
+    in property <string> error_message: "";
+
+    callback close();
+    callback start_update();
+    callback restart_app_now();
+    callback open_browser_release();
+
+    width: 100%;
+    height: 100%;
+    visible: root.is_open;
+    z: 110;
+
+    // Dimmed Backdrop
+    Rectangle {
+        background: Theme.is_dark ? #000000a6 : #00000066;
+        animate background { duration: 150ms; }
+
+        TouchArea {
+            clicked => {
+                if (!root.is_downloading) {
+                    root.close();
+                }
+            }
+        }
+    }
+
+    // Centered Dialog Window
+    dialog_card := Rectangle {
+        width: min(640px, parent.width - 48px);
+        height: min(580px, parent.height - 48px);
+        background: Theme.card_bg;
+        border-radius: 14px;
+        border-width: 1px;
+        border-color: Theme.card_border;
+        clip: true;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000077;
+        drop-shadow-offset-y: 8px;
+
+        TouchArea {}
+
+        VerticalLayout {
+            padding: 0px;
+            spacing: 0px;
+
+            // Header Banner
+            Rectangle {
+                height: 68px;
+                background: Theme.inner_bg;
+
+                HorizontalLayout {
+                    padding_left: 20px;
+                    padding_right: 16px;
+                    spacing: 12px;
+                    alignment: center;
+
+                    // Glow Update Icon
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 10px;
+                        background: Theme.is_dark ? #10b98122 : #10b98115;
+                        border-width: 1px;
+                        border-color: #10b98155;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: root.is_ready_to_restart ? @image-url("../icons/check.svg") : @image-url("../icons/sparkles.svg");
+                                width: 20px;
+                                height: 20px;
+                                colorize: root.is_ready_to_restart ? #10b981 : Theme.primary_accent;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Title & Release Info
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: root.is_ready_to_restart ? "Update Ready to Install" : "New Version Available!";
+                                color: Theme.text_primary;
+                                font-size: 16px;
+                                font-weight: 700;
+                            }
+
+                            // New Release Pill
+                            Rectangle {
+                                height: 20px;
+                                border-radius: 10px;
+                                background: Theme.is_dark ? #064e3b : #d1fae5;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #059669 : #a7f3d0;
+
+                                HorizontalLayout {
+                                    padding_left: 8px;
+                                    padding_right: 8px;
+                                    alignment: center;
+                                    Text {
+                                        text: root.latest_version;
+                                        color: Theme.is_dark ? #34d399 : #065f46;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: root.release_title != "" ? root.release_title : "GitHub Release " + root.latest_version;
+                            color: Theme.text_secondary;
+                            font-size: 12px;
+                            overflow: elide;
+                        }
+                    }
+
+                    // Close Button (disabled while downloading)
+                    if (!root.is_downloading): Rectangle {
+                        width: 30px;
+                        height: 30px;
+                        border-radius: 6px;
+                        background: close_hover.has-hover ? (Theme.is_dark ? #283049 : #e2e8f0) : #00000000;
+
+                        close_hover := TouchArea {
+                            clicked => { root.close(); }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: @image-url("../icons/x.svg");
+                                width: 14px;
+                                height: 14px;
+                                colorize: Theme.text_muted;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Divider
+            Rectangle {
+                height: 1px;
+                background: Theme.card_border;
+            }
+
+            // Body Area
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+                vertical-stretch: 1;
+
+                // Version Transition Pill Bar
+                Rectangle {
+                    height: 52px;
+                    border-radius: 10px;
+                    background: Theme.inner_bg;
+                    border-width: 1px;
+                    border-color: Theme.card_border;
+
+                    HorizontalLayout {
+                        padding_left: 16px;
+                        padding_right: 16px;
+                        spacing: 12px;
+                        alignment: center;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: "Current Version";
+                                color: Theme.text_muted;
+                                font-size: 11px;
+                            }
+                            Text {
+                                text: root.current_version;
+                                color: Theme.text_secondary;
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
+                        }
+
+                        // Arrow
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: "➜";
+                                color: Theme.primary_accent;
+                                font-size: 16px;
+                                font-weight: 800;
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: "Target Release";
+                                color: Theme.text_muted;
+                                font-size: 11px;
+                            }
+                            Text {
+                                text: root.latest_version;
+                                color: #10b981;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                        }
+
+                        Rectangle { horizontal-stretch: 1; }
+
+                        if (root.release_date != ""): VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: "Published";
+                                color: Theme.text_muted;
+                                font-size: 11px;
+                                horizontal-alignment: right;
+                            }
+                            Text {
+                                text: root.release_date;
+                                color: Theme.text_secondary;
+                                font-size: 12px;
+                                horizontal-alignment: right;
+                            }
+                        }
+                    }
+                }
+
+                // Error Message Notice
+                if (root.error_message != ""): Rectangle {
+                    height: 40px;
+                    border-radius: 8px;
+                    background: Theme.is_dark ? #450a0a : #fef2f2;
+                    border-width: 1px;
+                    border-color: Theme.is_dark ? #991b1b : #fecaca;
+
+                    HorizontalLayout {
+                        padding_left: 12px;
+                        padding_right: 12px;
+                        spacing: 8px;
+                        alignment: center;
+
+                        Image {
+                            source: @image-url("../icons/alert.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: #ef4444;
+                        }
+
+                        Text {
+                            text: root.error_message;
+                            color: Theme.is_dark ? #fca5a5 : #dc2626;
+                            font-size: 12px;
+                            overflow: elide;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                // Changelog Header
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    Text {
+                        text: "What's New & Release Highlights:";
+                        color: Theme.text_primary;
+                        font-size: 13px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+
+                    if (root.asset_name != ""): Text {
+                        text: "Asset: " + root.asset_name;
+                        color: Theme.text_muted;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Scrollable Changelog Area
+                Rectangle {
+                    border-radius: 8px;
+                    background: Theme.inner_bg;
+                    border-width: 1px;
+                    border-color: Theme.card_border;
+                    vertical-stretch: 1;
+                    clip: true;
+
+                    ScrollView {
+                        VerticalLayout {
+                            padding: 12px;
+
+                            Text {
+                                text: root.release_notes != "" ? root.release_notes : "No release notes provided for this tag.";
+                                color: Theme.text_secondary;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+
+                // Download / Installation Progress Bar (Active during download or post-download)
+                if (root.is_downloading || root.is_ready_to_restart): VerticalLayout {
+                    spacing: 6px;
+
+                    HorizontalLayout {
+                        alignment: space-between;
+
+                        Text {
+                            text: root.download_status_text != "" ? root.download_status_text : (root.is_ready_to_restart ? "Ready for restart!" : "Downloading update...");
+                            color: root.is_ready_to_restart ? #10b981 : Theme.text_primary;
+                            font-size: 12px;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: Math.round(root.download_progress * 100.0) + "%";
+                            color: Theme.primary_accent;
+                            font-size: 12px;
+                            font-weight: 700;
+                        }
+                    }
+
+                    ProgressBar {
+                        progress: root.download_progress;
+                        status: root.is_ready_to_restart ? "Completed" : "Downloading";
+                    }
+                }
+            }
+
+            // Footer / Action Bar
+            Rectangle {
+                height: 64px;
+                background: Theme.inner_bg;
+
+                HorizontalLayout {
+                    padding_left: 20px;
+                    padding_right: 20px;
+                    spacing: 12px;
+                    alignment: end;
+
+                    // Browser release link button
+                    ActionButton {
+                        text: "View on GitHub";
+                        icon: @image-url("../icons/link.svg");
+                        has_icon: true;
+                        height: 36px;
+                        clicked => { root.open_browser_release(); }
+                    }
+
+                    // Cancel / Dismiss button
+                    if (!root.is_downloading): ActionButton {
+                        text: root.is_ready_to_restart ? "Later" : "Close";
+                        height: 36px;
+                        clicked => { root.close(); }
+                    }
+
+                    // Restart App Button (When downloaded and swapped)
+                    if (root.is_ready_to_restart): ActionButton {
+                        text: "Restart App Now";
+                        icon: @image-url("../icons/refresh.svg");
+                        has_icon: true;
+                        primary: true;
+                        height: 36px;
+                        clicked => { root.restart_app_now(); }
+                    }
+
+                    // In-Place Update Action Button
+                    if (!root.is_ready_to_restart): ActionButton {
+                        text: root.is_downloading ? "Downloading..." : "Update In-Place (Auto)";
+                        icon: @image-url("../icons/download.svg");
+                        has_icon: true;
+                        primary: true;
+                        height: 36px;
+                        clicked => {
+                            if (!root.is_downloading) {
+                                root.start_update();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

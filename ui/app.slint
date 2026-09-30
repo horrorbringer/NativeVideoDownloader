@@ -5,6 +5,7 @@ import { EpisodeModal } from "components/episode_modal.slint";
 import { MediaConverterModal } from "components/media_converter_modal.slint";
 import { NetworkDiagnosticModal } from "components/network_diagnostic_modal.slint";
 import { StreamSelectorModal } from "components/stream_selector_modal.slint";
+import { UpdateModal } from "components/update_modal.slint";
 import { HomeTab } from "tabs/home_tab.slint";
 import { DownloadsTab } from "tabs/downloads_tab.slint";
 import { HistoryTab } from "tabs/history_tab.slint";
@@ -223,6 +224,29 @@ export component AppWindow inherits Window {
     in-out property <bool> auto_retry_enabled: true;
     in-out property <int> auto_retry_interval_index: 1;
     in-out property <int> auto_retry_max_index: 0;
+
+    // In-App GitHub Auto-Updater properties
+    in-out property <string> app_version: "v0.2.1";
+    in-out property <string> app_update_status: "";
+    in-out property <bool> is_checking_app_update: false;
+    in-out property <bool> show_update_modal: false;
+    in-out property <string> update_latest_version: "";
+    in-out property <string> update_release_title: "";
+    in-out property <string> update_release_notes: "";
+    in-out property <string> update_release_date: "";
+    in-out property <string> update_asset_name: "";
+    in-out property <string> update_download_url: "";
+    in-out property <string> update_browser_url: "";
+    in-out property <bool> update_is_downloading: false;
+    in-out property <float> update_download_progress: 0.0;
+    in-out property <string> update_download_status_text: "";
+    in-out property <bool> update_is_ready_to_restart: false;
+    in-out property <string> update_error_message: "";
+
+    callback check_app_updates();
+    callback start_app_update(string);
+    callback restart_app_to_update();
+    callback open_browser_release_url(string);
 
     callback bypass_scheduler_now();
     callback set_scheduler_enabled(bool);
@@ -882,7 +906,9 @@ export component AppWindow inherits Window {
 
             if root.active_tab == 5: AboutTab {
                 app_name: "Native Video Downloader Pro";
-                app_version: "v0.1.0 (2026.09 Edition)";
+                app_version: root.app_version + " (2026.09 Edition)";
+                app_update_status: root.app_update_status;
+                is_checking_app_update: root.is_checking_app_update;
                 host_os_info: root.host_os_info;
                 ytdlp_version_text: root.ytdlp_version_text;
                 ytdlp_path_text: root.ytdlp_path_text;
@@ -897,6 +923,7 @@ export component AppWindow inherits Window {
                 open_download_folder => { root.open_current_download_dir(); }
                 open_external_url(url) => { root.open_external_url(url); }
                 check_updates => { root.update_all_binaries(); }
+                check_app_updates => { root.check_app_updates(); }
             }
 
             // Status bar at bottom
@@ -1242,6 +1269,27 @@ export component AppWindow inherits Window {
         confirm_download(q_spec) => {
             root.start_custom_stream_download(q_spec);
         }
+    }
+
+    // In-App GitHub Auto-Updater Modal
+    UpdateModal {
+        is_open: root.show_update_modal;
+        current_version: root.app_version;
+        latest_version: root.update_latest_version;
+        release_title: root.update_release_title;
+        release_notes: root.update_release_notes;
+        release_date: root.update_release_date;
+        asset_name: root.update_asset_name;
+        is_downloading: root.update_is_downloading;
+        download_progress: root.update_download_progress;
+        download_status_text: root.update_download_status_text;
+        is_ready_to_restart: root.update_is_ready_to_restart;
+        error_message: root.update_error_message;
+
+        close => { root.show_update_modal = false; }
+        start_update => { root.start_app_update(root.update_download_url); }
+        restart_app_now => { root.restart_app_to_update(); }
+        open_browser_release => { root.open_browser_release_url(root.update_browser_url); }
     }
 }
 

@@ -7,6 +7,7 @@ mod models;
 mod network;
 pub mod notifications;
 pub mod theme;
+pub mod updater;
 
 use theme::{ThemeMode, is_system_dark_mode, resolve_is_dark};
 
@@ -4185,6 +4186,131 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
         });
     });
 
+    // In-App GitHub Application Auto-Updater Callbacks
+    let weak_check_app = main_window.as_weak();
+    main_window.on_check_app_updates(move || {
+        let weak = weak_check_app.clone();
+        tokio::spawn(async move {
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_is_checking_app_update(true);
+                win.set_app_update_status("Checking GitHub...".into());
+                win.set_status_message("Checking for application updates on GitHub...".into());
+            });
+
+            let current_version = env!("CARGO_PKG_VERSION");
+            match updater::check_for_updates(current_version).await {
+                Ok(Some(release)) => {
+                    info!("Update available: {:?}", release.tag_name);
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_is_checking_app_update(false);
+                        win.set_app_update_status(format!("Update: {}", release.tag_name).into());
+                        win.set_update_latest_version(release.tag_name.clone().into());
+                        win.set_update_release_title(release.title.into());
+                        win.set_update_release_notes(release.release_notes.into());
+                        win.set_update_release_date(release.published_at.into());
+                        win.set_update_asset_name(release.asset_name.clone().unwrap_or_default().into());
+                        win.set_update_download_url(release.direct_download_url.clone().unwrap_or_default().into());
+                        win.set_update_browser_url(release.release_url.into());
+                        win.set_update_is_downloading(false);
+                        win.set_update_is_ready_to_restart(false);
+                        win.set_update_download_progress(0.0);
+                        win.set_update_download_status_text("".into());
+                        win.set_update_error_message("".into());
+                        win.set_show_update_modal(true);
+                        win.set_status_message(format!("New version {} available!", release.tag_name).into());
+                    });
+                }
+                Ok(None) => {
+                    info!("App is up to date");
+                    let _ = weak.upgrade_in_event_loop(|win| {
+                        win.set_is_checking_app_update(false);
+                        win.set_app_update_status("Latest Version".into());
+                        win.set_status_message(format!("Native Video Downloader is up to date (v{})", env!("CARGO_PKG_VERSION")).into());
+                    });
+                }
+                Err(err) => {
+                    warn!("Failed to check for updates: {}", err);
+                    let err_str = err.to_string();
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_is_checking_app_update(false);
+                        win.set_app_update_status("Check Failed".into());
+                        win.set_status_message(format!("Update check failed: {}", err_str).into());
+                    });
+                }
+            }
+        });
+    });
+
+    let weak_start_update = main_window.as_weak();
+    main_window.on_start_app_update(move |download_url_slint| {
+        let download_url = download_url_slint.to_string();
+        let weak = weak_start_update.clone();
+        tokio::spawn(async move {
+            let _ = weak.upgrade_in_event_loop(|win| {
+                win.set_update_is_downloading(true);
+                win.set_update_download_progress(0.0);
+                win.set_update_download_status_text("Connecting to GitHub server...".into());
+                win.set_update_error_message("".into());
+            });
+
+            if download_url.is_empty() {
+                let _ = weak.upgrade_in_event_loop(|win| {
+                    win.set_update_is_downloading(false);
+                    win.set_update_error_message("No direct download asset found for current OS. Please view on GitHub.".into());
+                });
+                return;
+            }
+
+            let weak_progress = weak.clone();
+            let on_progress = move |progress: f32, downloaded: u64, total: u64| {
+                let weak_inner = weak_progress.clone();
+                let status_text = if total > 0 {
+                    format!("{:.1}% ({:.1} MB / {:.1} MB)", progress * 100.0, downloaded as f64 / 1_048_576.0, total as f64 / 1_048_576.0)
+                } else {
+                    format!("{:.1} MB downloaded", downloaded as f64 / 1_048_576.0)
+                };
+                let _ = weak_inner.upgrade_in_event_loop(move |win| {
+                    win.set_update_download_progress(progress);
+                    win.set_update_download_status_text(status_text.into());
+                });
+            };
+
+            match updater::install_binary_update(&download_url, on_progress).await {
+                Ok(installed_path) => {
+                    info!("Update installed successfully to {:?}", installed_path);
+                    let _ = weak.upgrade_in_event_loop(|win| {
+                        win.set_update_is_downloading(false);
+                        win.set_update_is_ready_to_restart(true);
+                        win.set_update_download_progress(1.0);
+                        win.set_update_download_status_text("Update installed successfully! Restart to apply.".into());
+                        win.set_status_message("Update ready! Click 'Restart App Now' to finalize.".into());
+                    });
+                }
+                Err(err) => {
+                    error!("Failed to install update: {}", err);
+                    let err_str = err.to_string();
+                    let _ = weak.upgrade_in_event_loop(move |win| {
+                        win.set_update_is_downloading(false);
+                        win.set_update_error_message(err_str.clone().into());
+                        win.set_update_download_status_text("Update installation failed.".into());
+                        win.set_status_message(format!("Update failed: {}", err_str).into());
+                    });
+                }
+            }
+        });
+    });
+
+    main_window.on_restart_app_to_update(move || {
+        info!("Restarting application to apply update");
+        if let Err(e) = updater::restart_application() {
+            error!("Failed to restart application: {}", e);
+        }
+    });
+
+    main_window.on_open_browser_release_url(move |url_str| {
+        let _ = filesystem::open_system_url(&url_str);
+    });
+
     // Callback: Refresh Binary Information
     let weak_refresh = main_window.as_weak();
     main_window.on_refresh_binary_info(move || {
@@ -4427,6 +4553,27 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
             Err(err) => {
                 info!("Background extractor update check deferred: {}", err);
             }
+        }
+    });
+
+    // Quiet background check for application updates on startup
+    let weak_bg_app_update = main_window.as_weak();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
+        let current_version = env!("CARGO_PKG_VERSION");
+        if let Ok(Some(release)) = updater::check_for_updates(current_version).await {
+            info!("Background app update found: {}", release.tag_name);
+            let _ = weak_bg_app_update.upgrade_in_event_loop(move |win| {
+                win.set_app_update_status(format!("New: {}", release.tag_name).into());
+                win.set_update_latest_version(release.tag_name.clone().into());
+                win.set_update_release_title(release.title.into());
+                win.set_update_release_notes(release.release_notes.into());
+                win.set_update_release_date(release.published_at.into());
+                win.set_update_asset_name(release.asset_name.clone().unwrap_or_default().into());
+                win.set_update_download_url(release.direct_download_url.clone().unwrap_or_default().into());
+                win.set_update_browser_url(release.release_url.into());
+                win.set_status_message(format!("A new version ({}) is available! Check About tab.", release.tag_name).into());
+            });
         }
     });
 
