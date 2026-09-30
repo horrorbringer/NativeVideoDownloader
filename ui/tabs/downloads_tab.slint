@@ -34,6 +34,7 @@ export component DownloadsTab inherits VerticalLayout {
     callback move_job_down(string);
     callback prioritize_job(string);
     callback set_speed_limit(int);
+    callback open_converter(string, string);
 
     in-out property <int> speed_graph_mode: 0; // 0 = Bars, 1 = Area, 2 = Stats
     in-out property <string> avg_speed_text: "0 B/s";
@@ -1134,8 +1135,17 @@ export component DownloadsTab inherits VerticalLayout {
                                 text: "Play";
                                 icon: @image-url("../icons/play.svg");
                                 has_icon: true;
+                                primary: true;
                                 height: 28px;
                                 clicked => { root.open_download_file(item.output_path); }
+                            }
+
+                            if item.is_completed: ActionButton {
+                                text: "Audio";
+                                icon: @image-url("../icons/music.svg");
+                                has_icon: true;
+                                height: 28px;
+                                clicked => { root.open_converter(item.output_path, item.title); }
                             }
 
                             if item.is_completed: ActionButton {

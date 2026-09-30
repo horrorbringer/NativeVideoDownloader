@@ -709,6 +709,7 @@ export component AppWindow inherits Window {
                 pause_download(id) => { root.pause_download(id); }
                 resume_download(id) => { root.resume_download(id); }
                 cancel_download(id) => { root.cancel_download(id); }
+                open_converter(p, t) => { root.open_converter_for_file(p, t); }
             }
 
             if root.active_tab == 2: HistoryTab {
@@ -882,20 +883,112 @@ export component AppWindow inherits Window {
                     padding-right: 12px;
                     alignment: space-between;
 
-                    Text {
-                        text: root.status_message;
-                        color: root.has_error ? Theme.error_text : Theme.text_secondary;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        overflow: elide;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
                         horizontal-stretch: 1;
+
+                        Text {
+                            text: root.status_message;
+                            color: root.has_error ? Theme.error_text : Theme.text_secondary;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
                     }
 
-                    Text {
-                        text: "v0.1.0 • Slint Native Engine";
-                        color: Theme.text_dimmed;
-                        font-size: 11px;
-                        vertical-alignment: center;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+
+                        // Quick Speed Throttle Pill
+                        Rectangle {
+                            height: 22px;
+                            border-radius: 11px;
+                            background: speed_touch.has-hover ? (Theme.is_dark ? #283354 : #e2e8f0) : (Theme.is_dark ? #1e2436 : #f1f5f9);
+                            border-width: 1px;
+                            border-color: root.selected_speed_limit_index > 0 ? Theme.brand_purple : (Theme.is_dark ? #323d5c : #cbd5e1);
+                            animate background { duration: 100ms; }
+                            animate border-color { duration: 100ms; }
+
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                spacing: 4px;
+                                alignment: center;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: @image-url("icons/bolt.svg");
+                                        width: 10px;
+                                        height: 10px;
+                                        colorize: root.selected_speed_limit_index > 0 ? (Theme.is_dark ? #fbbf24 : #d97706) : Theme.brand_purple;
+                                    }
+                                }
+
+                                Text {
+                                    text: root.selected_speed_limit_index == 0 ? "Unlimited" :
+                                          root.selected_speed_limit_index == 1 ? "1 MB/s" :
+                                          root.selected_speed_limit_index == 2 ? "2 MB/s" :
+                                          root.selected_speed_limit_index == 3 ? "5 MB/s" :
+                                          root.selected_speed_limit_index == 4 ? "10 MB/s" : "Throttled";
+                                    color: root.selected_speed_limit_index > 0 ? (Theme.is_dark ? #fbbf24 : #d97706) : Theme.text_secondary;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            speed_touch := TouchArea {
+                                clicked => {
+                                    let next_idx = root.selected_speed_limit_index >= 4 ? 0 : (root.selected_speed_limit_index + 1);
+                                    root.set_speed_limit(next_idx);
+                                }
+                            }
+                        }
+
+                        // Workers chip
+                        Rectangle {
+                            height: 22px;
+                            border-radius: 11px;
+                            background: Theme.is_dark ? #1e2436 : #f1f5f9;
+                            border-width: 1px;
+                            border-color: Theme.is_dark ? #323d5c : #cbd5e1;
+
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                spacing: 4px;
+                                alignment: center;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: @image-url("icons/cpu.svg");
+                                        width: 10px;
+                                        height: 10px;
+                                        colorize: Theme.text_muted;
+                                    }
+                                }
+
+                                Text {
+                                    text: root.selected_concurrency + " Workers";
+                                    color: Theme.text_muted;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: "v0.1.0 • Native Engine";
+                            color: Theme.text_dimmed;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
                     }
                 }
             }
