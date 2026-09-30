@@ -2007,6 +2007,108 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // Helper: update live batch preview, detected count, and platform breakdown in Slint UI
+    fn update_batch_preview_in_ui(raw_text: &str, win: &AppWindow) {
+        let parsed_links = filesystem::parse_links_from_text(raw_text);
+        let mut normalized_links = Vec::new();
+        let mut seen = HashSet::new();
+
+        for raw_url in parsed_links {
+            let norm = downloader::normalize_media_url(&raw_url);
+            if seen.insert(norm.clone()) {
+                normalized_links.push(norm);
+            }
+        }
+
+        let detected_count = normalized_links.len() as i32;
+
+        let mut yt_count = 0;
+        let mut kisskh_count = 0;
+        let mut tiktok_count = 0;
+        let mut douyin_count = 0;
+        let mut fb_count = 0;
+        let mut other_count = 0;
+
+        let mut items = Vec::new();
+        for (i, url) in normalized_links.iter().enumerate() {
+            let domain = extract_domain_from_url(url);
+            if domain.contains("youtube") {
+                yt_count += 1;
+            } else if domain.contains("kisskh") {
+                kisskh_count += 1;
+            } else if domain.contains("tiktok") {
+                tiktok_count += 1;
+            } else if domain.contains("douyin") {
+                douyin_count += 1;
+            } else if domain.contains("facebook") {
+                fb_count += 1;
+            } else {
+                other_count += 1;
+            }
+
+            let (title, _) = resolve_batch_item_title_and_referer(url);
+
+            items.push(BatchItemData {
+                index: (i + 1) as i32,
+                url: url.clone().into(),
+                domain: domain.into(),
+                title: title.into(),
+            });
+        }
+
+        let mut parts = Vec::new();
+        if yt_count > 0 { parts.push(format!("{} YouTube", yt_count)); }
+        if kisskh_count > 0 { parts.push(format!("{} KissKH", kisskh_count)); }
+        if tiktok_count > 0 { parts.push(format!("{} TikTok", tiktok_count)); }
+        if douyin_count > 0 { parts.push(format!("{} Douyin", douyin_count)); }
+        if fb_count > 0 { parts.push(format!("{} Facebook", fb_count)); }
+        if other_count > 0 { parts.push(format!("{} Other", other_count)); }
+
+        let platforms_summary = if !parts.is_empty() {
+            parts.join(" • ")
+        } else if !raw_text.trim().is_empty() {
+            "No supported links".to_string()
+        } else {
+            String::new()
+        };
+
+        let model = Rc::new(VecModel::from(items));
+        win.set_batch_items(ModelRc::from(model));
+        win.set_batch_detected_count(detected_count);
+        win.set_batch_platforms_summary(platforms_summary.into());
+    }
+
+    // Callback: Parse and preview batch URLs
+    let weak_parse_batch = main_window.as_weak();
+    main_window.on_parse_batch_urls(move |text_str| {
+        let text_val = text_str.to_string();
+        let _ = weak_parse_batch.upgrade_in_event_loop(move |win| {
+            update_batch_preview_in_ui(&text_val, &win);
+            win.set_status_message(
+                format!("Analyzed batch input: {} link(s) detected", win.get_batch_detected_count()).into(),
+            );
+        });
+    });
+
+    // Callback: Remove a single item from batch URLs input
+    let weak_remove_batch = main_window.as_weak();
+    main_window.on_remove_batch_item(move |idx| {
+        let _ = weak_remove_batch.upgrade_in_event_loop(move |win| {
+            let current = win.get_batch_urls_text().to_string();
+            let parsed_links = filesystem::parse_links_from_text(&current);
+            let mut remaining = Vec::new();
+            for (i, link) in parsed_links.into_iter().enumerate() {
+                if (i + 1) as i32 != idx {
+                    remaining.push(link);
+                }
+            }
+            let updated_text = remaining.join("\n");
+            win.set_batch_urls_text(updated_text.clone().into());
+            update_batch_preview_in_ui(&updated_text, &win);
+            win.set_status_message("Removed link from batch queue".into());
+        });
+    });
+
     // Callback: Paste into Batch URLs input
     let weak_paste_batch = main_window.as_weak();
     main_window.on_paste_batch_from_clipboard(move || {
@@ -2028,8 +2130,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     format!("{}\n{}", current.trim_end(), to_append)
                 };
-                win.set_batch_urls_text(new_val.into());
-                win.set_status_message("Pasted links into batch input from clipboard".into());
+                win.set_batch_urls_text(new_val.clone().into());
+                update_batch_preview_in_ui(&new_val, &win);
+                win.set_status_message(format!("Pasted links into batch input ({} detected)", win.get_batch_detected_count()).into());
             });
         }
     });
@@ -2101,7 +2204,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             } else {
                                 format!("{}\n{}", current.trim_end(), batch_text)
                             };
-                            win.set_batch_urls_text(combined.into());
+                            win.set_batch_urls_text(combined.clone().into());
+                            update_batch_preview_in_ui(&combined, &win);
                             win.set_has_error(false);
                             win.set_error_message("".into());
                             win.set_status_message(
@@ -2568,6 +2672,7 @@ fn get_selected_sub_langs_indices(window: &AppWindow) -> Vec<i32> {
             let _ = weak.upgrade_in_event_loop(move |window| {
                 window.set_status_message(msg.into());
                 window.set_batch_urls_text("".into());
+                update_batch_preview_in_ui("", &window);
                 window.set_active_tab(1); // Switch to Downloads view
             });
         });

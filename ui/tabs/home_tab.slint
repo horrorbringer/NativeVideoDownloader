@@ -1,7 +1,7 @@
 import { LineEdit, ProgressIndicator, ScrollView, TextEdit } from "std-widgets.slint";
 import { ActionButton } from "../components/action_button.slint";
 import { IconChip } from "../components/icon_chip.slint";
-import { EpisodeItemData } from "../models.slint";
+import { EpisodeItemData, BatchItemData } from "../models.slint";
 import { Theme } from "../theme.slint";
 
 export component HomeTab inherits ScrollView {
@@ -10,6 +10,9 @@ export component HomeTab inherits ScrollView {
     in-out property <bool> batch_mode: false;
     in-out property <string> input_url_text: "";
     in-out property <string> batch_urls_text: "";
+    in-out property <[BatchItemData]> batch_items: [];
+    in-out property <int> batch_detected_count: 0;
+    in-out property <string> batch_platforms_summary: "";
     in-out property <bool> is_analyzing: false;
     in-out property <bool> has_metadata: false;
     in-out property <string> video_title: "";
@@ -86,6 +89,8 @@ export component HomeTab inherits ScrollView {
     callback toggle_sub_lang(int);
     callback start_download(int, bool, bool, int, int, bool, int);
     callback start_batch_download(string, int, bool, int, int, bool, int);
+    callback parse_batch_urls(string);
+    callback remove_batch_item(int);
     callback dismiss_error();
     callback open_logs();
 
@@ -1539,6 +1544,17 @@ export component HomeTab inherits ScrollView {
                         }
 
                         ActionButton {
+                            text: "Verify & Preview";
+                            icon: @image-url("../icons/refresh.svg");
+                            has_icon: true;
+                            height: 30px;
+                            enabled: root.batch_urls_text != "";
+                            clicked => {
+                                root.parse_batch_urls(root.batch_urls_text);
+                            }
+                        }
+
+                        ActionButton {
                             text: "Import File (.txt)";
                             icon: @image-url("../icons/folder.svg");
                             has_icon: true;
@@ -1563,7 +1579,153 @@ export component HomeTab inherits ScrollView {
                 batch_input := TextEdit {
                     text <=> root.batch_urls_text;
                     font_size: 13px;
-                    height: 140px;
+                    height: 120px;
+                }
+
+                // Batch Validation & Link Breakdown Banner
+                if root.batch_detected_count > 0: Rectangle {
+                    background: Theme.is_dark ? #131d2e : #eff6ff;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: Theme.is_dark ? #1e3a8a : #bfdbfe;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        padding-top: 8px;
+                        padding-bottom: 8px;
+                        alignment: space-between;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../icons/check.svg");
+                                    width: 14px;
+                                    height: 14px;
+                                    colorize: Theme.is_dark ? #34d399 : #059669;
+                                }
+                            }
+
+                            Text {
+                                text: root.batch_detected_count + " links ready to download";
+                                color: Theme.is_dark ? #34d399 : #059669;
+                                font-size: 12px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Text {
+                            text: root.batch_platforms_summary;
+                            color: Theme.brand_purple;
+                            font-size: 12px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Scrollable Live Batch Items Table
+                if root.batch_items.length > 0: Rectangle {
+                    background: Theme.inner_bg;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: Theme.inner_border;
+                    height: 130px;
+
+                    ScrollView {
+                        VerticalLayout {
+                            padding: 6px;
+                            spacing: 6px;
+
+                            for item in root.batch_items: Rectangle {
+                                background: Theme.card_bg;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: Theme.card_border;
+                                height: 36px;
+
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 8px;
+                                    spacing: 8px;
+                                    alignment: space-between;
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        horizontal-stretch: 1;
+
+                                        Text {
+                                            text: "#" + item.index;
+                                            color: Theme.text_muted;
+                                            font-size: 11px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
+
+                                        // Domain chip
+                                        Rectangle {
+                                            height: 20px;
+                                            border-radius: 4px;
+                                            background: Theme.is_dark ? #1e1b4b : #eef2ff;
+                                            border-width: 1px;
+                                            border-color: Theme.is_dark ? #3730a3 : #c7d2fe;
+
+                                            HorizontalLayout {
+                                                padding-left: 6px;
+                                                padding-right: 6px;
+                                                spacing: 4px;
+                                                alignment: center;
+
+                                                VerticalLayout {
+                                                    alignment: center;
+                                                    Image {
+                                                        source: @image-url("../icons/link.svg");
+                                                        width: 10px;
+                                                        height: 10px;
+                                                        colorize: Theme.is_dark ? #a5b4fc : #4f46e5;
+                                                    }
+                                                }
+
+                                                Text {
+                                                    text: item.domain;
+                                                    color: Theme.is_dark ? #a5b4fc : #4f46e5;
+                                                    font-size: 10px;
+                                                    font-weight: 600;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            text: item.title;
+                                            color: Theme.text_primary;
+                                            font-size: 12px;
+                                            font-weight: 600;
+                                            overflow: elide;
+                                            horizontal-stretch: 1;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    ActionButton {
+                                        icon: @image-url("../icons/x.svg");
+                                        has_icon: true;
+                                        danger: true;
+                                        height: 24px;
+                                        clicked => {
+                                            root.remove_batch_item(item.index);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 HorizontalLayout {

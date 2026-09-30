@@ -1,4 +1,4 @@
-import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData } from "models.slint";
+import { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData, BatchItemData } from "models.slint";
 import { ActionButton } from "components/action_button.slint";
 import { NavButton } from "components/nav_button.slint";
 import { EpisodeModal } from "components/episode_modal.slint";
@@ -10,7 +10,7 @@ import { LogsTab } from "tabs/logs_tab.slint";
 import { SettingsTab } from "tabs/settings_tab.slint";
 import { Theme } from "theme.slint";
 
-export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData, Theme }
+export { DownloadItemData, EpisodeItemData, HistoryItemData, LogEntryData, SpeedSampleData, BatchItemData, Theme }
 
 export component AppWindow inherits Window {
     title: root.active_downloads_count > 0 ? ("Native Video Downloader (" + root.active_downloads_count + " downloading • " + root.current_total_speed_text + ")") : "Native Video Downloader";
@@ -130,6 +130,9 @@ export component AppWindow inherits Window {
     // Input properties
     in-out property <string> input_url_text: "";
     in-out property <string> batch_urls_text: "";
+    in-out property <[BatchItemData]> batch_items: [];
+    in-out property <int> batch_detected_count: 0;
+    in-out property <string> batch_platforms_summary: "";
 
     // Settings properties
     in-out property <string> download_dir_path: "~/Downloads";
@@ -223,6 +226,8 @@ export component AppWindow inherits Window {
     callback toggle_sub_lang(int);
     callback start_download(int, bool, bool, int, int, bool, int);
     callback start_batch_download(string, int, bool, int, int, bool, int);
+    callback parse_batch_urls(string);
+    callback remove_batch_item(int);
     callback pause_download(string);
     callback resume_download(string);
     callback cancel_download(string);
@@ -556,6 +561,9 @@ export component AppWindow inherits Window {
                 batch_mode <=> root.batch_mode;
                 input_url_text <=> root.input_url_text;
                 batch_urls_text <=> root.batch_urls_text;
+                batch_items: root.batch_items;
+                batch_detected_count: root.batch_detected_count;
+                batch_platforms_summary: root.batch_platforms_summary;
                 is_analyzing: root.is_analyzing;
                 has_metadata: root.has_metadata;
                 video_title: root.video_title;
@@ -624,6 +632,8 @@ export component AppWindow inherits Window {
                 dismiss_clipboard_detected() => { root.dismiss_clipboard_detected(); }
                 start_download(fmt, subs, thumb, afmt, abr, meta, sub_lang) => { root.start_download(fmt, subs, thumb, afmt, abr, meta, sub_lang); }
                 start_batch_download(text, fmt, thumb, afmt, abr, meta, sub_lang) => { root.start_batch_download(text, fmt, thumb, afmt, abr, meta, sub_lang); }
+                parse_batch_urls(text) => { root.parse_batch_urls(text); }
+                remove_batch_item(idx) => { root.remove_batch_item(idx); }
                 dismiss_error() => { root.dismiss_error(); }
                 open_logs() => { root.active_tab = 3; }
             }
