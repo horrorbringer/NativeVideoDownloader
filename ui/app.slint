@@ -909,6 +909,8 @@ export component AppWindow inherits Window {
                 app_version: root.app_version + " (2026.09 Edition)";
                 app_update_status: root.app_update_status;
                 is_checking_app_update: root.is_checking_app_update;
+                is_updating_engines: root.is_updating_ytdlp || root.is_updating_ffmpeg;
+                engine_update_status: root.binary_update_status;
                 host_os_info: root.host_os_info;
                 ytdlp_version_text: root.ytdlp_version_text;
                 ytdlp_path_text: root.ytdlp_path_text;
@@ -922,7 +924,8 @@ export component AppWindow inherits Window {
                 open_logs => { root.active_tab = 3; }
                 open_download_folder => { root.open_current_download_dir(); }
                 open_external_url(url) => { root.open_external_url(url); }
-                check_updates => { root.update_all_binaries(); }
+                check_engine_updates => { root.update_all_binaries(); }
+                refresh_engine_info => { root.refresh_binary_info(); }
                 check_app_updates => { root.check_app_updates(); }
             }
 

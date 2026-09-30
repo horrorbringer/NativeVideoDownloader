@@ -3,7 +3,7 @@ import { ActionButton } from "../components/action_button.slint";
 import { Theme } from "../theme.slint";
 
 export component AboutTab inherits ScrollView {
-    in-out property <string> app_name: "Native Video Downloader";
+    in-out property <string> app_name: "Native Video Downloader Pro";
     in-out property <string> app_version: "v0.2.1 (2026.09 Edition)";
     in-out property <string> host_os_info: "macOS (Apple Silicon / aarch64)";
     in-out property <string> ytdlp_version_text: "Detecting...";
@@ -15,12 +15,15 @@ export component AboutTab inherits ScrollView {
     in-out property <string> download_directory: "~/Downloads";
     in-out property <string> app_update_status: "";
     in-out property <bool> is_checking_app_update: false;
+    in-out property <bool> is_updating_engines: false;
+    in-out property <string> engine_update_status: "";
 
     callback copy_diagnostics();
     callback open_logs();
     callback open_download_folder();
     callback open_external_url(string);
-    callback check_updates();
+    callback check_engine_updates();
+    callback refresh_engine_info();
     callback check_app_updates();
 
     vertical-stretch: 1;
@@ -30,12 +33,12 @@ export component AboutTab inherits ScrollView {
         padding-bottom: 24px;
         spacing: 16px;
 
-        // 1. Hero Branding & Architecture Card
+        // 1. Hero Branding & Quick App Status Card
         Rectangle {
-            background: Theme.is_dark ? #161c2d : #ffffff;
-            border-radius: 12px;
+            background: Theme.card_bg;
+            border-radius: 14px;
             border-width: 1px;
-            border-color: Theme.is_dark ? #232f4e : #e2e8f0;
+            border-color: Theme.card_border;
 
             VerticalLayout {
                 padding: 20px;
@@ -45,10 +48,10 @@ export component AboutTab inherits ScrollView {
                     spacing: 18px;
                     alignment: start;
 
-                    // Radiant App Logo Squircle
+                    // App Logo Squircle
                     Rectangle {
-                        width: 64px;
-                        height: 64px;
+                        width: 68px;
+                        height: 68px;
                         border-radius: 16px;
                         background: Theme.is_dark ? #2e1065 : #4f46e5;
                         border-width: 1.5px;
@@ -58,17 +61,17 @@ export component AboutTab inherits ScrollView {
                             alignment: center;
                             Image {
                                 source: @image-url("../icons/sparkles.svg");
-                                width: 32px;
-                                height: 32px;
+                                width: 34px;
+                                height: 34px;
                                 colorize: #ffffff;
                                 horizontal-alignment: center;
                             }
                         }
                     }
 
-                    // Title & Description
+                    // Title, Version & Pitch
                     VerticalLayout {
-                        spacing: 4px;
+                        spacing: 6px;
                         horizontal-stretch: 1;
 
                         HorizontalLayout {
@@ -78,22 +81,22 @@ export component AboutTab inherits ScrollView {
                             Text {
                                 text: root.app_name;
                                 color: Theme.text_primary;
-                                font-size: 20px;
+                                font-size: 21px;
                                 font-weight: 800;
                                 vertical-alignment: center;
                             }
 
-                            // Release pill
+                            // Current Version Pill
                             Rectangle {
-                                height: 22px;
-                                border-radius: 11px;
+                                height: 24px;
+                                border-radius: 12px;
                                 background: Theme.is_dark ? #1e1b4b : #eef2ff;
                                 border-width: 1px;
                                 border-color: Theme.is_dark ? #3730a3 : #c7d2fe;
 
                                 HorizontalLayout {
-                                    padding-left: 8px;
-                                    padding-right: 8px;
+                                    padding-left: 9px;
+                                    padding-right: 9px;
                                     alignment: center;
                                     Text {
                                         text: root.app_version;
@@ -105,39 +108,39 @@ export component AboutTab inherits ScrollView {
                                 }
                             }
 
-                            // In-App Update Trigger Pill
+                            // Interactive In-App Update Trigger Pill
                             Rectangle {
-                                height: 22px;
-                                border-radius: 11px;
-                                background: check_app_btn.has-hover ? (Theme.is_dark ? #312e81 : #e0e7ff) : (Theme.is_dark ? #1e1b4b : #f1f5f9);
+                                height: 24px;
+                                border-radius: 12px;
+                                background: check_app_btn.has-hover ? (Theme.is_dark ? #064e3b : #d1fae5) : (Theme.is_dark ? #022c22 : #ecfdf5);
                                 border-width: 1px;
-                                border-color: Theme.is_dark ? #4f46e5 : #cbd5e1;
+                                border-color: Theme.is_dark ? #059669 : #a7f3d0;
 
                                 check_app_btn := TouchArea {
                                     clicked => { root.check_app_updates(); }
                                 }
 
                                 HorizontalLayout {
-                                    padding-left: 8px;
-                                    padding-right: 8px;
-                                    spacing: 4px;
+                                    padding-left: 9px;
+                                    padding-right: 9px;
+                                    spacing: 5px;
                                     alignment: center;
 
                                     VerticalLayout {
                                         alignment: center;
                                         Image {
-                                            source: @image-url("../icons/sparkles.svg");
+                                            source: @image-url("../icons/refresh.svg");
                                             width: 11px;
                                             height: 11px;
-                                            colorize: Theme.is_dark ? #a5b4fc : #4f46e5;
+                                            colorize: Theme.is_dark ? #34d399 : #059669;
                                         }
                                     }
 
                                     Text {
-                                        text: root.is_checking_app_update ? "Checking..." : (root.app_update_status != "" ? root.app_update_status : "Check Updates");
-                                        color: Theme.is_dark ? #c7d2fe : #4338ca;
+                                        text: root.is_checking_app_update ? "Checking GitHub..." : (root.app_update_status != "" ? root.app_update_status : "Check App Updates");
+                                        color: Theme.is_dark ? #6ee7b7 : #047857;
                                         font-size: 11px;
-                                        font-weight: 600;
+                                        font-weight: 700;
                                         vertical-alignment: center;
                                     }
                                 }
@@ -145,7 +148,7 @@ export component AboutTab inherits ScrollView {
                         }
 
                         Text {
-                            text: "High-performance, ultra-low-memory native media stream extractor and batch video accelerator.";
+                            text: "Ultra-fast, native video stream extractor, HLS keygen decryptor, and batch media acceleration engine.";
                             color: Theme.text_secondary;
                             font-size: 13px;
                         }
@@ -153,10 +156,10 @@ export component AboutTab inherits ScrollView {
                         // Architecture Tech Stack Badges
                         HorizontalLayout {
                             spacing: 8px;
-                            padding-top: 6px;
+                            padding-top: 4px;
                             alignment: start;
 
-                            // Rust badge
+                            // Rust 2024
                             Rectangle {
                                 height: 22px;
                                 border-radius: 4px;
@@ -168,17 +171,14 @@ export component AboutTab inherits ScrollView {
                                     padding-right: 7px;
                                     spacing: 4px;
                                     alignment: center;
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Image {
-                                            source: @image-url("../icons/cpu.svg");
-                                            width: 11px;
-                                            height: 11px;
-                                            colorize: Theme.is_dark ? #4ade80 : #15803d;
-                                        }
+                                    Image {
+                                        source: @image-url("../icons/cpu.svg");
+                                        width: 11px;
+                                        height: 11px;
+                                        colorize: Theme.is_dark ? #4ade80 : #15803d;
                                     }
                                     Text {
-                                        text: "Rust 2021 Core";
+                                        text: "Rust 2024 Core";
                                         color: Theme.is_dark ? #4ade80 : #15803d;
                                         font-size: 11px;
                                         font-weight: 700;
@@ -187,7 +187,7 @@ export component AboutTab inherits ScrollView {
                                 }
                             }
 
-                            // Slint badge
+                            // Slint Native GUI
                             Rectangle {
                                 height: 22px;
                                 border-radius: 4px;
@@ -199,17 +199,14 @@ export component AboutTab inherits ScrollView {
                                     padding-right: 7px;
                                     spacing: 4px;
                                     alignment: center;
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Image {
-                                            source: @image-url("../icons/monitor.svg");
-                                            width: 11px;
-                                            height: 11px;
-                                            colorize: Theme.is_dark ? #60a5fa : #1d4ed8;
-                                        }
+                                    Image {
+                                        source: @image-url("../icons/monitor.svg");
+                                        width: 11px;
+                                        height: 11px;
+                                        colorize: Theme.is_dark ? #60a5fa : #1d4ed8;
                                     }
                                     Text {
-                                        text: "Slint Native GUI (No Electron)";
+                                        text: "Slint Native GUI (Zero WebKit/Electron)";
                                         color: Theme.is_dark ? #60a5fa : #1d4ed8;
                                         font-size: 11px;
                                         font-weight: 700;
@@ -218,7 +215,7 @@ export component AboutTab inherits ScrollView {
                                 }
                             }
 
-                            // Tokio badge
+                            // Tokio Engine
                             Rectangle {
                                 height: 22px;
                                 border-radius: 4px;
@@ -230,14 +227,11 @@ export component AboutTab inherits ScrollView {
                                     padding-right: 7px;
                                     spacing: 4px;
                                     alignment: center;
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Image {
-                                            source: @image-url("../icons/bolt.svg");
-                                            width: 11px;
-                                            height: 11px;
-                                            colorize: Theme.is_dark ? #c084fc : #7e22ce;
-                                        }
+                                    Image {
+                                        source: @image-url("../icons/bolt.svg");
+                                        width: 11px;
+                                        height: 11px;
+                                        colorize: Theme.is_dark ? #c084fc : #7e22ce;
                                     }
                                     Text {
                                         text: "Tokio Async Engine";
@@ -249,7 +243,7 @@ export component AboutTab inherits ScrollView {
                                 }
                             }
 
-                            // SQLite badge
+                            // SQLite WAL
                             Rectangle {
                                 height: 22px;
                                 border-radius: 4px;
@@ -261,17 +255,14 @@ export component AboutTab inherits ScrollView {
                                     padding-right: 7px;
                                     spacing: 4px;
                                     alignment: center;
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Image {
-                                            source: @image-url("../icons/package.svg");
-                                            width: 11px;
-                                            height: 11px;
-                                            colorize: Theme.is_dark ? #fbbf24 : #b45309;
-                                        }
+                                    Image {
+                                        source: @image-url("../icons/package.svg");
+                                        width: 11px;
+                                        height: 11px;
+                                        colorize: Theme.is_dark ? #fbbf24 : #b45309;
                                     }
                                     Text {
-                                        text: "SQLite WAL Database";
+                                        text: "SQLite 3 WAL";
                                         color: Theme.is_dark ? #fbbf24 : #b45309;
                                         font-size: 11px;
                                         font-weight: 700;
@@ -285,15 +276,225 @@ export component AboutTab inherits ScrollView {
             }
         }
 
-        // 2. System Diagnostics & Engine Status Grid
+        // 2. Software & Engine Update Center (Clearly separates App vs Engines)
         Rectangle {
             background: Theme.card_bg;
-            border-radius: 12px;
+            border-radius: 14px;
             border-width: 1px;
             border-color: Theme.card_border;
 
             VerticalLayout {
-                padding: 16px;
+                padding: 18px;
+                spacing: 14px;
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    Image {
+                        source: @image-url("../icons/refresh.svg");
+                        width: 16px;
+                        height: 16px;
+                        colorize: Theme.primary_accent;
+                    }
+
+                    Text {
+                        text: "Version & Engine Update Center";
+                        color: Theme.text_primary;
+                        font-size: 15px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 12px;
+
+                    // App Software Updater Box
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 8px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+
+                                Text {
+                                    text: "APPLICATION SOFTWARE";
+                                    color: Theme.text_muted;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                }
+
+                                Text {
+                                    text: "GitHub In-Place Updater";
+                                    color: Theme.primary_accent;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+
+                                Text {
+                                    text: "Current Version: " + root.app_version;
+                                    color: Theme.text_primary;
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            Text {
+                                text: "Checks official GitHub Releases tag, downloads direct updates in-place, and automatically restarts without manual reinstallation.";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+
+                            HorizontalLayout {
+                                alignment: end;
+                                padding-top: 4px;
+
+                                ActionButton {
+                                    text: root.is_checking_app_update ? "Checking GitHub..." : "Check for App Update";
+                                    icon: @image-url("../icons/sparkles.svg");
+                                    has_icon: true;
+                                    primary: true;
+                                    height: 30px;
+                                    clicked => { root.check_app_updates(); }
+                                }
+                            }
+                        }
+                    }
+
+                    // Downloader Engines (yt-dlp & FFmpeg) Box
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 8px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+
+                                Text {
+                                    text: "EXTRACTION & MUXING ENGINES";
+                                    color: Theme.text_muted;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                }
+
+                                if (root.is_updating_engines): Text {
+                                    text: "Updating Engines...";
+                                    color: #f59e0b;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                }
+                            }
+
+                            // Engine versions
+                            HorizontalLayout {
+                                spacing: 14px;
+
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    horizontal-stretch: 1;
+
+                                    Text {
+                                        text: "yt-dlp Resolver:";
+                                        color: Theme.text_muted;
+                                        font-size: 11px;
+                                    }
+                                    Text {
+                                        text: root.ytdlp_version_text;
+                                        color: Theme.text_primary;
+                                        font-size: 12px;
+                                        font-weight: 700;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    horizontal-stretch: 1;
+
+                                    Text {
+                                        text: "FFmpeg Muxer:";
+                                        color: Theme.text_muted;
+                                        font-size: 11px;
+                                    }
+                                    Text {
+                                        text: root.ffmpeg_version_text;
+                                        color: Theme.text_primary;
+                                        font-size: 12px;
+                                        font-weight: 700;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+
+                            if (root.engine_update_status != ""): Text {
+                                text: root.engine_update_status;
+                                color: Theme.primary_accent;
+                                font-size: 11px;
+                                overflow: elide;
+                            }
+
+                            if (root.engine_update_status == ""): Text {
+                                text: "Auto-manages yt-dlp nightly and standalone FFmpeg binaries for DASH muxing and protocol parsing.";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+
+                            HorizontalLayout {
+                                alignment: end;
+                                spacing: 8px;
+                                padding-top: 4px;
+
+                                ActionButton {
+                                    text: "Refresh Info";
+                                    height: 30px;
+                                    clicked => { root.refresh_engine_info(); }
+                                }
+
+                                ActionButton {
+                                    text: root.is_updating_engines ? "Updating..." : "Update Core Engines";
+                                    icon: @image-url("../icons/refresh.svg");
+                                    has_icon: true;
+                                    height: 30px;
+                                    clicked => { root.check_engine_updates(); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. System Environment & Runtime Paths
+        Rectangle {
+            background: Theme.card_bg;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: Theme.card_border;
+
+            VerticalLayout {
+                padding: 18px;
                 spacing: 12px;
 
                 HorizontalLayout {
@@ -303,18 +504,15 @@ export component AboutTab inherits ScrollView {
                         spacing: 8px;
                         alignment: start;
 
-                        VerticalLayout {
-                            alignment: center;
-                            Image {
-                                source: @image-url("../icons/cpu.svg");
-                                width: 16px;
-                                height: 16px;
-                                colorize: Theme.brand_purple;
-                            }
+                        Image {
+                            source: @image-url("../icons/cpu.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: Theme.brand_purple;
                         }
 
                         Text {
-                            text: "System & Core Engine Diagnostics";
+                            text: "System Environment & Runtime Diagnostics";
                             color: Theme.text_primary;
                             font-size: 15px;
                             font-weight: 700;
@@ -331,7 +529,7 @@ export component AboutTab inherits ScrollView {
                     }
                 }
 
-                // Diagnostics Grid Row 1
+                // Grid Row 1
                 HorizontalLayout {
                     spacing: 10px;
 
@@ -348,7 +546,7 @@ export component AboutTab inherits ScrollView {
                             spacing: 4px;
 
                             Text {
-                                text: "HOST PLATFORM";
+                                text: "HOST SYSTEM ARCHITECTURE";
                                 color: Theme.text_muted;
                                 font-size: 10px;
                                 font-weight: 700;
@@ -360,85 +558,12 @@ export component AboutTab inherits ScrollView {
                                 font-weight: 700;
                             }
                             Text {
-                                text: "Zero VM/JIT • Bare-metal binary";
+                                text: "Zero VM/JIT • Native aarch64/x86_64";
                                 color: Theme.text_secondary;
                                 font-size: 11px;
                             }
                         }
                     }
-
-                    // FFmpeg Muxer
-                    Rectangle {
-                        background: Theme.inner_bg;
-                        border-radius: 8px;
-                        border-width: 1px;
-                        border-color: Theme.inner_border;
-                        horizontal-stretch: 1;
-
-                        VerticalLayout {
-                            padding: 12px;
-                            spacing: 4px;
-
-                            Text {
-                                text: "FFMPEG MEDIA MUXER";
-                                color: Theme.text_muted;
-                                font-size: 10px;
-                                font-weight: 700;
-                            }
-                            Text {
-                                text: root.ffmpeg_version_text;
-                                color: Theme.text_primary;
-                                font-size: 13px;
-                                font-weight: 700;
-                                overflow: elide;
-                            }
-                            Text {
-                                text: root.ffmpeg_path_text != "" ? root.ffmpeg_path_text : "Transcoding, DASH & Audio Muxing";
-                                color: Theme.text_secondary;
-                                font-size: 11px;
-                                overflow: elide;
-                            }
-                        }
-                    }
-
-                    // yt-dlp Core
-                    Rectangle {
-                        background: Theme.inner_bg;
-                        border-radius: 8px;
-                        border-width: 1px;
-                        border-color: Theme.inner_border;
-                        horizontal-stretch: 1;
-
-                        VerticalLayout {
-                            padding: 12px;
-                            spacing: 4px;
-
-                            Text {
-                                text: "YT-DLP RESOLVER CORE";
-                                color: Theme.text_muted;
-                                font-size: 10px;
-                                font-weight: 700;
-                            }
-                            Text {
-                                text: root.ytdlp_version_text;
-                                color: Theme.text_primary;
-                                font-size: 13px;
-                                font-weight: 700;
-                                overflow: elide;
-                            }
-                            Text {
-                                text: root.ytdlp_path_text != "" ? root.ytdlp_path_text : "Extractor & Decryption Engine";
-                                color: Theme.text_secondary;
-                                font-size: 11px;
-                                overflow: elide;
-                            }
-                        }
-                    }
-                }
-
-                // Diagnostics Grid Row 2
-                HorizontalLayout {
-                    spacing: 10px;
 
                     // Companion Media Player
                     Rectangle {
@@ -453,7 +578,7 @@ export component AboutTab inherits ScrollView {
                             spacing: 4px;
 
                             Text {
-                                text: "COMPANION MEDIA PLAYER";
+                                text: "DEFAULT MEDIA PLAYER";
                                 color: Theme.text_muted;
                                 font-size: 10px;
                                 font-weight: 700;
@@ -466,42 +591,9 @@ export component AboutTab inherits ScrollView {
                                 overflow: elide;
                             }
                             Text {
-                                text: "Auto-loads companion .srt subtitle files";
+                                text: "Auto-detects VLC / IINA / mpv / System";
                                 color: Theme.text_secondary;
                                 font-size: 11px;
-                            }
-                        }
-                    }
-
-                    // SQLite Database
-                    Rectangle {
-                        background: Theme.inner_bg;
-                        border-radius: 8px;
-                        border-width: 1px;
-                        border-color: Theme.inner_border;
-                        horizontal-stretch: 1;
-
-                        VerticalLayout {
-                            padding: 12px;
-                            spacing: 4px;
-
-                            Text {
-                                text: "PERSISTENT DATABASE";
-                                color: Theme.text_muted;
-                                font-size: 10px;
-                                font-weight: 700;
-                            }
-                            Text {
-                                text: "SQLite 3 (WAL mode)";
-                                color: Theme.text_primary;
-                                font-size: 13px;
-                                font-weight: 700;
-                            }
-                            Text {
-                                text: root.db_path_text;
-                                color: Theme.text_secondary;
-                                font-size: 11px;
-                                overflow: elide;
                             }
                         }
                     }
@@ -519,7 +611,7 @@ export component AboutTab inherits ScrollView {
                             spacing: 4px;
 
                             Text {
-                                text: "MEMORY FOOTPRINT";
+                                text: "RESOURCE EFFICIENCY";
                                 color: Theme.text_muted;
                                 font-size: 10px;
                                 font-weight: 700;
@@ -531,7 +623,88 @@ export component AboutTab inherits ScrollView {
                                 font-weight: 700;
                             }
                             Text {
-                                text: "10x lighter than web-based downloaders";
+                                text: "10x lighter than Electron downloaders";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                            }
+                        }
+                    }
+                }
+
+                // Grid Row 2: Storage Paths
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    // Download Directory
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+
+                                Text {
+                                    text: "DOWNLOAD DESTINATION FOLDER";
+                                    color: Theme.text_muted;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                }
+
+                                ActionButton {
+                                    text: "Open Folder";
+                                    icon: @image-url("../icons/folder.svg");
+                                    has_icon: true;
+                                    height: 22px;
+                                    clicked => { root.open_download_folder(); }
+                                }
+                            }
+
+                            Text {
+                                text: root.download_directory;
+                                color: Theme.text_primary;
+                                font-size: 12px;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    // SQLite Database File
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+
+                            Text {
+                                text: "PERSISTENT SQLITE DATABASE";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                                font-weight: 700;
+                            }
+
+                            Text {
+                                text: root.db_path_text;
+                                color: Theme.text_primary;
+                                font-size: 12px;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+
+                            Text {
+                                text: "High-concurrency WAL mode • History & Queue persistence";
                                 color: Theme.text_secondary;
                                 font-size: 11px;
                             }
@@ -541,33 +714,30 @@ export component AboutTab inherits ScrollView {
             }
         }
 
-        // 3. Supported Platforms & Native Parsers
+        // 4. Supported Streaming Platforms & Native Decryptors
         Rectangle {
             background: Theme.card_bg;
-            border-radius: 12px;
+            border-radius: 14px;
             border-width: 1px;
             border-color: Theme.card_border;
 
             VerticalLayout {
-                padding: 16px;
+                padding: 18px;
                 spacing: 12px;
 
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
 
-                    VerticalLayout {
-                        alignment: center;
-                        Image {
-                            source: @image-url("../icons/layers.svg");
-                            width: 16px;
-                            height: 16px;
-                            colorize: Theme.brand_purple;
-                        }
+                    Image {
+                        source: @image-url("../icons/layers.svg");
+                        width: 16px;
+                        height: 16px;
+                        colorize: Theme.brand_purple;
                     }
 
                     Text {
-                        text: "Supported Streaming Platforms & Stream Resolvers";
+                        text: "Supported Streaming Platforms & Stream Decryptors";
                         color: Theme.text_primary;
                         font-size: 15px;
                         font-weight: 700;
@@ -596,7 +766,7 @@ export component AboutTab inherits ScrollView {
                                 font-weight: 700;
                             }
                             Text {
-                                text: "4K / 1080p 60fps DASH video+audio muxing, Shorts, full playlists, channel archiving & subtitles.";
+                                text: "4K / 1080p 60fps DASH muxing, Shorts, full playlists, channel archiving & embedded subtitles.";
                                 color: Theme.text_secondary;
                                 font-size: 11px;
                                 wrap: word-wrap;
@@ -621,7 +791,7 @@ export component AboutTab inherits ScrollView {
                                 font-weight: 700;
                             }
                             Text {
-                                text: "Full Asian drama series batch extractor, dynamic HLS keygen decryptor, embedded companion multi-language .srt subtitles.";
+                                text: "Full Asian drama series batch extractor, dynamic HLS keygen decryptor, embedded companion multi-language .srt.";
                                 color: Theme.text_secondary;
                                 font-size: 11px;
                                 wrap: word-wrap;
@@ -629,7 +799,7 @@ export component AboutTab inherits ScrollView {
                         }
                     }
 
-                    // TikTok
+                    // TikTok & Douyin
                     Rectangle {
                         background: Theme.inner_bg;
                         border-radius: 8px;
@@ -640,13 +810,13 @@ export component AboutTab inherits ScrollView {
                             padding: 12px;
                             spacing: 4px;
                             Text {
-                                text: "TikTok";
+                                text: "TikTok & Douyin (抖音)";
                                 color: Theme.is_dark ? #38bdf8 : #0284c7;
                                 font-size: 13px;
                                 font-weight: 700;
                             }
                             Text {
-                                text: "Crystal-clear HD MP4 without watermark, direct original audio track extraction, and user profile scraping.";
+                                text: "Crystal-clear HD MP4 without watermarks, direct original audio track extraction, and CDN resolver.";
                                 color: Theme.text_secondary;
                                 font-size: 11px;
                                 wrap: word-wrap;
@@ -659,32 +829,7 @@ export component AboutTab inherits ScrollView {
                 HorizontalLayout {
                     spacing: 10px;
 
-                    // Douyin
-                    Rectangle {
-                        background: Theme.inner_bg;
-                        border-radius: 8px;
-                        border-width: 1px;
-                        border-color: Theme.inner_border;
-                        horizontal-stretch: 1;
-                        VerticalLayout {
-                            padding: 12px;
-                            spacing: 4px;
-                            Text {
-                                text: "Douyin (抖音)";
-                                color: Theme.is_dark ? #ec4899 : #db2777;
-                                font-size: 13px;
-                                font-weight: 700;
-                            }
-                            Text {
-                                text: "Direct CDN extraction via specialized resolvers, bypasses mobile player restrictions and watermarks.";
-                                color: Theme.text_secondary;
-                                font-size: 11px;
-                                wrap: word-wrap;
-                            }
-                        }
-                    }
-
-                    // Short Dramas
+                    // Short Drama Platforms
                     Rectangle {
                         background: Theme.inner_bg;
                         border-radius: 8px;
@@ -701,7 +846,32 @@ export component AboutTab inherits ScrollView {
                                 font-weight: 700;
                             }
                             Text {
-                                text: "ShortMax, AnyReel, DramaBox, GoodShort series parser with episode ranges (e.g. 1-50) & auto-queue.";
+                                text: "ShortMax, AnyReel, DramaBox, GoodShort series parser with episode range syntax (e.g. 1-50) & auto-queue.";
+                                color: Theme.text_secondary;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    // Facebook Video
+                    Rectangle {
+                        background: Theme.inner_bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.inner_border;
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+                            Text {
+                                text: "Facebook Video & Reels";
+                                color: Theme.is_dark ? #60a5fa : #2563eb;
+                                font-size: 13px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "Public videos, reels, fb.watch stream URLs, and progressive MP4 extraction.";
                                 color: Theme.text_secondary;
                                 font-size: 11px;
                                 wrap: word-wrap;
@@ -737,19 +907,19 @@ export component AboutTab inherits ScrollView {
             }
         }
 
-        // 4. Quick Actions & Maintenance Toolbar
+        // 5. Quick Actions & Maintenance Toolbar
         Rectangle {
             background: Theme.card_bg;
-            border-radius: 12px;
+            border-radius: 14px;
             border-width: 1px;
             border-color: Theme.card_border;
 
             VerticalLayout {
-                padding: 16px;
+                padding: 18px;
                 spacing: 12px;
 
                 Text {
-                    text: "Quick Shortcuts & Maintenance";
+                    text: "Quick Shortcuts & Project Links";
                     color: Theme.text_primary;
                     font-size: 15px;
                     font-weight: 700;
@@ -776,37 +946,29 @@ export component AboutTab inherits ScrollView {
                     }
 
                     ActionButton {
-                        text: "Check Engine Updates";
-                        icon: @image-url("../icons/refresh.svg");
-                        has_icon: true;
-                        height: 34px;
-                        clicked => { root.check_updates(); }
-                    }
-
-                    ActionButton {
-                        text: "Check App Updates";
-                        icon: @image-url("../icons/sparkles.svg");
-                        has_icon: true;
-                        height: 34px;
-                        clicked => { root.check_app_updates(); }
-                    }
-
-                    ActionButton {
                         text: "GitHub Repository";
                         icon: @image-url("../icons/link.svg");
                         has_icon: true;
                         height: 34px;
                         clicked => { root.open_external_url("https://github.com/horrorbringer/NativeVideoDownloader"); }
                     }
+
+                    ActionButton {
+                        text: "Report an Issue";
+                        icon: @image-url("../icons/alert.svg");
+                        has_icon: true;
+                        height: 34px;
+                        clicked => { root.open_external_url("https://github.com/horrorbringer/NativeVideoDownloader/issues"); }
+                    }
                 }
             }
         }
 
-        // 5. Credits & License Footer
+        // 6. Credits & License Footer
         HorizontalLayout {
             alignment: space-between;
-            padding-left: 4px;
-            padding-right: 4px;
+            padding-left: 6px;
+            padding-right: 6px;
 
             Text {
                 text: "Crafted with passion using Rust & Slint • 100% Free & Open Source";
@@ -816,7 +978,7 @@ export component AboutTab inherits ScrollView {
             }
 
             Text {
-                text: "MIT License • Native Pro Video Engine";
+                text: "MIT License • Native Video Downloader Pro";
                 color: Theme.text_muted;
                 font-size: 12px;
                 vertical-alignment: center;
