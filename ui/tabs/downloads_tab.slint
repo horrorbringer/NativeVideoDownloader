@@ -1090,7 +1090,7 @@ export component DownloadsTab inherits VerticalLayout {
             padding-bottom: 12px;
 
             for item in root.download_items: Rectangle {
-                min-height: 124px;
+                min-height: 108px;
                 background: item.selected ? (Theme.is_dark ? #1e1b4b : #f5f3ff) : (touch.has-hover ? Theme.card_hover : Theme.card_bg);
                 border-radius: 12px;
                 border-width: item.selected ? 1.5px : 1px;
@@ -1101,65 +1101,58 @@ export component DownloadsTab inherits VerticalLayout {
                 touch := TouchArea { }
 
                 HorizontalLayout {
-                    padding-left: 12px;
+                    padding-left: 14px;
                     padding-right: 16px;
-                    padding-top: 12px;
-                    padding-bottom: 12px;
-                    spacing: 12px;
+                    padding-top: 13px;
+                    padding-bottom: 13px;
+                    spacing: 14px;
                     alignment: start;
 
-                    // Multi-select Checkbox
-                    VerticalLayout {
-                        alignment: center;
+                    // Left Column: Multi-select Checkbox + Media Icon Badge
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
 
-                        Rectangle {
-                            width: 22px;
-                            height: 22px;
-                            border-radius: 6px;
-                            border-width: 1.5px;
-                            border-color: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.brand_purple : (Theme.is_dark ? #475569 : #94a3b8));
-                            background: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.card_hover : Theme.inner_bg);
-                            animate background { duration: 120ms; }
-                            animate border-color { duration: 120ms; }
+                        // Checkbox (top-aligned to match the icon)
+                        VerticalLayout {
+                            alignment: start;
+                            padding-top: 8px;
 
-                            if item.selected: Image {
-                                source: @image-url("../icons/check.svg");
-                                width: 12px;
-                                height: 12px;
-                                colorize: #ffffff;
-                                x: (parent.width - self.width) / 2;
-                                y: (parent.height - self.height) / 2;
-                            }
+                            Rectangle {
+                                width: 20px;
+                                height: 20px;
+                                border-radius: 6px;
+                                border-width: 1.5px;
+                                border-color: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.brand_purple : (Theme.is_dark ? #475569 : #cbd5e1));
+                                background: item.selected ? Theme.brand_purple : (cb_touch.has-hover ? Theme.card_hover : Theme.inner_bg);
+                                animate background { duration: 120ms; }
+                                animate border-color { duration: 120ms; }
 
-                            cb_touch := TouchArea {
-                                clicked => {
-                                    root.toggle_download_selected(item.id);
+                                if item.selected: Image {
+                                    source: @image-url("../icons/check.svg");
+                                    width: 11px;
+                                    height: 11px;
+                                    colorize: #ffffff;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                }
+
+                                cb_touch := TouchArea {
+                                    clicked => {
+                                        root.toggle_download_selected(item.id);
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // Card Content Column
-                    VerticalLayout {
-                        horizontal-stretch: 1;
-                        spacing: 8px;
-                        alignment: space-between;
-
-                    // Row 1: Header (Status Icon + Title + Status Pill | Action Buttons)
-                    HorizontalLayout {
-                        alignment: space-between;
-                        spacing: 12px;
-
-                        HorizontalLayout {
-                            spacing: 10px;
-                            horizontal-stretch: 1;
+                        // Media & Status Icon Badge
+                        VerticalLayout {
                             alignment: start;
 
-                            // Media & Status Icon Badge
                             Rectangle {
-                                width: 32px;
-                                height: 32px;
-                                border-radius: 8px;
+                                width: 36px;
+                                height: 36px;
+                                border-radius: 9px;
                                 background: item.status == "Completed" ? (Theme.is_dark ? #064e3b : #dcfce7) :
                                             item.status == "Downloading" ? (Theme.is_dark ? #1e293b : #e0f2fe) :
                                             item.status == "Paused" ? (Theme.is_dark ? #451a03 : #fef3c7) :
@@ -1168,12 +1161,12 @@ export component DownloadsTab inherits VerticalLayout {
                                             item.status == "Scheduled" ? (Theme.is_dark ? #2e1065 : #ede9fe) :
                                             (Theme.is_dark ? #1e1b4b : #f3e8ff);
                                 border-width: 1px;
-                                border-color: item.status == "Completed" ? #10b981 :
-                                              item.status == "Downloading" ? #3b82f6 :
-                                              item.status == "Paused" ? #f59e0b :
-                                              item.status == "Failed" ? #ef4444 :
-                                              item.status == "Retrying" ? #f97316 :
-                                              item.status == "Scheduled" ? #8b5cf6 : #8b5cf6;
+                                border-color: item.status == "Completed" ? (Theme.is_dark ? #10b981 : #86efac) :
+                                              item.status == "Downloading" ? (Theme.is_dark ? #3b82f6 : #7dd3fc) :
+                                              item.status == "Paused" ? (Theme.is_dark ? #f59e0b : #fde68a) :
+                                              item.status == "Failed" ? (Theme.is_dark ? #ef4444 : #fca5a5) :
+                                              item.status == "Retrying" ? (Theme.is_dark ? #f97316 : #fdba74) :
+                                              item.status == "Scheduled" ? (Theme.is_dark ? #8b5cf6 : #c4b5fd) : (Theme.is_dark ? #8b5cf6 : #c4b5fd);
 
                                 Image {
                                     source: item.status == "Completed" ? @image-url("../icons/check.svg") :
@@ -1183,21 +1176,34 @@ export component DownloadsTab inherits VerticalLayout {
                                             item.status == "Retrying" ? @image-url("../icons/refresh.svg") :
                                             item.status == "Scheduled" ? @image-url("../icons/moon.svg") :
                                             @image-url("../icons/history.svg");
-                                    width: 15px;
-                                    height: 15px;
-                                    colorize: item.status == "Completed" ? #10b981 :
-                                              item.status == "Downloading" ? #38bdf8 :
-                                              item.status == "Paused" ? #f59e0b :
-                                              item.status == "Failed" ? #ef4444 :
-                                              item.status == "Retrying" ? #f97316 :
-                                              item.status == "Scheduled" ? #8b5cf6 : #a855f7;
+                                    width: 16px;
+                                    height: 16px;
+                                    colorize: item.status == "Completed" ? (Theme.is_dark ? #10b981 : #059669) :
+                                              item.status == "Downloading" ? (Theme.is_dark ? #38bdf8 : #0284c7) :
+                                              item.status == "Paused" ? (Theme.is_dark ? #f59e0b : #d97706) :
+                                              item.status == "Failed" ? (Theme.is_dark ? #ef4444 : #dc2626) :
+                                              item.status == "Retrying" ? (Theme.is_dark ? #f97316 : #ea580c) :
+                                              item.status == "Scheduled" ? (Theme.is_dark ? #8b5cf6 : #7c3aed) : (Theme.is_dark ? #a855f7 : #7c3aed);
                                     x: (parent.width - self.width) / 2;
                                     y: (parent.height - self.height) / 2;
                                 }
                             }
+                        }
+                    }
+
+                    // Right Content Column (All rows indented together!)
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 8px;
+                        alignment: start;
+
+                        // Row 1: Header (Title + Badges on Left | Action Buttons on Right)
+                        HorizontalLayout {
+                            alignment: space-between;
+                            spacing: 12px;
 
                             VerticalLayout {
-                                spacing: 3px;
+                                spacing: 4px;
                                 horizontal-stretch: 1;
                                 alignment: center;
 
@@ -1221,10 +1227,12 @@ export component DownloadsTab inherits VerticalLayout {
                                         background: item.source_platform == "YouTube" ? (Theme.is_dark ? #450a0a : #fef2f2) :
                                                     item.source_platform == "Bilibili" ? (Theme.is_dark ? #082f49 : #f0f9ff) :
                                                     item.source_platform == "KissKH" ? (Theme.is_dark ? #042f2e : #f0fdfa) :
+                                                    item.source_platform == "Dailymotion" ? (Theme.is_dark ? #0f172a : #f8fafc) :
                                                     (Theme.is_dark ? #1e1b4b : #f5f3ff);
                                         border-color: item.source_platform == "YouTube" ? (Theme.is_dark ? #991b1b : #fca5a5) :
                                                       item.source_platform == "Bilibili" ? (Theme.is_dark ? #0369a1 : #bae6fd) :
                                                       item.source_platform == "KissKH" ? (Theme.is_dark ? #115e59 : #99f6e4) :
+                                                      item.source_platform == "Dailymotion" ? (Theme.is_dark ? #334155 : #cbd5e1) :
                                                       (Theme.is_dark ? #4338ca : #ddd6fe);
 
                                         HorizontalLayout {
@@ -1236,6 +1244,7 @@ export component DownloadsTab inherits VerticalLayout {
                                                 color: item.source_platform == "YouTube" ? (Theme.is_dark ? #f87171 : #dc2626) :
                                                        item.source_platform == "Bilibili" ? (Theme.is_dark ? #38bdf8 : #0284c7) :
                                                        item.source_platform == "KissKH" ? (Theme.is_dark ? #2dd4bf : #0d9488) :
+                                                       item.source_platform == "Dailymotion" ? (Theme.is_dark ? #94a3b8 : #334155) :
                                                        (Theme.is_dark ? #a78bfa : #7c3aed);
                                                 font-size: 10px;
                                                 font-weight: 700;
@@ -1290,22 +1299,24 @@ export component DownloadsTab inherits VerticalLayout {
                                         }
                                     }
 
-                                    // Status Pill
+                                    // Status Pill (with proper Light & Dark mode colors)
                                     Rectangle {
-                                        background: item.status == "Completed" ? #0e291b :
-                                                    item.status == "Paused" ? #331e08 :
-                                                    item.status == "Downloading" ? #0f2142 :
-                                                    item.status == "Retrying" ? #431407 :
-                                                    item.status == "Scheduled" ? #2e1065 :
-                                                    item.status == "Queued" ? #25103a : #331317;
+                                        background: item.status == "Completed" ? (Theme.is_dark ? #064e3b : #ecfdf5) :
+                                                    item.status == "Paused" ? (Theme.is_dark ? #331e08 : #fffbeb) :
+                                                    item.status == "Downloading" ? (Theme.is_dark ? #0f2142 : #eff6ff) :
+                                                    item.status == "Retrying" ? (Theme.is_dark ? #431407 : #fff7ed) :
+                                                    item.status == "Scheduled" ? (Theme.is_dark ? #2e1065 : #faf5ff) :
+                                                    item.status == "Queued" ? (Theme.is_dark ? #25103a : #f5f3ff) :
+                                                    (Theme.is_dark ? #331317 : #fef2f2);
                                         border-radius: 4px;
                                         border-width: 1px;
-                                        border-color: item.status == "Completed" ? #166534 :
-                                                      item.status == "Paused" ? #b45309 :
-                                                      item.status == "Downloading" ? #2563eb :
-                                                      item.status == "Retrying" ? #ea580c :
-                                                      item.status == "Scheduled" ? #7c3aed :
-                                                      item.status == "Queued" ? #7e22ce : #991b1b;
+                                        border-color: item.status == "Completed" ? (Theme.is_dark ? #166534 : #a7f3d0) :
+                                                      item.status == "Paused" ? (Theme.is_dark ? #b45309 : #fde68a) :
+                                                      item.status == "Downloading" ? (Theme.is_dark ? #2563eb : #bfdbfe) :
+                                                      item.status == "Retrying" ? (Theme.is_dark ? #ea580c : #fed7aa) :
+                                                      item.status == "Scheduled" ? (Theme.is_dark ? #7c3aed : #e9d5ff) :
+                                                      item.status == "Queued" ? (Theme.is_dark ? #7e22ce : #ddd6fe) :
+                                                      (Theme.is_dark ? #991b1b : #fecaca);
                                         height: 18px;
 
                                         HorizontalLayout {
@@ -1315,12 +1326,13 @@ export component DownloadsTab inherits VerticalLayout {
 
                                             Text {
                                                 text: item.status;
-                                                color: item.status == "Completed" ? #4ade80 :
-                                                       item.status == "Paused" ? #fcd34d :
-                                                       item.status == "Downloading" ? #60a5fa :
-                                                       item.status == "Retrying" ? #fb923c :
-                                                       item.status == "Scheduled" ? #c084fc :
-                                                       item.status == "Queued" ? #c084fc : #f87171;
+                                                color: item.status == "Completed" ? (Theme.is_dark ? #4ade80 : #059669) :
+                                                       item.status == "Paused" ? (Theme.is_dark ? #fcd34d : #d97706) :
+                                                       item.status == "Downloading" ? (Theme.is_dark ? #60a5fa : #2563eb) :
+                                                       item.status == "Retrying" ? (Theme.is_dark ? #fb923c : #ea580c) :
+                                                       item.status == "Scheduled" ? (Theme.is_dark ? #c084fc : #7c3aed) :
+                                                       item.status == "Queued" ? (Theme.is_dark ? #c084fc : #7c3aed) :
+                                                       (Theme.is_dark ? #f87171 : #dc2626);
                                                 font-size: 10px;
                                                 font-weight: 700;
                                                 vertical-alignment: center;
@@ -1329,7 +1341,6 @@ export component DownloadsTab inherits VerticalLayout {
                                     }
                                 }
                             }
-                        }
 
                         // Right: Action Buttons
                         HorizontalLayout {
@@ -1500,7 +1511,7 @@ export component DownloadsTab inherits VerticalLayout {
                     ProgressBar {
                         progress: item.progress;
                         status: item.status;
-                        height: 8px;
+                        height: 6px;
                     }
 
                     // Row 4: Progress text & Speed / ETA Telemetry
@@ -1508,7 +1519,7 @@ export component DownloadsTab inherits VerticalLayout {
                         alignment: space-between;
 
                         Rectangle {
-                            background: Theme.is_dark ? #0f172a : #f1f5f9;
+                            background: Theme.is_dark ? #0f172a : #f8fafc;
                             border-radius: 4px;
                             border-width: 1px;
                             border-color: Theme.is_dark ? #1e293b : #e2e8f0;
@@ -1545,7 +1556,7 @@ export component DownloadsTab inherits VerticalLayout {
                             alignment: end;
 
                             if item.status == "Downloading": Rectangle {
-                                background: Theme.is_dark ? #0c2038 : #e0f2fe;
+                                background: Theme.is_dark ? #0c2038 : #f0f9ff;
                                 border-radius: 4px;
                                 border-width: 1px;
                                 border-color: Theme.is_dark ? #1e3a5f : #bae6fd;
@@ -1563,7 +1574,7 @@ export component DownloadsTab inherits VerticalLayout {
                                             source: @image-url("../icons/bolt.svg");
                                             width: 10px;
                                             height: 10px;
-                                            colorize: #38bdf8;
+                                            colorize: Theme.is_dark ? #38bdf8 : #0284c7;
                                         }
                                     }
 
@@ -1581,7 +1592,7 @@ export component DownloadsTab inherits VerticalLayout {
                                 background: Theme.is_dark ? #172554 : #eff6ff;
                                 border-radius: 4px;
                                 border-width: 1px;
-                                border-color: Theme.is_dark ? #1e40af : #dbeafe;
+                                border-color: Theme.is_dark ? #1e40af : #bfdbfe;
                                 height: 20px;
 
                                 HorizontalLayout {
@@ -1591,7 +1602,7 @@ export component DownloadsTab inherits VerticalLayout {
 
                                     Text {
                                         text: "ETA: " + item.eta_text;
-                                        color: Theme.is_dark ? #93c5fd : #1d4ed8;
+                                        color: Theme.is_dark ? #93c5fd : #2563eb;
                                         font-size: 11px;
                                         font-weight: 600;
                                         vertical-alignment: center;
