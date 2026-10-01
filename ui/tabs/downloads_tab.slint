@@ -646,13 +646,22 @@ export component DownloadsTab inherits VerticalLayout {
                             }
                         }
 
-                        // Stat 3: Bandwidth Limit Saturation
+                        // Stat 3: Bandwidth Limit Saturation (Clickable to Cycle Presets)
                         Rectangle {
-                            background: Theme.is_dark ? #172033 : #ffffff;
+                            background: cap_touch.has-hover ? (Theme.is_dark ? #1e293b : #f1f5f9) : (Theme.is_dark ? #172033 : #ffffff);
                             border-radius: 6px;
                             border-width: 1px;
-                            border-color: Theme.inner_border;
+                            border-color: root.speed_limit_label != "" ? #f59e0b : (cap_touch.has-hover ? Theme.primary_border : Theme.inner_border);
                             horizontal-stretch: 1;
+                            animate background { duration: 120ms; }
+                            animate border-color { duration: 120ms; }
+
+                            cap_touch := TouchArea {
+                                clicked => {
+                                    let next_idx = root.selected_speed_limit_index >= 4 ? 0 : (root.selected_speed_limit_index + 1);
+                                    root.set_speed_limit(next_idx);
+                                }
+                            }
 
                             HorizontalLayout {
                                 padding-left: 10px;
@@ -661,17 +670,48 @@ export component DownloadsTab inherits VerticalLayout {
 
                                 VerticalLayout {
                                     alignment: center;
-                                    Text {
-                                        text: "Active Bandwidth Cap";
-                                        color: Theme.text_muted;
-                                        font-size: 10px;
-                                        font-weight: 600;
+                                    HorizontalLayout {
+                                        spacing: 4px;
+                                        alignment: start;
+                                        Text {
+                                            text: "Active Bandwidth Cap";
+                                            color: Theme.text_muted;
+                                            font-size: 10px;
+                                            font-weight: 600;
+                                        }
+                                        Text {
+                                            text: "• Click";
+                                            color: cap_touch.has-hover ? Theme.brand_purple : Theme.text_muted;
+                                            font-size: 9px;
+                                            font-weight: 700;
+                                        }
                                     }
                                     Text {
                                         text: root.speed_limit_label != "" ? root.speed_limit_label : "Uncapped Max";
                                         color: root.speed_limit_label != "" ? #f59e0b : Theme.text_secondary;
                                         font-size: 15px;
                                         font-weight: 800;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        width: 24px;
+                                        height: 24px;
+                                        border-radius: 6px;
+                                        background: root.speed_limit_label != "" ? (Theme.is_dark ? #78350f55 : #fef3c7) : (Theme.is_dark ? #1e293b : #f1f5f9);
+                                        border-width: 1px;
+                                        border-color: root.speed_limit_label != "" ? #f59e0b : Theme.inner_border;
+
+                                        Image {
+                                            source: @image-url("../icons/download.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            colorize: root.speed_limit_label != "" ? #f59e0b : Theme.text_muted;
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                        }
                                     }
                                 }
                             }
@@ -1108,12 +1148,12 @@ export component DownloadsTab inherits VerticalLayout {
                     spacing: 14px;
                     alignment: start;
 
-                    // Left Column: Multi-select Checkbox + Media Icon Badge
+                    // Left Column: Checkbox + Thumbnail Preview (or Icon Badge fallback)
                     HorizontalLayout {
                         spacing: 10px;
                         alignment: start;
 
-                        // Checkbox (top-aligned to match the icon)
+                        // Checkbox (top-aligned)
                         VerticalLayout {
                             alignment: start;
                             padding-top: 8px;
@@ -1145,11 +1185,73 @@ export component DownloadsTab inherits VerticalLayout {
                             }
                         }
 
-                        // Media & Status Icon Badge
+                        // Thumbnail Preview with Status Overlay Badge
                         VerticalLayout {
                             alignment: start;
 
-                            Rectangle {
+                            if item.has_thumbnail: Rectangle {
+                                width: 86px;
+                                height: 54px;
+                                border-radius: 8px;
+                                clip: true;
+                                background: Theme.is_dark ? #0f172a : #e2e8f0;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #1e293b : #cbd5e1;
+
+                                // Thumbnail image (fill the container)
+                                Image {
+                                    source: item.thumbnail_image;
+                                    width: parent.width;
+                                    height: parent.height;
+                                    image-fit: cover;
+                                }
+
+                                // Status badge overlay (bottom-right corner)
+                                Rectangle {
+                                    x: parent.width - self.width - 3px;
+                                    y: parent.height - self.height - 3px;
+                                    width: 22px;
+                                    height: 22px;
+                                    border-radius: 6px;
+                                    background: item.status == "Completed" ? (Theme.is_dark ? #064e3bdd : #dcfce7ee) :
+                                                item.status == "Downloading" ? (Theme.is_dark ? #0f172add : #e0f2feee) :
+                                                item.status == "Paused" ? (Theme.is_dark ? #451a03dd : #fef3c7ee) :
+                                                item.status == "Failed" ? (Theme.is_dark ? #450a0add : #fee2e2ee) :
+                                                item.status == "Retrying" ? (Theme.is_dark ? #451a03dd : #ffedd5ee) :
+                                                item.status == "Scheduled" ? (Theme.is_dark ? #2e1065dd : #ede9feee) :
+                                                (Theme.is_dark ? #1e1b4bdd : #f3e8ffee);
+                                    border-width: 1px;
+                                    border-color: item.status == "Completed" ? (Theme.is_dark ? #10b981 : #86efac) :
+                                                  item.status == "Downloading" ? (Theme.is_dark ? #3b82f6 : #7dd3fc) :
+                                                  item.status == "Paused" ? (Theme.is_dark ? #f59e0b : #fde68a) :
+                                                  item.status == "Failed" ? (Theme.is_dark ? #ef4444 : #fca5a5) :
+                                                  item.status == "Retrying" ? (Theme.is_dark ? #f97316 : #fdba74) :
+                                                  item.status == "Scheduled" ? (Theme.is_dark ? #8b5cf6 : #c4b5fd) : (Theme.is_dark ? #8b5cf6 : #c4b5fd);
+
+                                    Image {
+                                        source: item.status == "Completed" ? @image-url("../icons/check.svg") :
+                                                item.status == "Downloading" ? @image-url("../icons/download.svg") :
+                                                item.status == "Paused" ? @image-url("../icons/pause.svg") :
+                                                item.status == "Failed" ? @image-url("../icons/x.svg") :
+                                                item.status == "Retrying" ? @image-url("../icons/refresh.svg") :
+                                                item.status == "Scheduled" ? @image-url("../icons/moon.svg") :
+                                                @image-url("../icons/history.svg");
+                                        width: 12px;
+                                        height: 12px;
+                                        colorize: item.status == "Completed" ? (Theme.is_dark ? #10b981 : #059669) :
+                                                  item.status == "Downloading" ? (Theme.is_dark ? #38bdf8 : #0284c7) :
+                                                  item.status == "Paused" ? (Theme.is_dark ? #f59e0b : #d97706) :
+                                                  item.status == "Failed" ? (Theme.is_dark ? #ef4444 : #dc2626) :
+                                                  item.status == "Retrying" ? (Theme.is_dark ? #f97316 : #ea580c) :
+                                                  item.status == "Scheduled" ? (Theme.is_dark ? #8b5cf6 : #7c3aed) : (Theme.is_dark ? #a855f7 : #7c3aed);
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+                                }
+                            }
+
+                            // Fallback: Status icon badge (no thumbnail available)
+                            if !item.has_thumbnail: Rectangle {
                                 width: 36px;
                                 height: 36px;
                                 border-radius: 9px;

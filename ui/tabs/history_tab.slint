@@ -602,6 +602,68 @@ export component HistoryTab inherits VerticalLayout {
                         }
                     }
 
+                    // Thumbnail Preview with Status Overlay Badge (or Fallback Icon)
+                    VerticalLayout {
+                        alignment: start;
+
+                        if item.has_thumbnail: Rectangle {
+                            width: 86px;
+                            height: 54px;
+                            border-radius: 8px;
+                            clip: true;
+                            background: Theme.is_dark ? #0f172a : #e2e8f0;
+                            border-width: 1px;
+                            border-color: Theme.is_dark ? #1e293b : #cbd5e1;
+
+                            // Thumbnail image
+                            Image {
+                                source: item.thumbnail_image;
+                                width: parent.width;
+                                height: parent.height;
+                                image-fit: cover;
+                            }
+
+                            // Status badge overlay
+                            Rectangle {
+                                x: parent.width - self.width - 3px;
+                                y: parent.height - self.height - 3px;
+                                width: 22px;
+                                height: 22px;
+                                border-radius: 6px;
+                                background: item.status == "Completed" ? (Theme.is_dark ? #064e3bdd : #dcfce7ee) : (Theme.is_dark ? #450a0add : #fee2e2ee);
+                                border-width: 1px;
+                                border-color: item.status == "Completed" ? (Theme.is_dark ? #10b981 : #86efac) : (Theme.is_dark ? #ef4444 : #fca5a5);
+
+                                Image {
+                                    source: item.status == "Completed" ? @image-url("../icons/check.svg") : @image-url("../icons/x.svg");
+                                    width: 12px;
+                                    height: 12px;
+                                    colorize: item.status == "Completed" ? (Theme.is_dark ? #10b981 : #059669) : (Theme.is_dark ? #ef4444 : #dc2626);
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                }
+                            }
+                        }
+
+                        if !item.has_thumbnail: Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 10px;
+                            background: item.status == "Completed" ? (Theme.is_dark ? #064e3b : #dcfce7) : (Theme.is_dark ? #450a0a : #fee2e2);
+                            border-width: 1px;
+                            border-color: item.status == "Completed" ? (Theme.is_dark ? #047857 : #86efac) : (Theme.is_dark ? #b91c1c : #fca5a5);
+
+                            Image {
+                                source: item.status == "Completed" ? @image-url("../icons/check.svg") : @image-url("../icons/x.svg");
+                                width: 18px;
+                                height: 18px;
+                                colorize: item.status == "Completed" ? (Theme.is_dark ? #10b981 : #059669) : (Theme.is_dark ? #ef4444 : #dc2626);
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+                        }
+                    }
+
                     // Item Content Column
                     VerticalLayout {
                         horizontal-stretch: 1;

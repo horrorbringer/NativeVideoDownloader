@@ -881,6 +881,19 @@ pub async fn inspect_video_with_options(
         }
     }
 
+    // Fast path: Native TikTok resolver via TikWM (watermark-free HD, bypasses TikTok anti-bot / 403 blocks)
+    if url.contains("tiktok.com") {
+        match resolve_tiktok_via_tikwm(url, proxy).await {
+            Ok(meta) => {
+                info!("Successfully extracted TikTok media without watermark via TikWM API: {:?}", meta.title);
+                return Ok(meta);
+            }
+            Err(e) => {
+                warn!("TikWM API extraction failed ({:?}), falling back to yt-dlp", e);
+            }
+        }
+    }
+
     let ytdlp_bin = ensure_ytdlp_installed().await?;
 
     info!(
@@ -1226,6 +1239,116 @@ pub async fn resolve_douyin_via_douyinsaver(url: &str, proxy: Option<&str>) -> R
         size_480p,
         size_audio: None,
         referer: Some("https://www.douyin.com/".to_string()),
+        available_formats: Vec::new(),
+    })
+}
+
+/// Resolves a TikTok video URL using the TikWM public API to retrieve watermark-free HD MP4 stream & metadata
+pub async fn resolve_tiktok_via_tikwm(url: &str, proxy: Option<&str>) -> Result<VideoMetadata> {
+    info!("Resolving TikTok video via TikWM API: {} (proxy: {:?})", url, proxy);
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(12));
+
+    if let Some(p) = proxy {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            if let Ok(prx) = reqwest::Proxy::all(trimmed) {
+                builder = builder.proxy(prx);
+            }
+        }
+    }
+
+    let client = builder.build()
+        .map_err(|e| AppError::Generic(format!("Failed to build HTTP client: {}", e)))?;
+
+    let form_params = [("url", url), ("hd", "1")];
+
+    let resp = client
+        .post("https://www.tikwm.com/api/")
+        .header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+        .form(&form_params)
+        .send()
+        .await
+        .map_err(|e| AppError::Generic(format!("TikWM API request failed: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(AppError::Generic(format!("TikWM API returned HTTP status {}", resp.status())));
+    }
+
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| AppError::Generic(format!("Failed to read TikWM response: {}", e)))?;
+
+    let val: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| AppError::Generic(format!("Failed to parse TikWM response JSON: {}", e)))?;
+
+    let code = val.get("code").and_then(|v| v.as_i64()).unwrap_or(-1);
+    if code != 0 {
+        let msg = val.get("msg").and_then(|v| v.as_str()).unwrap_or("Unknown TikWM error");
+        return Err(AppError::Generic(format!("TikWM API error: {}", msg)));
+    }
+
+    let data = val.get("data").ok_or_else(|| AppError::Generic("TikWM returned no data".to_string()))?;
+
+    let title_raw = data.get("title").and_then(|v| v.as_str()).unwrap_or("tiktok_video").trim();
+    let author_nickname = data.get("author")
+        .and_then(|a| a.get("nickname").or_else(|| a.get("unique_id")))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+
+    let full_title = if !author_nickname.is_empty() && !title_raw.is_empty() {
+        format!("{} - {}", title_raw, author_nickname)
+    } else if !title_raw.is_empty() {
+        title_raw.to_string()
+    } else {
+        "tiktok_video".to_string()
+    };
+
+    let duration_seconds = data.get("duration").and_then(|v| v.as_u64());
+    let cover = data.get("cover").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let video_size = data.get("size").and_then(|v| v.as_u64());
+
+    // Prefer HD stream URL if available, otherwise regular stream URL
+    let stream_url = data.get("hdplay")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| data.get("play").and_then(|v| v.as_str()))
+        .ok_or_else(|| AppError::Generic("No playable video stream found in TikWM response".to_string()))?
+        .to_string();
+
+    let stream_url = if stream_url.starts_with('/') {
+        format!("https://www.tikwm.com{}", stream_url)
+    } else {
+        stream_url
+    };
+
+    Ok(VideoMetadata {
+        url: stream_url,
+        title: full_title,
+        content_length: video_size,
+        content_type: Some("video/mp4".to_string()),
+        supports_ranges: true,
+        is_extractor: false,
+        duration_seconds,
+        resolution: Some("1080p FHD".to_string()),
+        ext: Some("mp4".to_string()),
+        is_playlist: false,
+        playlist_count: 0,
+        playlist_entries: Vec::new(),
+        has_subtitles: false,
+        subtitles_summary: "No subtitles".to_string(),
+        thumbnail_url: cover,
+        fps: Some(30.0),
+        vcodec: Some("H.264 (AVC)".to_string()),
+        acodec: Some("AAC".to_string()),
+        size_best: video_size,
+        size_1080p: video_size,
+        size_720p: None,
+        size_480p: None,
+        size_audio: None,
+        referer: Some("https://www.tiktok.com/".to_string()),
         available_formats: Vec::new(),
     })
 }

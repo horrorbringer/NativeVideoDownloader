@@ -40,6 +40,7 @@ pub struct DownloadJob {
     pub format_note: Option<String>,
     pub resolution: Option<String>,
     pub phase: Option<String>,
+    pub cached_thumbnail_path: Option<PathBuf>,
 }
 
 impl DownloadJob {
@@ -94,6 +95,7 @@ impl DownloadJob {
             format_note: None,
             resolution: None,
             phase: None,
+            cached_thumbnail_path: None,
         }
     }
 

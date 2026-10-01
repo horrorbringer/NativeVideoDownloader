@@ -20,6 +20,8 @@ export struct DownloadItemData {
     format_badge: string,
     detail_status: string,
     destination_display: string,
+    thumbnail_image: image,
+    has_thumbnail: bool,
 }
 
 
@@ -33,6 +35,8 @@ export struct HistoryItemData {
     output_path: string,
     domain: string,
     selected: bool,
+    thumbnail_image: image,
+    has_thumbnail: bool,
 }
 
 export struct LogEntryData {

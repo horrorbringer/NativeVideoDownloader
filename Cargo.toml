@@ -1,6 +1,6 @@
 [package]
 name = "native_video_downloader"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 
 [dependencies]

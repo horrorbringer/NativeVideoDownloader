@@ -37,6 +37,21 @@ struct HistoryState {
     selected_ids: HashSet<Uuid>,
 }
 
+/// Send-safe representation of history items passed to the UI thread.
+#[derive(Clone, Debug)]
+struct HistoryItemDto {
+    id: String,
+    title: String,
+    status: String,
+    size_text: String,
+    date_text: String,
+    url: String,
+    output_path: String,
+    domain: String,
+    selected: bool,
+    thumb_path: Option<PathBuf>,
+}
+
 fn extract_domain_from_url(url: &str) -> String {
     if let Ok(parsed) = reqwest::Url::parse(url) {
         if let Some(host) = parsed.host_str() {
@@ -58,6 +73,14 @@ fn extract_domain_from_url(url: &str) -> String {
         "douyin.com".to_string()
     } else if s.contains("facebook.com") || s.contains("fb.watch") {
         "facebook.com".to_string()
+    } else if s.contains("instagram.com") {
+        "instagram.com".to_string()
+    } else if s.contains("twitter.com") || s.contains("x.com") {
+        "x.com".to_string()
+    } else if s.contains("reddit.com") {
+        "reddit.com".to_string()
+    } else if s.contains("bilibili.com") {
+        "bilibili.com".to_string()
     } else {
         "web".to_string()
     }
@@ -101,6 +124,18 @@ fn resolve_batch_item_title_and_referer(url: &str) -> (String, Option<String>) {
             "video"
         };
         (format!("YouTube Video {}", id), None)
+    } else if url.contains("instagram.com") {
+        let id = url.split("/reel/").nth(1)
+            .or_else(|| url.split("/p/").nth(1))
+            .unwrap_or(url.split('/').last().unwrap_or("media"))
+            .split('?').next().unwrap_or("media");
+        (format!("Instagram {}", id), Some("https://www.instagram.com/".to_string()))
+    } else if url.contains("twitter.com") || url.contains("x.com") {
+        let id = url.split("/status/").nth(1).unwrap_or("post").split('?').next().unwrap_or("post");
+        (format!("X / Twitter Post {}", id), Some("https://x.com/".to_string()))
+    } else if url.contains("reddit.com") {
+        let id = url.split("/comments/").nth(1).and_then(|s| s.split('/').next()).unwrap_or("post");
+        (format!("Reddit Post {}", id), Some("https://www.reddit.com/".to_string()))
     } else if url.contains("bilibili.com") {
         let bvid = url.split("/video/").nth(1).unwrap_or("video").split('?').next().unwrap_or("video");
         (format!("Bilibili {}", bvid), Some("https://www.bilibili.com/".to_string()))
@@ -207,7 +242,7 @@ async fn refresh_history(
                 })
                 .collect();
 
-            let items: Vec<HistoryItemData> = filtered_records
+            let items: Vec<HistoryItemDto> = filtered_records
                 .into_iter()
                 .map(|r| {
                     let size_text = r
@@ -220,16 +255,27 @@ async fn refresh_history(
                     let domain = extract_domain_from_url(&r.url);
                     let is_selected = selected_ids.contains(&r.id);
 
-                    HistoryItemData {
-                        id: r.id.to_string().into(),
-                        title: r.title.clone().into(),
-                        status: r.status.clone().into(),
-                        size_text: size_text.into(),
-                        date_text: date_display.into(),
-                        url: r.url.clone().into(),
-                        output_path: r.output_path.clone().into(),
-                        domain: domain.into(),
+                    let mut thumb_path: Option<PathBuf> = None;
+                    let op = std::path::Path::new(&r.output_path);
+                    for ext in &["jpg", "jpeg", "png", "webp"] {
+                        let cand = op.with_extension(ext);
+                        if cand.exists() {
+                            thumb_path = Some(cand);
+                            break;
+                        }
+                    }
+
+                    HistoryItemDto {
+                        id: r.id.to_string(),
+                        title: r.title.clone(),
+                        status: r.status.clone(),
+                        size_text,
+                        date_text: date_display,
+                        url: r.url.clone(),
+                        output_path: r.output_path.clone(),
+                        domain,
                         selected: is_selected,
+                        thumb_path,
                     }
                 })
                 .collect();
@@ -237,7 +283,35 @@ async fn refresh_history(
             let selected_count = selected_ids.len() as i32;
 
             let _ = weak.upgrade_in_event_loop(move |window| {
-                let model = Rc::new(VecModel::from(items));
+                let ui_items: Vec<HistoryItemData> = items
+                    .into_iter()
+                    .map(|item| {
+                        let (thumbnail_image, has_thumbnail) = if let Some(ref path) = item.thumb_path {
+                            match slint::Image::load_from_path(path) {
+                                Ok(img) => (img, true),
+                                Err(_) => (slint::Image::default(), false),
+                            }
+                        } else {
+                            (slint::Image::default(), false)
+                        };
+
+                        HistoryItemData {
+                            id: item.id.into(),
+                            title: item.title.into(),
+                            status: item.status.into(),
+                            size_text: item.size_text.into(),
+                            date_text: item.date_text.into(),
+                            url: item.url.into(),
+                            output_path: item.output_path.into(),
+                            domain: item.domain.into(),
+                            selected: item.selected,
+                            thumbnail_image,
+                            has_thumbnail,
+                        }
+                    })
+                    .collect();
+
+                let model = Rc::new(VecModel::from(ui_items));
                 window.set_history_items(ModelRc::from(model));
                 window.set_history_total_count(total_count);
                 window.set_history_completed_count(total_completed);
@@ -585,6 +659,32 @@ fn run_url_analysis(
             }
         }
     });
+}
+
+/// Send-safe representation of download items passed from the async updater to the UI thread.
+#[derive(Clone, Debug)]
+struct DownloadItemDto {
+    id: String,
+    title: String,
+    status: String,
+    progress: f32,
+    size_text: String,
+    speed_text: String,
+    eta_text: String,
+    output_path: String,
+    is_completed: bool,
+    can_pause: bool,
+    can_resume: bool,
+    can_cancel: bool,
+    is_queued: bool,
+    can_move_up: bool,
+    can_move_down: bool,
+    selected: bool,
+    source_platform: String,
+    quality_badge: String,
+    format_badge: String,
+    detail_status: String,
+    destination_display: String,
 }
 
 /// Downloads a remote thumbnail image to a temporary file for rendering in the UI thread.
@@ -1032,6 +1132,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let last_completed_count = Arc::new(AtomicUsize::new(0));
     let was_downloading = Arc::new(AtomicBool::new(false));
 
+    // Per-download-card thumbnail cache: job_id → local cached file path
+    let thumb_cache: Arc<tokio::sync::RwLock<std::collections::HashMap<String, PathBuf>>> =
+        Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+    let thumb_pending: Arc<tokio::sync::RwLock<HashSet<String>>> =
+        Arc::new(tokio::sync::RwLock::new(HashSet::new()));
+    let thumb_cache_sync = thumb_cache.clone();
+    let thumb_pending_sync = thumb_pending.clone();
+
     download_manager
         .set_update_listener(move || {
             let weak = window_weak_sync.clone();
@@ -1049,6 +1157,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let hist_sync = hist_for_sync.clone();
             let completed_tracker = last_completed_count.clone();
             let was_dl_tracker = was_downloading.clone();
+            let thumb_cache_ref = thumb_cache_sync.clone();
+            let thumb_pending_ref = thumb_pending_sync.clone();
 
             // Skip queuing redundant frames if a frame render is already pending, but flag for follow-up
             if rendering_flag.swap(true, Ordering::SeqCst) {
@@ -1212,7 +1322,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let total_filtered = filtered_jobs.len();
                 let sel_set = sel_dl_lock.read().await;
-                let items: Vec<DownloadItemData> = filtered_jobs
+
+                // Snapshot thumbnail cache & spawn fetches for new thumbnails
+                let thumb_snapshot = thumb_cache_ref.read().await.clone();
+                {
+                    let pending = thumb_pending_ref.read().await;
+                    for j in &filtered_jobs {
+                        let jid = j.id.to_string();
+                        if thumb_snapshot.contains_key(&jid) || pending.contains(&jid) {
+                            continue;
+                        }
+                        if let Some(ref url) = j.thumbnail_url {
+                            if !url.is_empty() {
+                                let url = url.clone();
+                                let jid_clone = jid.clone();
+                                let cache = thumb_cache_ref.clone();
+                                let pend = thumb_pending_ref.clone();
+                                let mgr_notify = mgr.clone();
+                                pend.write().await.insert(jid_clone.clone());
+                                tokio::spawn(async move {
+                                    if let Some(path) = download_thumbnail_to_cache(&url).await {
+                                        cache.write().await.insert(jid_clone.clone(), path);
+                                    }
+                                    pend.write().await.remove(&jid_clone);
+                                    mgr_notify.notify_update().await;
+                                });
+                            }
+                        }
+                    }
+                }
+
+                let items: Vec<DownloadItemDto> = filtered_jobs
                     .into_iter()
                     .enumerate()
                     .map(|(idx, j)| {
@@ -1254,15 +1394,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let detail_status = j.detail_status_display();
                         let destination_display = j.destination_display();
 
-                        DownloadItemData {
-                            id: j.id.to_string().into(),
-                            title: j.title.into(),
-                            status: status_str.into(),
+                        DownloadItemDto {
+                            id: j.id.to_string(),
+                            title: j.title.clone(),
+                            status: status_str,
                             progress: j.progress_ratio,
-                            size_text: size_text.into(),
-                            speed_text: speed_text.into(),
-                            eta_text: eta_text.into(),
-                            output_path: output_path.into(),
+                            size_text,
+                            speed_text,
+                            eta_text,
+                            output_path,
                             is_completed,
                             can_pause: is_dl,
                             can_resume: is_paused || matches!(j.status, DownloadStatus::Failed(_)) || is_retrying || is_scheduled,
@@ -1271,11 +1411,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             can_move_up: (is_queued || is_scheduled) && idx > 0,
                             can_move_down: (is_queued || is_scheduled) && idx + 1 < total_filtered,
                             selected: is_selected,
-                            source_platform: source_platform.into(),
-                            quality_badge: quality_badge.into(),
-                            format_badge: format_badge.into(),
-                            detail_status: detail_status.into(),
-                            destination_display: destination_display.into(),
+                            source_platform,
+                            quality_badge,
+                            format_badge,
+                            detail_status,
+                            destination_display,
                         }
                     })
                     .collect();
@@ -1291,7 +1431,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let banner_text = format!("🌙 Off-Peak Scheduler active — Downloads queued for {:02}:{:02} – {:02}:{:02}", sh, sm, eh, em);
 
                 let _ = weak.upgrade_in_event_loop(move |window| {
-                    let model = Rc::new(VecModel::from(items));
+                    // Load thumbnail images and construct UI model on the UI thread (slint::Image is !Send)
+                    let ui_items: Vec<DownloadItemData> = items
+                        .into_iter()
+                        .map(|item| {
+                            let (thumbnail_image, has_thumbnail) = if let Some(path) = thumb_snapshot.get(&item.id) {
+                                match slint::Image::load_from_path(path) {
+                                    Ok(img) => (img, true),
+                                    Err(_) => (slint::Image::default(), false),
+                                }
+                            } else {
+                                (slint::Image::default(), false)
+                            };
+
+                            DownloadItemData {
+                                id: item.id.into(),
+                                title: item.title.into(),
+                                status: item.status.into(),
+                                progress: item.progress,
+                                size_text: item.size_text.into(),
+                                speed_text: item.speed_text.into(),
+                                eta_text: item.eta_text.into(),
+                                output_path: item.output_path.into(),
+                                is_completed: item.is_completed,
+                                can_pause: item.can_pause,
+                                can_resume: item.can_resume,
+                                can_cancel: item.can_cancel,
+                                is_queued: item.is_queued,
+                                can_move_up: item.can_move_up,
+                                can_move_down: item.can_move_down,
+                                selected: item.selected,
+                                source_platform: item.source_platform.into(),
+                                quality_badge: item.quality_badge.into(),
+                                format_badge: item.format_badge.into(),
+                                detail_status: item.detail_status.into(),
+                                destination_display: item.destination_display.into(),
+                                thumbnail_image,
+                                has_thumbnail,
+                            }
+                        })
+                        .collect();
+                    let model = Rc::new(VecModel::from(ui_items));
                     window.set_download_items(ModelRc::from(model));
                     window.set_active_downloads_count(active_count);
                     window.set_selected_downloads_count(selected_count);
