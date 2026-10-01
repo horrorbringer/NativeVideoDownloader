@@ -102,6 +102,7 @@ impl ProgressCalculator {
             speed_bytes_sec: self.current_speed,
             eta_seconds,
             progress_ratio,
+            ..Default::default()
         }
     }
 }
@@ -133,6 +134,7 @@ mod tests {
             speed_bytes_sec: 1024.0 * 1024.0 * 2.5,
             eta_seconds: Some(65),
             progress_ratio: 0.5,
+            ..Default::default()
         };
 
         assert_eq!(p.format_eta(), "1m 05s");

@@ -37,6 +37,16 @@ pub struct DownloadProgress {
     pub speed_bytes_sec: f64,
     pub eta_seconds: Option<u64>,
     pub progress_ratio: f32, // 0.0 to 1.0
+    #[serde(default)]
+    pub fragment_index: Option<u32>,
+    #[serde(default)]
+    pub fragment_count: Option<u32>,
+    #[serde(default)]
+    pub format_note: Option<String>,
+    #[serde(default)]
+    pub resolution: Option<String>,
+    #[serde(default)]
+    pub phase: Option<String>,
 }
 
 impl Default for DownloadProgress {
@@ -47,6 +57,11 @@ impl Default for DownloadProgress {
             speed_bytes_sec: 0.0,
             eta_seconds: None,
             progress_ratio: 0.0,
+            fragment_index: None,
+            fragment_count: None,
+            format_note: None,
+            resolution: None,
+            phase: None,
         }
     }
 }

@@ -6,9 +6,9 @@ export component ProgressBar inherits Rectangle {
 
     height: 8px;
     border-radius: 4px;
-    background: Theme.is_dark ? #181d2e : #e2e8f0;
+    background: Theme.is_dark ? #0f172a : #e2e8f0;
     border-width: 1px;
-    border-color: Theme.is_dark ? #242c44 : #cbd5e1;
+    border-color: Theme.is_dark ? #1e293b : #cbd5e1;
     clip: true;
 
     // Inner progress fill bar
@@ -17,13 +17,14 @@ export component ProgressBar inherits Rectangle {
         y: 0;
         height: parent.height;
         width: root.progress >= 1.0 ? parent.width :
-               root.progress <= 0.0 ? (root.status == "Downloading" ? 6px : 0px) :
-               Math.max(6px, Math.min(parent.width, parent.width * root.progress));
+               root.progress <= 0.0 ? (root.status == "Downloading" ? 8px : 0px) :
+               Math.max(8px, Math.min(parent.width, parent.width * root.progress));
         border-radius: 3px;
-        background: root.status == "Completed" ? Theme.success_text :
-                    root.status == "Paused" ? Theme.warning_text :
-                    root.status == "Failed" ? Theme.error_text :
-                    Theme.brand_purple;
+        background: root.status == "Completed" ? (Theme.is_dark ? @linear-gradient(90deg, #059669 0%, #10b981 100%) : @linear-gradient(90deg, #10b981 0%, #34d399 100%)) :
+                    root.status == "Paused" ? #f59e0b :
+                    root.status == "Failed" ? #ef4444 :
+                    root.status == "Retrying" ? #f97316 :
+                    (Theme.is_dark ? @linear-gradient(90deg, #38bdf8 0%, #818cf8 100%) : @linear-gradient(90deg, #0284c7 0%, #6366f1 100%));
 
         animate width { duration: 180ms; easing: ease-out; }
         animate background { duration: 180ms; }

@@ -1090,8 +1090,7 @@ export component DownloadsTab inherits VerticalLayout {
             padding-bottom: 12px;
 
             for item in root.download_items: Rectangle {
-                min-height: 104px;
-                max-height: 126px;
+                min-height: 124px;
                 background: item.selected ? (Theme.is_dark ? #1e1b4b : #f5f3ff) : (touch.has-hover ? Theme.card_hover : Theme.card_bg);
                 border-radius: 12px;
                 border-width: item.selected ? 1.5px : 1px;
@@ -1214,6 +1213,84 @@ export component DownloadsTab inherits VerticalLayout {
                                     spacing: 6px;
                                     alignment: start;
 
+                                    // Source Platform Pill
+                                    if item.source_platform != "": Rectangle {
+                                        height: 18px;
+                                        border-radius: 4px;
+                                        border-width: 1px;
+                                        background: item.source_platform == "YouTube" ? (Theme.is_dark ? #450a0a : #fef2f2) :
+                                                    item.source_platform == "Bilibili" ? (Theme.is_dark ? #082f49 : #f0f9ff) :
+                                                    item.source_platform == "KissKH" ? (Theme.is_dark ? #042f2e : #f0fdfa) :
+                                                    (Theme.is_dark ? #1e1b4b : #f5f3ff);
+                                        border-color: item.source_platform == "YouTube" ? (Theme.is_dark ? #991b1b : #fca5a5) :
+                                                      item.source_platform == "Bilibili" ? (Theme.is_dark ? #0369a1 : #bae6fd) :
+                                                      item.source_platform == "KissKH" ? (Theme.is_dark ? #115e59 : #99f6e4) :
+                                                      (Theme.is_dark ? #4338ca : #ddd6fe);
+
+                                        HorizontalLayout {
+                                            padding-left: 6px;
+                                            padding-right: 6px;
+                                            alignment: center;
+                                            Text {
+                                                text: item.source_platform;
+                                                color: item.source_platform == "YouTube" ? (Theme.is_dark ? #f87171 : #dc2626) :
+                                                       item.source_platform == "Bilibili" ? (Theme.is_dark ? #38bdf8 : #0284c7) :
+                                                       item.source_platform == "KissKH" ? (Theme.is_dark ? #2dd4bf : #0d9488) :
+                                                       (Theme.is_dark ? #a78bfa : #7c3aed);
+                                                font-size: 10px;
+                                                font-weight: 700;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Quality Badge Pill
+                                    if item.quality_badge != "": Rectangle {
+                                        height: 18px;
+                                        border-radius: 4px;
+                                        border-width: 1px;
+                                        background: Theme.is_dark ? #1e1b4b : #eef2ff;
+                                        border-color: Theme.is_dark ? #3730a3 : #c7d2fe;
+
+                                        HorizontalLayout {
+                                            padding-left: 6px;
+                                            padding-right: 6px;
+                                            alignment: center;
+
+                                            Text {
+                                                text: item.quality_badge;
+                                                color: Theme.is_dark ? #a5b4fc : #4f46e5;
+                                                font-size: 10px;
+                                                font-weight: 700;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Format Badge Pill
+                                    if item.format_badge != "": Rectangle {
+                                        height: 18px;
+                                        border-radius: 4px;
+                                        border-width: 1px;
+                                        background: Theme.is_dark ? #1e293b : #f1f5f9;
+                                        border-color: Theme.is_dark ? #334155 : #cbd5e1;
+
+                                        HorizontalLayout {
+                                            padding-left: 6px;
+                                            padding-right: 6px;
+                                            alignment: center;
+
+                                            Text {
+                                                text: item.format_badge;
+                                                color: Theme.is_dark ? #94a3b8 : #475569;
+                                                font-size: 10px;
+                                                font-weight: 700;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Status Pill
                                     Rectangle {
                                         background: item.status == "Completed" ? #0e291b :
                                                     item.status == "Paused" ? #331e08 :
@@ -1332,23 +1409,135 @@ export component DownloadsTab inherits VerticalLayout {
                         }
                     }
 
-                    // Row 2: Smooth High-Contrast Progress Bar
+                    // Row 2: Live Activity & Destination Preview
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: space-between;
+
+                        // Left: Live Stream / Download Phase
+                        HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+                            horizontal-stretch: 1;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: item.status == "Downloading" ? @image-url("../icons/bolt.svg") :
+                                            item.status == "Completed" ? @image-url("../icons/check.svg") :
+                                            item.status == "Paused" ? @image-url("../icons/pause.svg") :
+                                            item.status == "Retrying" ? @image-url("../icons/refresh.svg") :
+                                            item.status == "Scheduled" ? @image-url("../icons/moon.svg") :
+                                            @image-url("../icons/history.svg");
+                                    width: 12px;
+                                    height: 12px;
+                                    colorize: item.status == "Downloading" ? (Theme.is_dark ? #38bdf8 : #0284c7) :
+                                              item.status == "Completed" ? #10b981 :
+                                              item.status == "Paused" ? #f59e0b :
+                                              item.status == "Retrying" ? #f97316 :
+                                              item.status == "Scheduled" ? #8b5cf6 : Theme.text_muted;
+                                }
+                            }
+
+                            Text {
+                                text: item.detail_status;
+                                color: item.status == "Downloading" ? (Theme.is_dark ? #38bdf8 : #0284c7) :
+                                       item.status == "Completed" ? (Theme.is_dark ? #34d399 : #059669) :
+                                       item.status == "Paused" ? #f59e0b :
+                                       item.status == "Retrying" ? #f97316 :
+                                       item.status == "Scheduled" ? #8b5cf6 : Theme.text_secondary;
+                                font-size: 12px;
+                                font-weight: 600;
+                                overflow: elide;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // Right: Destination Path Preview (Clickable to open folder)
+                        if item.destination_display != "": Rectangle {
+                            background: dest_touch.has-hover ? (Theme.is_dark ? #1e293b : #e2e8f0) : Colors.transparent;
+                            border-radius: 4px;
+                            animate background { duration: 120ms; }
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                padding-top: 2px;
+                                padding-bottom: 2px;
+                                spacing: 5px;
+                                alignment: end;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: @image-url("../icons/folder.svg");
+                                        width: 11px;
+                                        height: 11px;
+                                        colorize: dest_touch.has-hover ? Theme.brand_purple : Theme.text_muted;
+                                    }
+                                }
+
+                                Text {
+                                    text: item.destination_display;
+                                    color: dest_touch.has-hover ? Theme.brand_purple : Theme.text_muted;
+                                    font-size: 11px;
+                                    font-weight: 500;
+                                    overflow: elide;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            dest_touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.open_download_folder(item.output_path);
+                                }
+                            }
+                        }
+                    }
+
+                    // Row 3: Smooth High-Contrast Progress Bar
                     ProgressBar {
                         progress: item.progress;
                         status: item.status;
-                        height: 7px;
+                        height: 8px;
                     }
 
-                    // Row 3: Progress text & Speed / ETA Telemetry
+                    // Row 4: Progress text & Speed / ETA Telemetry
                     HorizontalLayout {
                         alignment: space-between;
 
-                        Text {
-                            text: item.size_text;
-                            color: Theme.text_secondary;
-                            font-size: 12px;
-                            font-weight: 500;
-                            vertical-alignment: center;
+                        Rectangle {
+                            background: Theme.is_dark ? #0f172a : #f1f5f9;
+                            border-radius: 4px;
+                            border-width: 1px;
+                            border-color: Theme.is_dark ? #1e293b : #e2e8f0;
+                            height: 20px;
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                spacing: 4px;
+                                alignment: center;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: @image-url("../icons/package.svg");
+                                        width: 10px;
+                                        height: 10px;
+                                        colorize: Theme.text_secondary;
+                                    }
+                                }
+
+                                Text {
+                                    text: item.size_text;
+                                    color: Theme.text_secondary;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
                         }
 
                         HorizontalLayout {
@@ -1371,7 +1560,7 @@ export component DownloadsTab inherits VerticalLayout {
                                     VerticalLayout {
                                         alignment: center;
                                         Image {
-                                            source: @image-url("../icons/download.svg");
+                                            source: @image-url("../icons/bolt.svg");
                                             width: 10px;
                                             height: 10px;
                                             colorize: #38bdf8;
@@ -1380,7 +1569,7 @@ export component DownloadsTab inherits VerticalLayout {
 
                                     Text {
                                         text: item.speed_text;
-                                        color: #38bdf8;
+                                        color: Theme.is_dark ? #38bdf8 : #0284c7;
                                         font-size: 11px;
                                         font-weight: 700;
                                         vertical-alignment: center;
@@ -1388,12 +1577,26 @@ export component DownloadsTab inherits VerticalLayout {
                                 }
                             }
 
-                            if item.status == "Downloading": Text {
-                                text: "ETA: " + item.eta_text;
-                                color: Theme.text_secondary;
-                                font-size: 12px;
-                                font-weight: 500;
-                                vertical-alignment: center;
+                            if item.status == "Downloading": Rectangle {
+                                background: Theme.is_dark ? #172554 : #eff6ff;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #1e40af : #dbeafe;
+                                height: 20px;
+
+                                HorizontalLayout {
+                                    padding-left: 6px;
+                                    padding-right: 6px;
+                                    alignment: center;
+
+                                    Text {
+                                        text: "ETA: " + item.eta_text;
+                                        color: Theme.is_dark ? #93c5fd : #1d4ed8;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+                                }
                             }
 
                             if item.status != "Downloading": Text {

@@ -3745,7 +3745,9 @@ where
         .arg("--compat-options").arg("no-live-chat")
         .arg("--user-agent").arg("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .arg("--progress-template")
-        .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress._percent)s|%(info.ext)s|%(progress.filename)s");
+        .arg("download:RAW:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress._percent)s|%(info.ext)s|%(progress.filename)s|%(progress.fragment_index)s|%(progress.fragment_count)s|%(info.resolution)s|%(info.format_note)s")
+        .arg("--progress-template")
+        .arg("postprocess:POST:%(progress.status)s|%(progress.postprocessor)s");
 
     let target_url = resolve_playable_stream_url(url, proxy).await;
     info!("Target URL for extractor download resolved: {} -> {}", url, target_url);
@@ -4054,6 +4056,63 @@ where
 
 /// Parses raw progress line emitted by yt-dlp `--progress-template`
 pub fn parse_extractor_progress_line(line: &str) -> Option<DownloadProgress> {
+    if let Some(post_idx) = line.find("POST:") {
+        let raw_part = &line[post_idx + 5..];
+        let parts: Vec<&str> = raw_part.split('|').collect();
+        let pp = parts.get(1).map(|s| s.trim()).unwrap_or("");
+        let phase = match pp {
+            "Merger" => "Merging video & audio streams...".to_string(),
+            "FixupM3u8" => "Fixing media container & timestamps...".to_string(),
+            "Metadata" => "Adding metadata & tags...".to_string(),
+            "EmbedThumbnail" => "Embedding video artwork...".to_string(),
+            "FFmpegExtractAudio" => "Converting & extracting audio...".to_string(),
+            "SubtitlesConvertor" | "EmbedSubtitle" => "Embedding subtitle tracks...".to_string(),
+            other if !other.is_empty() => format!("Processing: {}", other),
+            _ => "Finalizing media file...".to_string(),
+        };
+        return Some(DownloadProgress {
+            downloaded_bytes: 0,
+            total_bytes: None,
+            speed_bytes_sec: 0.0,
+            eta_seconds: None,
+            progress_ratio: 0.99,
+            fragment_index: None,
+            fragment_count: None,
+            format_note: None,
+            resolution: None,
+            phase: Some(phase),
+        });
+    }
+
+    if line.contains("[Merger]") || line.contains("Merging formats") {
+        return Some(DownloadProgress {
+            downloaded_bytes: 0,
+            total_bytes: None,
+            speed_bytes_sec: 0.0,
+            eta_seconds: None,
+            progress_ratio: 0.99,
+            fragment_index: None,
+            fragment_count: None,
+            format_note: None,
+            resolution: None,
+            phase: Some("Merging video & audio streams...".to_string()),
+        });
+    }
+    if line.contains("[Metadata]") {
+        return Some(DownloadProgress {
+            downloaded_bytes: 0,
+            total_bytes: None,
+            speed_bytes_sec: 0.0,
+            eta_seconds: None,
+            progress_ratio: 0.99,
+            fragment_index: None,
+            fragment_count: None,
+            format_note: None,
+            resolution: None,
+            phase: Some("Writing metadata & chapters...".to_string()),
+        });
+    }
+
     let raw_idx = line.find("RAW:")?;
     let raw_part = &line[raw_idx + 4..];
     let parts: Vec<&str> = raw_part.split('|').collect();
@@ -4129,12 +4188,22 @@ pub fn parse_extractor_progress_line(line: &str) -> Option<DownloadProgress> {
         0.0
     };
 
+    let fragment_index = parts.get(8).and_then(|s| parse_num(s)).map(|v| v as u32);
+    let fragment_count = parts.get(9).and_then(|s| parse_num(s)).map(|v| v as u32);
+    let resolution = parts.get(10).map(|s| s.trim()).filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("na") && !s.eq_ignore_ascii_case("none")).map(|s| s.to_string());
+    let format_note = parts.get(11).map(|s| s.trim()).filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("na") && !s.eq_ignore_ascii_case("none")).map(|s| s.to_string());
+
     Some(DownloadProgress {
         downloaded_bytes: downloaded,
         total_bytes,
         speed_bytes_sec: speed,
         eta_seconds: eta,
         progress_ratio,
+        fragment_index,
+        fragment_count,
+        format_note,
+        resolution,
+        phase: None,
     })
 }
 
@@ -4248,6 +4317,19 @@ mod tests {
         let no_eta_line = "RAW:1000000|NA|5000000.0|1000000.0|NA|20.0|mp4|video.mp4";
         let p3 = parse_extractor_progress_line(no_eta_line).unwrap();
         assert_eq!(p3.eta_seconds, Some(4)); // (5MB - 1MB) / 1MB/s = 4s
+
+        // Fragmented stream with resolution and format
+        let frag_line = "RAW:2500000|10000000|NA|500000.0|15|25.0|mp4|ep1.mp4|45|180|1920x1080|1080p60";
+        let p4 = parse_extractor_progress_line(frag_line).unwrap();
+        assert_eq!(p4.fragment_index, Some(45));
+        assert_eq!(p4.fragment_count, Some(180));
+        assert_eq!(p4.resolution, Some("1920x1080".to_string()));
+        assert_eq!(p4.format_note, Some("1080p60".to_string()));
+
+        // Postprocessing Merger notification
+        let post_line = "POST:finished|Merger";
+        let p5 = parse_extractor_progress_line(post_line).unwrap();
+        assert_eq!(p5.phase, Some("Merging video & audio streams...".to_string()));
     }
 
     #[test]

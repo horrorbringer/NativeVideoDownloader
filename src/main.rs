@@ -1248,6 +1248,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         };
 
                         let is_selected = sel_set.contains(&j.id.to_string());
+                        let source_platform = j.source_platform();
+                        let quality_badge = j.quality_badge();
+                        let format_badge = j.format_badge();
+                        let detail_status = j.detail_status_display();
+                        let destination_display = j.destination_display();
 
                         DownloadItemData {
                             id: j.id.to_string().into(),
@@ -1266,6 +1271,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             can_move_up: (is_queued || is_scheduled) && idx > 0,
                             can_move_down: (is_queued || is_scheduled) && idx + 1 < total_filtered,
                             selected: is_selected,
+                            source_platform: source_platform.into(),
+                            quality_badge: quality_badge.into(),
+                            format_badge: format_badge.into(),
+                            detail_status: detail_status.into(),
+                            destination_display: destination_display.into(),
                         }
                     })
                     .collect();
