@@ -264,6 +264,9 @@ async fn refresh_history(
                             break;
                         }
                     }
+                    if thumb_path.is_none() {
+                        thumb_path = get_cached_thumbnail_path_for_url(&r.url);
+                    }
 
                     HistoryItemDto {
                         id: r.id.to_string(),
@@ -595,7 +598,7 @@ fn run_url_analysis(
                             window.set_has_thumbnail(false);
                             window.set_thumbnail_image(slint::Image::default());
                         }
-                        let _ = std::fs::remove_file(p);
+                        // PRESERVED: Cached in OS temp directory so download cards reuse it instantaneously
                     } else {
                         window.set_has_thumbnail(false);
                         window.set_thumbnail_image(slint::Image::default());
@@ -687,9 +690,35 @@ struct DownloadItemDto {
     destination_display: String,
 }
 
+/// Computes a deterministic cache path for a thumbnail URL if it has already been downloaded.
+pub fn get_cached_thumbnail_path_for_url(url: &str) -> Option<std::path::PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut hasher);
+    let hash = format!("{:016x}", hasher.finish());
+    let temp = std::env::temp_dir();
+    for ext in &["png", "jpg", "jpeg", "webp"] {
+        let candidate = temp.join(format!("nvd_thumb_{}.{}", hash, ext));
+        if candidate.is_file() {
+            if let Ok(meta) = std::fs::metadata(&candidate) {
+                if meta.len() > 0 {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Downloads a remote thumbnail image to a temporary file for rendering in the UI thread.
 /// Automatically handles and converts AVIF, WebP, and HEIC images to standard PNG format.
+/// Employs deterministic caching by URL to allow instantaneous zero-delay reuse across download cards.
 async fn download_thumbnail_to_cache(url: &str) -> Option<std::path::PathBuf> {
+    if let Some(cached) = get_cached_thumbnail_path_for_url(url) {
+        info!("Reusing existing cached thumbnail for URL: {:?}", cached);
+        return Some(cached);
+    }
+
     info!("Fetching thumbnail image preview from: {}", url);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
@@ -703,6 +732,11 @@ async fn download_thumbnail_to_cache(url: &str) -> Option<std::path::PathBuf> {
     }
     let bytes = resp.bytes().await.ok()?;
 
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut hasher);
+    let hash = format!("{:016x}", hasher.finish());
+
     let is_webp = bytes.starts_with(b"RIFF") && bytes.len() > 12 && &bytes[8..12] == b"WEBP";
     let is_avif = (bytes.len() > 12 && (&bytes[4..12] == b"ftypavif" || &bytes[4..12] == b"ftypavis"))
         || url.to_lowercase().contains(".avif");
@@ -710,8 +744,8 @@ async fn download_thumbnail_to_cache(url: &str) -> Option<std::path::PathBuf> {
 
     if is_webp || is_avif || is_heic {
         let raw_ext = if is_avif { "avif" } else if is_heic { "heic" } else { "webp" };
-        let raw_file = std::env::temp_dir().join(format!("nvd_raw_{}.{}", uuid::Uuid::new_v4(), raw_ext));
-        let png_file = std::env::temp_dir().join(format!("nvd_thumb_{}.png", uuid::Uuid::new_v4()));
+        let raw_file = std::env::temp_dir().join(format!("nvd_raw_{}_{}.{}", hash, uuid::Uuid::new_v4(), raw_ext));
+        let png_file = std::env::temp_dir().join(format!("nvd_thumb_{}.png", hash));
         if tokio::fs::write(&raw_file, &bytes).await.is_ok() {
             #[cfg(target_os = "macos")]
             let status = tokio::process::Command::new("sips")
@@ -743,7 +777,7 @@ async fn download_thumbnail_to_cache(url: &str) -> Option<std::path::PathBuf> {
 
     let is_png = bytes.starts_with(b"\x89PNG") || url.to_lowercase().contains(".png");
     let ext = if is_png { "png" } else { "jpg" };
-    let temp_file = std::env::temp_dir().join(format!("nvd_thumb_{}.{}", uuid::Uuid::new_v4(), ext));
+    let temp_file = std::env::temp_dir().join(format!("nvd_thumb_{}.{}", hash, ext));
     if tokio::fs::write(&temp_file, &bytes).await.is_err() {
         return None;
     }
@@ -1334,6 +1368,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         if let Some(ref url) = j.thumbnail_url {
                             if !url.is_empty() {
+                                // Fast-path: Synchronous reuse from persistent thumbnail cache
+                                if let Some(cached_path) = get_cached_thumbnail_path_for_url(url) {
+                                    thumb_cache_ref.write().await.insert(jid.clone(), cached_path);
+                                    continue;
+                                }
+
                                 let url = url.clone();
                                 let jid_clone = jid.clone();
                                 let cache = thumb_cache_ref.clone();
