@@ -1329,11 +1329,21 @@ export component DownloadsTab inherits VerticalLayout {
                                                     item.source_platform == "Bilibili" ? (Theme.is_dark ? #082f49 : #f0f9ff) :
                                                     item.source_platform == "KissKH" ? (Theme.is_dark ? #042f2e : #f0fdfa) :
                                                     item.source_platform == "Dailymotion" ? (Theme.is_dark ? #0f172a : #f8fafc) :
+                                                    item.source_platform == "TikTok" ? (Theme.is_dark ? #18181b : #fdf2f8) :
+                                                    item.source_platform == "Vimeo" ? (Theme.is_dark ? #082f49 : #f0f9ff) :
+                                                    item.source_platform == "Reddit" ? (Theme.is_dark ? #431407 : #fff7ed) :
+                                                    item.source_platform == "Pinterest" ? (Theme.is_dark ? #450a0a : #fef2f2) :
+                                                    item.source_platform == "Threads" ? (Theme.is_dark ? #18181b : #f4f4f5) :
                                                     (Theme.is_dark ? #1e1b4b : #f5f3ff);
                                         border-color: item.source_platform == "YouTube" ? (Theme.is_dark ? #991b1b : #fca5a5) :
                                                       item.source_platform == "Bilibili" ? (Theme.is_dark ? #0369a1 : #bae6fd) :
                                                       item.source_platform == "KissKH" ? (Theme.is_dark ? #115e59 : #99f6e4) :
                                                       item.source_platform == "Dailymotion" ? (Theme.is_dark ? #334155 : #cbd5e1) :
+                                                      item.source_platform == "TikTok" ? (Theme.is_dark ? #f43f5e : #fbcfe8) :
+                                                      item.source_platform == "Vimeo" ? (Theme.is_dark ? #0284c7 : #7dd3fc) :
+                                                      item.source_platform == "Reddit" ? (Theme.is_dark ? #ea580c : #fed7aa) :
+                                                      item.source_platform == "Pinterest" ? (Theme.is_dark ? #dc2626 : #fca5a5) :
+                                                      item.source_platform == "Threads" ? (Theme.is_dark ? #52525b : #d4d4d8) :
                                                       (Theme.is_dark ? #4338ca : #ddd6fe);
 
                                         HorizontalLayout {
@@ -1346,6 +1356,11 @@ export component DownloadsTab inherits VerticalLayout {
                                                        item.source_platform == "Bilibili" ? (Theme.is_dark ? #38bdf8 : #0284c7) :
                                                        item.source_platform == "KissKH" ? (Theme.is_dark ? #2dd4bf : #0d9488) :
                                                        item.source_platform == "Dailymotion" ? (Theme.is_dark ? #94a3b8 : #334155) :
+                                                       item.source_platform == "TikTok" ? (Theme.is_dark ? #fb7185 : #e11d48) :
+                                                       item.source_platform == "Vimeo" ? (Theme.is_dark ? #38bdf8 : #0284c7) :
+                                                       item.source_platform == "Reddit" ? (Theme.is_dark ? #fb923c : #ea580c) :
+                                                       item.source_platform == "Pinterest" ? (Theme.is_dark ? #f87171 : #dc2626) :
+                                                       item.source_platform == "Threads" ? (Theme.is_dark ? #e4e4e7 : #18181b) :
                                                        (Theme.is_dark ? #a78bfa : #7c3aed);
                                                 font-size: 10px;
                                                 font-weight: 700;

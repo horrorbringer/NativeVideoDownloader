@@ -77,8 +77,14 @@ fn extract_domain_from_url(url: &str) -> String {
         "instagram.com".to_string()
     } else if s.contains("twitter.com") || s.contains("x.com") {
         "x.com".to_string()
-    } else if s.contains("reddit.com") {
+    } else if s.contains("vimeo.com") {
+        "vimeo.com".to_string()
+    } else if s.contains("reddit.com") || s.contains("v.redd.it") {
         "reddit.com".to_string()
+    } else if s.contains("pinterest.com") || s.contains("pin.it") {
+        "pinterest.com".to_string()
+    } else if s.contains("threads.net") {
+        "threads.net".to_string()
     } else if s.contains("bilibili.com") {
         "bilibili.com".to_string()
     } else {
@@ -133,9 +139,18 @@ fn resolve_batch_item_title_and_referer(url: &str) -> (String, Option<String>) {
     } else if url.contains("twitter.com") || url.contains("x.com") {
         let id = url.split("/status/").nth(1).unwrap_or("post").split('?').next().unwrap_or("post");
         (format!("X / Twitter Post {}", id), Some("https://x.com/".to_string()))
-    } else if url.contains("reddit.com") {
+    } else if url.contains("vimeo.com") {
+        let vid = crate::downloader::extractor::extract_vimeo_video_id(url).unwrap_or_else(|| "video".to_string());
+        (format!("Vimeo Video {}", vid), Some("https://vimeo.com/".to_string()))
+    } else if url.contains("reddit.com") || url.contains("v.redd.it") {
         let id = url.split("/comments/").nth(1).and_then(|s| s.split('/').next()).unwrap_or("post");
         (format!("Reddit Post {}", id), Some("https://www.reddit.com/".to_string()))
+    } else if url.contains("pinterest.com") || url.contains("pin.it") {
+        let id = url.split("/pin/").nth(1).and_then(|s| s.split('/').next()).unwrap_or("pin");
+        (format!("Pinterest Pin {}", id), Some("https://www.pinterest.com/".to_string()))
+    } else if url.contains("threads.net") {
+        let id = url.split("/post/").nth(1).and_then(|s| s.split('/').next()).unwrap_or("post");
+        (format!("Threads Post {}", id), Some("https://www.threads.net/".to_string()))
     } else if url.contains("bilibili.com") {
         let bvid = url.split("/video/").nth(1).unwrap_or("video").split('?').next().unwrap_or("video");
         (format!("Bilibili {}", bvid), Some("https://www.bilibili.com/".to_string()))

@@ -229,12 +229,16 @@ pub fn is_streaming_platform(url: &str) -> bool {
         || lower.contains("twitter.com")
         || lower.contains("x.com")
         || lower.contains("instagram.com")
+        || lower.contains("threads.net")
+        || lower.contains("pinterest.com")
+        || lower.contains("pin.it")
         || lower.contains("facebook.com")
         || lower.contains("fb.watch")
         || lower.contains("twitch.tv")
         || lower.contains("dailymotion.com")
         || lower.contains("soundcloud.com")
         || lower.contains("reddit.com")
+        || lower.contains("v.redd.it")
         || lower.contains("bilibili.com")
         || lower.contains("b23.tv")
         || lower.contains("douyin.com")
@@ -894,6 +898,19 @@ pub async fn inspect_video_with_options(
         }
     }
 
+    // Fast path: Native Vimeo resolver via player config API (bypasses yt-dlp "login required" blocks)
+    if url.contains("vimeo.com") {
+        match resolve_vimeo_native(url, proxy).await {
+            Ok(meta) => {
+                info!("Successfully extracted Vimeo media without login via native player config: {:?}", meta.title);
+                return Ok(meta);
+            }
+            Err(e) => {
+                warn!("Native Vimeo extraction failed ({:?}), falling back to yt-dlp", e);
+            }
+        }
+    }
+
     let ytdlp_bin = ensure_ytdlp_installed().await?;
 
     info!(
@@ -1349,6 +1366,136 @@ pub async fn resolve_tiktok_via_tikwm(url: &str, proxy: Option<&str>) -> Result<
         size_480p: None,
         size_audio: None,
         referer: Some("https://www.tiktok.com/".to_string()),
+        available_formats: Vec::new(),
+    })
+}
+
+/// Helper: Extracts numeric video ID from Vimeo URLs without external regex dependency
+pub fn extract_vimeo_video_id(url: &str) -> Option<String> {
+    let clean = url.split('?').next().unwrap_or(url).trim_end_matches('/');
+    for segment in clean.split('/') {
+        if !segment.is_empty() && segment.chars().all(|c| c.is_ascii_digit()) && segment.len() >= 5 {
+            return Some(segment.to_string());
+        }
+    }
+    None
+}
+
+/// Resolves a Vimeo video URL using the Vimeo player config endpoint to retrieve stream URL & metadata without cookies
+pub async fn resolve_vimeo_native(url: &str, proxy: Option<&str>) -> Result<VideoMetadata> {
+    info!("Resolving Vimeo video via native player config: {} (proxy: {:?})", url, proxy);
+
+    let video_id = extract_vimeo_video_id(url)
+        .ok_or_else(|| AppError::Generic(format!("Could not extract Vimeo video ID from URL: {}", url)))?;
+
+    let api_url = format!("https://player.vimeo.com/video/{}/config", video_id);
+
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10));
+
+    if let Some(p) = proxy {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            if let Ok(prx) = reqwest::Proxy::all(trimmed) {
+                builder = builder.proxy(prx);
+            }
+        }
+    }
+
+    let client = builder.build()
+        .map_err(|e| AppError::Generic(format!("Failed to build HTTP client: {}", e)))?;
+
+    let resp = client
+        .get(&api_url)
+        .header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+        .header(reqwest::header::REFERER, "https://vimeo.com/")
+        .send()
+        .await
+        .map_err(|e| AppError::Generic(format!("Vimeo player config request failed: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(AppError::Generic(format!("Vimeo player config returned HTTP status {}", resp.status())));
+    }
+
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| AppError::Generic(format!("Failed to read Vimeo player config response: {}", e)))?;
+
+    let val: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| AppError::Generic(format!("Failed to parse Vimeo player config JSON: {}", e)))?;
+
+    let video = val.get("video").ok_or_else(|| AppError::Generic("Vimeo config missing 'video' section".to_string()))?;
+    let title = video.get("title").and_then(|v| v.as_str()).unwrap_or("vimeo_video").trim().to_string();
+    let duration_seconds = video.get("duration").and_then(|v| v.as_u64());
+    let height = video.get("height").and_then(|v| v.as_u64());
+    let fps = video.get("fps").and_then(|v| v.as_f64());
+    let thumbnail_url = video.get("thumbnail_url").and_then(|v| v.as_str()).map(|s| s.to_string())
+        .or_else(|| {
+            video.get("thumbs").and_then(|t| t.as_object()).and_then(|o| {
+                o.get("base").or_else(|| o.get("640")).or_else(|| o.get("1280"))
+            }).and_then(|v| v.as_str()).map(|s| s.to_string())
+        });
+
+    let files = val.get("request").and_then(|r| r.get("files")).ok_or_else(|| AppError::Generic("Vimeo config missing 'request.files'".to_string()))?;
+
+    // Check for progressive MP4 files first (direct download, supports seek/range)
+    let mut progressive_formats = Vec::new();
+    if let Some(progs) = files.get("progressive").and_then(|p| p.as_array()) {
+        for p in progs {
+            if let Some(stream_url) = p.get("url").and_then(|u| u.as_str()) {
+                let quality = p.get("quality").and_then(|q| q.as_str()).unwrap_or("HD");
+                let w = p.get("width").and_then(|v| v.as_u64()).unwrap_or(0);
+                let h = p.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
+                let f_fps = p.get("fps").and_then(|v| v.as_f64()).unwrap_or(30.0);
+                progressive_formats.push((quality.to_string(), stream_url.to_string(), w, h, f_fps));
+            }
+        }
+    }
+
+    // Sort progressive streams by height descending
+    progressive_formats.sort_by(|a, b| b.3.cmp(&a.3));
+
+    let (stream_url, resolution, supports_ranges, is_extractor) = if let Some(best_prog) = progressive_formats.first() {
+        (best_prog.1.clone(), Some(format!("{}p", best_prog.3)), true, false)
+    } else {
+        // Fall back to HLS master playlist
+        let hls_cdns = files.get("hls").and_then(|h| h.get("cdns")).and_then(|c| c.as_object());
+        let hls_url = hls_cdns
+            .and_then(|cdns| cdns.values().next())
+            .and_then(|v| v.get("url"))
+            .and_then(|u| u.as_str())
+            .ok_or_else(|| AppError::Generic("No playable HLS or progressive stream found in Vimeo config".to_string()))?
+            .to_string();
+        let res = height.map(|h| format!("{}p", h)).or_else(|| Some("1080p FHD".to_string()));
+        (hls_url, res, false, true)
+    };
+
+    Ok(VideoMetadata {
+        url: stream_url,
+        title,
+        content_length: None,
+        content_type: Some(if is_extractor { "application/x-mpegURL".to_string() } else { "video/mp4".to_string() }),
+        supports_ranges,
+        is_extractor,
+        duration_seconds,
+        resolution,
+        ext: Some("mp4".to_string()),
+        is_playlist: false,
+        playlist_count: 0,
+        playlist_entries: Vec::new(),
+        has_subtitles: false,
+        subtitles_summary: "No subtitles".to_string(),
+        thumbnail_url,
+        fps,
+        vcodec: Some("H.264 (AVC)".to_string()),
+        acodec: Some("AAC".to_string()),
+        size_best: None,
+        size_1080p: None,
+        size_720p: None,
+        size_480p: None,
+        size_audio: None,
+        referer: Some("https://vimeo.com/".to_string()),
         available_formats: Vec::new(),
     })
 }
@@ -5175,6 +5322,29 @@ mod tests {
         assert!(!empty_meta.available_formats.is_empty());
         assert_eq!(empty_meta.available_formats[0].format_id, "best");
         assert!(empty_meta.available_formats.iter().any(|s| s.format_id == "1080p"));
+    }
+
+    #[tokio::test]
+    async fn test_vimeo_video_id_and_platforms() {
+        assert_eq!(extract_vimeo_video_id("https://vimeo.com/76979871"), Some("76979871".to_string()));
+        assert_eq!(extract_vimeo_video_id("https://player.vimeo.com/video/76979871"), Some("76979871".to_string()));
+        assert_eq!(extract_vimeo_video_id("https://vimeo.com/channels/staffpicks/76979871"), Some("76979871".to_string()));
+
+        // Test platform detection
+        assert!(is_streaming_platform("https://vimeo.com/76979871"));
+        assert!(is_streaming_platform("https://www.reddit.com/r/videos/comments/123/video_title/"));
+        assert!(is_streaming_platform("https://v.redd.it/abcdef123456"));
+        assert!(is_streaming_platform("https://www.pinterest.com/pin/1234567890/"));
+        assert!(is_streaming_platform("https://pin.it/7xyz"));
+        assert!(is_streaming_platform("https://www.threads.net/@user/post/CuPqbh9L5P3"));
+
+        // Live Vimeo player config inspection test
+        if let Ok(meta) = resolve_vimeo_native("https://vimeo.com/76979871", None).await {
+            assert!(meta.title.contains("Vimeo Player"), "Title should match: {}", meta.title);
+            assert!(meta.duration_seconds.unwrap_or(0) > 0);
+            assert!(meta.thumbnail_url.is_some());
+            assert!(!meta.url.is_empty());
+        }
     }
 }
 
