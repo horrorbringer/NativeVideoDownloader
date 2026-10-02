@@ -1146,7 +1146,6 @@ export component DownloadsTab inherits VerticalLayout {
                     padding-top: 13px;
                     padding-bottom: 13px;
                     spacing: 14px;
-                    alignment: start;
 
                     // Left Column: Checkbox + Thumbnail Preview (or Icon Badge fallback)
                     HorizontalLayout {
@@ -1656,6 +1655,34 @@ export component DownloadsTab inherits VerticalLayout {
                         HorizontalLayout {
                             spacing: 8px;
                             alignment: end;
+
+                            // Mini Live Transfer Sparkline Wave
+                            if item.status == "Downloading": Rectangle {
+                                background: Theme.is_dark ? #0f172a : #f1f5f9;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.is_dark ? #1e293b : #e2e8f0;
+                                height: 20px;
+
+                                HorizontalLayout {
+                                    padding-left: 6px;
+                                    padding-right: 6px;
+                                    padding-top: 2px;
+                                    padding-bottom: 2px;
+                                    spacing: 2px;
+                                    alignment: center;
+
+                                    for sample in root.speed_samples: Rectangle {
+                                        width: 2px;
+                                        height: Math.max(3px, sample.ratio * 15px);
+                                        border-radius: 1px;
+                                        background: sample.ratio > 0.6 ? (Theme.is_dark ? #38bdf8 : #0284c7) :
+                                                    sample.ratio > 0.25 ? (Theme.is_dark ? #60a5fa : #2563eb) :
+                                                    (Theme.is_dark ? #334155 : #cbd5e1);
+                                        animate height { duration: 100ms; }
+                                    }
+                                }
+                            }
 
                             if item.status == "Downloading": Rectangle {
                                 background: Theme.is_dark ? #0c2038 : #f0f9ff;
