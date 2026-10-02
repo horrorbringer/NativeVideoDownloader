@@ -813,24 +813,84 @@ pub fn open_parent_folder(path: &Path) -> Result<()> {
     reveal_in_file_manager(path)
 }
 
-/// Resolves actual file path on disk, testing for video/audio container extensions if missing
-pub fn find_actual_path(path: &Path) -> PathBuf {
-    if path.exists() {
-        return path.to_path_buf();
+/// Expands leading `~` or `~/` to the user's home directory.
+pub fn expand_tilde(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if s.starts_with("~/") || s == "~" {
+        if let Ok(home) = std::env::var("HOME") {
+            if s == "~" {
+                return PathBuf::from(home);
+            } else {
+                return PathBuf::from(home).join(&s[2..]);
+            }
+        }
     }
+    path.to_path_buf()
+}
+
+/// Resolves actual file path on disk, testing for tilde expansion, video/audio container extensions,
+/// active download artifacts (.part, .ytdl), and organized asset subfolders if moved.
+pub fn find_actual_path(path: &Path) -> PathBuf {
+    let path = expand_tilde(path);
+    if path.exists() {
+        return path;
+    }
+
+    // 1. Check known media container extensions in same directory
     for ext in MEDIA_EXTENSIONS {
         let candidate = PathBuf::from(format!("{}.{}", path.display(), ext));
         if candidate.exists() {
             return candidate;
         }
     }
-    path.to_path_buf()
+
+    // 2. Check for active/partial download artifacts (.part, .ytdl, etc.)
+    for suffix in &[".part", ".ytdl", ".temp", ".aria2", ".fhd.mp4", ".fhd.mp4.part"] {
+        let candidate = PathBuf::from(format!("{}{}", path.display(), suffix));
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+
+    // 3. Check organized asset subfolder: {parent}/{stem}/{filename} or {parent}/{stem}
+    if let (Some(parent), Some(stem_os)) = (path.parent(), path.file_stem()) {
+        if let (Some(stem), Some(fname)) = (stem_os.to_str(), path.file_name()) {
+            let subfolder = parent.join(stem);
+            if subfolder.is_dir() {
+                // Exact file in subfolder
+                let in_sub = subfolder.join(fname);
+                if in_sub.exists() {
+                    return in_sub;
+                }
+                // With container extensions in subfolder
+                for ext in MEDIA_EXTENSIONS {
+                    let candidate = subfolder.join(format!("{}.{}", stem, ext));
+                    if candidate.exists() {
+                        return candidate;
+                    }
+                }
+                // With download artifacts in subfolder
+                for suffix in &[".part", ".ytdl", ".temp", ".aria2"] {
+                    let candidate = subfolder.join(format!("{}{}", stem, suffix));
+                    if candidate.exists() {
+                        return candidate;
+                    }
+                }
+                // Return the subfolder if the directory exists
+                return subfolder;
+            }
+        }
+    }
+
+    path
 }
 
 /// Reveals the file or folder in Finder (or selects it in File Explorer / file manager)
 pub fn reveal_in_file_manager(path: &Path) -> Result<()> {
     let resolved = find_actual_path(path);
     let parent = resolved.parent().unwrap_or(&resolved);
+
+    info!("Revealing in file manager - target: {:?}, parent: {:?}", resolved, parent);
 
     #[cfg(target_os = "macos")]
     {
@@ -839,7 +899,16 @@ pub fn reveal_in_file_manager(path: &Path) -> Result<()> {
         } else if resolved.exists() && resolved.is_dir() {
             let _ = std::process::Command::new("open").arg(&resolved).spawn();
         } else {
-            let _ = std::process::Command::new("open").arg(parent).spawn();
+            // Ensure parent directory exists so Finder opens the folder cleanly
+            if !parent.exists() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if parent.exists() {
+                let _ = std::process::Command::new("open").arg(parent).spawn();
+            } else {
+                let def = default_download_dir();
+                let _ = std::process::Command::new("open").arg(&def).spawn();
+            }
         }
     }
     #[cfg(target_os = "windows")]
@@ -849,12 +918,26 @@ pub fn reveal_in_file_manager(path: &Path) -> Result<()> {
         } else if resolved.exists() && resolved.is_dir() {
             let _ = std::process::Command::new("explorer").arg(&resolved).spawn();
         } else {
-            let _ = std::process::Command::new("explorer").arg(parent).spawn();
+            if !parent.exists() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if parent.exists() {
+                let _ = std::process::Command::new("explorer").arg(parent).spawn();
+            } else {
+                let def = default_download_dir();
+                let _ = std::process::Command::new("explorer").arg(&def).spawn();
+            }
         }
     }
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
-        let target = if resolved.exists() { &resolved } else { parent };
+        let target = if resolved.exists() {
+            &resolved
+        } else if parent.exists() {
+            parent
+        } else {
+            &default_download_dir()
+        };
         let _ = std::process::Command::new("xdg-open").arg(target).spawn();
     }
 
@@ -1892,8 +1975,27 @@ http://bilibili.com/video/BV1xx411c7mD, extra text
     }
 
     #[test]
-    fn test_open_system_url_empty() {
-        assert!(open_system_url("   ").is_ok());
+    fn test_expand_tilde_and_find_actual_path() {
+        let tilde_path = Path::new("~/Documents/test_video.mp4");
+        let expanded = expand_tilde(tilde_path);
+        assert!(!expanded.to_string_lossy().starts_with("~/"));
+        if let Ok(home) = std::env::var("HOME") {
+            assert!(expanded.to_string_lossy().starts_with(&home));
+        }
+
+        // Test subfolder actual path resolution
+        let temp_dir = std::env::temp_dir().join(format!("test_actual_path_{}", uuid::Uuid::new_v4()));
+        let subfolder = temp_dir.join("EP04");
+        std::fs::create_dir_all(&subfolder).unwrap();
+        let target_in_sub = subfolder.join("EP04.mp4");
+        std::fs::write(&target_in_sub, b"dummy video content").unwrap();
+
+        // Querying for /temp/EP04.mp4 should find /temp/EP04/EP04.mp4!
+        let virtual_path = temp_dir.join("EP04.mp4");
+        let found = find_actual_path(&virtual_path);
+        assert_eq!(found, target_in_sub);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
 
