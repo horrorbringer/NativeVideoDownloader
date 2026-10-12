@@ -1,0 +1,28 @@
+{
+  "name": "Native Video Downloader (Rust + Slint Dev Container)",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "app-gui",
+  "workspaceFolder": "/app",
+  "forwardPorts": [6080, 5900],
+  "portsAttributes": {
+    "6080": {
+      "label": "Slint App (noVNC Browser UI)",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "rust-analyzer.check.command": "check",
+        "rust-analyzer.cargo.buildScripts.enable": true,
+        "editor.formatOnSave": true
+      },
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "Slint.slint"
+      ]
+    }
+  },
+  "remoteUser": "root"
+}

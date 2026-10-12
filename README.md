@@ -177,6 +177,27 @@ A blazing-fast, lightweight, cross-platform native desktop media and video downl
 
 ---
 
+### 5. Docker Setup (Zero Local Dependencies — Any OS)
+
+If you don't want to install Rust, C++ Build Tools, FFmpeg, or system graphics libraries on your host machine:
+
+```powershell
+# Windows: Run GUI app accessible in browser at http://localhost:6080
+.\docker-dev.ps1 gui
+
+# Or run tests inside Docker
+.\docker-dev.ps1 test
+```
+
+```bash
+# macOS / Linux:
+./docker-dev.sh gui
+```
+
+> See [DOCKER.md](file:///d:/projects/NativeVideoDownloader/DOCKER.md) for full details on Web noVNC streaming, live hot-reloading (`cargo-watch`), VS Code Dev Containers, and CLI options.
+
+---
+
 ## Project Structure
 
 ```

@@ -1,0 +1,138 @@
+services:
+  # ----------------------------------------------------------------------------
+  # Option 1 (Recommended): Interactive GUI via Browser (noVNC)
+  # Open http://localhost:6080/vnc.html in Chrome/Edge/Firefox to see the GUI!
+  # ----------------------------------------------------------------------------
+  app-gui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: native-video-downloader:dev
+    container_name: nvd-gui
+    environment:
+      - ENABLE_VNC=true
+      - RESOLUTION=1366x820x24
+      - RUST_LOG=info
+      - SLINT_BACKEND=winit
+      - LIBGL_ALWAYS_SOFTWARE=1
+    ports:
+      - "6080:6080"  # Web-based noVNC interface
+      - "5900:5900"  # Standard VNC client port (optional)
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/app/target
+    command: cargo run
+
+  # ----------------------------------------------------------------------------
+  # Option 2: Live Hot-Reloading GUI (cargo-watch) via Browser
+  # Automatically recompiles and re-renders when you save files in src/ or ui/
+  # ----------------------------------------------------------------------------
+  app-gui-watch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: native-video-downloader:dev
+    container_name: nvd-gui-watch
+    environment:
+      - ENABLE_VNC=true
+      - RESOLUTION=1366x820x24
+      - RUST_LOG=info
+      - SLINT_BACKEND=winit
+      - LIBGL_ALWAYS_SOFTWARE=1
+    ports:
+      - "6080:6080"
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/app/target
+    command: cargo watch -w src -w ui -x run
+
+  # ----------------------------------------------------------------------------
+  # Option 3: Fast Interactive CLI Terminal
+  # Run cargo check, cargo clippy, cargo test, or explore files inside Linux
+  # ----------------------------------------------------------------------------
+  app-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: native-video-downloader:dev
+    container_name: nvd-cli
+    stdin_open: true
+    tty: true
+    environment:
+      - ENABLE_VNC=false
+      - RUST_LOG=info
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/app/target
+    command: /bin/bash
+
+  # ----------------------------------------------------------------------------
+  # Option 4: Automated Test Runner
+  # Runs the full test suite (65+ tests)
+  # ----------------------------------------------------------------------------
+  app-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: native-video-downloader:dev
+    container_name: nvd-test
+    environment:
+      - ENABLE_VNC=false
+      - RUST_LOG=warn
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/app/target
+    command: cargo test --bin native_video_downloader
+
+  # ----------------------------------------------------------------------------
+  # Option 5: Host X11 Direct Forwarding (WSLg / VcXsrv / Xming)
+  # For rendering directly onto your Windows desktop via host X11 server
+  # ----------------------------------------------------------------------------
+  app-x11:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: native-video-downloader:dev
+    container_name: nvd-x11
+    environment:
+      - ENABLE_VNC=false
+      - DISPLAY=host.docker.internal:0.0
+      - LIBGL_ALWAYS_SOFTWARE=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/app/target
+    command: cargo run
+
+  # ----------------------------------------------------------------------------
+  # Option 6: Production Release Builder
+  # Builds optimized Linux binary
+  # ----------------------------------------------------------------------------
+  app-build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: native-video-downloader:dev
+    container_name: nvd-build
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/app/target
+    command: cargo build --release
+
+volumes:
+  cargo-cache:
+  cargo-git:
+  target-cache:

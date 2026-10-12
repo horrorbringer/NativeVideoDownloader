@@ -1,0 +1,8 @@
+target/
+.git/
+.cargo/
+*.tmp
+*.log
+dist/
+dist-win/
+*.old_*
