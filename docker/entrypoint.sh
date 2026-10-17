@@ -50,8 +50,27 @@ fi
 
 # If arguments are passed, execute them
 if [ $# -gt 0 ]; then
-    exec "$@"
+    if [ "${ENABLE_VNC:-false}" = "true" ]; then
+        echo ">>> Starting application: $@"
+        set +e
+        "$@"
+        EXIT_CODE=$?
+        set -e
+        if [ $EXIT_CODE -ne 0 ]; then
+            echo ""
+            echo "=========================================================="
+            echo ">>> Command exited with error code: ${EXIT_CODE}"
+            echo ">>> The desktop remains active at: http://localhost:6080/vnc.html"
+            echo ">>> Debug inside container: docker exec -it nvd-gui /bin/bash"
+            echo "=========================================================="
+        fi
+        # Keep desktop running so browser connection does not disconnect
+        exec tail -f /dev/null
+    else
+        exec "$@"
+    fi
 else
     # Default to an interactive bash shell
     exec /bin/bash
 fi
+
